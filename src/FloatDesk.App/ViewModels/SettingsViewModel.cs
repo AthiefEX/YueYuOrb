@@ -277,14 +277,16 @@ public partial class SettingsViewModel : ObservableObject
             string.Equals(left.Path, right.Path, StringComparison.Ordinal) &&
             left.Arguments.SequenceEqual(right.Arguments, StringComparer.Ordinal) &&
             string.Equals(left.WorkingDirectory, right.WorkingDirectory, StringComparison.Ordinal) &&
-            left.Order == right.Order;
+            left.Order == right.Order &&
+            left.ShowInWheel == right.ShowInWheel;
 
         public int GetHashCode(LauncherItem value) => HashCode.Combine(
             value.Id,
             value.Name,
             value.Kind,
             value.Path,
-            value.Order);
+            value.Order,
+            value.ShowInWheel);
     }
 
     internal static string FormatHotkey(HotkeyChord chord)

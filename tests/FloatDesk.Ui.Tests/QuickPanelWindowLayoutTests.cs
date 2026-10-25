@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using FloatDesk.App.Views;
+using FloatDesk.Core.Models;
 
 namespace FloatDesk.Ui.Tests;
 
@@ -60,6 +61,125 @@ public sealed class QuickPanelWindowLayoutTests
             throw new Xunit.Sdk.XunitException(failure.ToString());
     }
 
+    [Fact(Timeout = 10_000)]
+    public async Task EmptyDockHidesAndTopLeftCardsAreRemoved()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new QuickPanelWindow();
+                window.Apply(
+                    AppSettings.CreateDefault(),
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+
+                Assert.Null(window.FindName("BrandChip"));
+                Assert.Null(window.FindName("StatusChip"));
+
+                var dock = Assert.IsType<Border>(
+                    window.FindName("LauncherDock"));
+                Assert.Equal(Visibility.Collapsed, dock.Visibility);
+                Assert.Equal(480, dock.Width);
+                Assert.Equal(64, dock.Height);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task WheelAppsUseScrollableRailAndOnlyDockItemsOpenDock()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new QuickPanelWindow();
+                var launchers = Enumerable.Range(0, 16)
+                    .Select(index => new LauncherItem(
+                        Guid.NewGuid(),
+                        $"应用 {index + 1}",
+                        LauncherKind.Exe,
+                        $@"C:\Apps\app{index}.exe",
+                        [],
+                        null,
+                        index,
+                        ShowInWheel: true))
+                    .ToList();
+                launchers.Add(new LauncherItem(
+                    Guid.NewGuid(),
+                    "应用坞",
+                    LauncherKind.Exe,
+                    @"C:\Apps\dock.exe",
+                    [],
+                    null,
+                    launchers.Count));
+                window.Apply(
+                    AppSettings.CreateDefault() with
+                    {
+                        Launchers = launchers
+                    },
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+
+                var scroller = Assert.IsType<ScrollViewer>(
+                    window.FindName("WheelLauncherScroller"));
+                var panel = Assert.IsType<StackPanel>(
+                    window.FindName("WheelLauncherPanel"));
+                var dock = Assert.IsType<Border>(
+                    window.FindName("LauncherDock"));
+
+                Assert.Equal(Visibility.Visible, scroller.Visibility);
+                Assert.Equal(16, panel.Children.Count);
+                Assert.Equal(Visibility.Visible, dock.Visibility);
+
+                scroller.Measure(new Size(234, 380));
+                scroller.Arrange(new Rect(0, 0, 234, 380));
+                scroller.UpdateLayout();
+                Assert.True(
+                    scroller.ScrollableHeight > 0,
+                    "Overflowing wheel applications must be scrollable.");
+
+                window.Apply(
+                    AppSettings.CreateDefault() with
+                    {
+                        Launchers = launchers
+                            .Where(item => item.ShowInWheel)
+                            .ToArray()
+                    },
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+                Assert.Equal(Visibility.Collapsed, dock.Visibility);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
     private static void AssertNoKeyboardFocusTrigger(
         FrameworkElement owner,
         string styleKey)

@@ -33,17 +33,43 @@ public partial class QuickPanelWindow : Window
 
     public void Apply(AppSettings settings, bool manualLockEnabled, string inputStatus)
     {
-        AutoRuleText.Text = settings.InputLock.AutoEnabled ? "自动规则：开" : "自动规则：关";
         InputLockTitle.Text = manualLockEnabled ? "停止锁定" : "锁定英文";
         InputLockGlyph.Text = manualLockEnabled ? "\uE785" : "\uE72E";
         InputLockGlyphHost.Background = (Brush)FindResource(
             manualLockEnabled ? "MenuGreenBrush" : "MenuBlueBrush");
-        InputStatusText.Text = $"输入状态：{inputStatus}";
+        var launchers = settings.Launchers.OrderBy(item => item.Order).ToArray();
+        var wheelLaunchers = launchers.Where(item => item.ShowInWheel).ToArray();
+        var dockLaunchers = launchers.Where(item => !item.ShowInWheel).ToArray();
+
+        WheelLauncherPanel.Children.Clear();
+        WheelLauncherScroller.Visibility = wheelLaunchers.Length > 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        for (var index = 0; index < wheelLaunchers.Length; index++)
+        {
+            var item = wheelLaunchers[index];
+            var button = new Button
+            {
+                Name = $"WheelLauncherButton{index}",
+                Width = 224,
+                Height = 42,
+                Margin = new Thickness(0, 0, 0, 6),
+                Content = CreateWheelLauncherContent(item),
+                Style = (Style)FindResource("DockLauncherButtonStyle"),
+                Tag = item,
+                ToolTip = item.Path
+            };
+            AutomationProperties.SetName(button, item.Name);
+            button.Click += (_, _) => LaunchRequested?.Invoke(item);
+            WheelLauncherPanel.Children.Add(button);
+        }
 
         LauncherPanel.Children.Clear();
-        var launchers = settings.Launchers.OrderBy(item => item.Order).ToArray();
-        LauncherCountText.Text = $"{launchers.Length} 个项目";
-        foreach (var item in launchers)
+        LauncherDock.Visibility = dockLaunchers.Length > 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        LauncherCountText.Text = $"{dockLaunchers.Length} 个项目";
+        foreach (var item in dockLaunchers)
         {
             var button = new Button
             {
@@ -56,16 +82,19 @@ public partial class QuickPanelWindow : Window
             LauncherPanel.Children.Add(button);
         }
 
-        var addButton = new Button
+        if (dockLaunchers.Length > 0)
         {
-            Content = CreateAddContent(),
-            Style = (Style)FindResource("DockLauncherButtonStyle"),
-            ToolTip = "打开设置并添加快捷应用"
-        };
-        addButton.Click += (_, _) => SettingsRequested?.Invoke();
-        LauncherPanel.Children.Add(addButton);
+            var addButton = new Button
+            {
+                Content = CreateAddContent(),
+                Style = (Style)FindResource("DockLauncherButtonStyle"),
+                ToolTip = "打开设置并添加快捷应用"
+            };
+            AutomationProperties.SetName(addButton, "添加应用");
+            addButton.Click += (_, _) => SettingsRequested?.Invoke();
+            LauncherPanel.Children.Add(addButton);
+        }
     }
-
     public void SetRegionCaptureHotkey(string hotkey)
     {
         RegionCaptureButton.ToolTip = $"框选截图（{hotkey}）";
@@ -134,12 +163,12 @@ public partial class QuickPanelWindow : Window
 
     private void ArrangeMenu(Point anchor, bool opensLeft)
     {
-        Canvas.SetLeft(BrandChip, 22);
-        Canvas.SetTop(BrandChip, 22);
-        Canvas.SetLeft(StatusChip, 22);
-        Canvas.SetTop(StatusChip, 76);
-        Canvas.SetLeft(LauncherDock, 22);
-        Canvas.SetTop(LauncherDock, 462);
+        Canvas.SetLeft(LauncherDock, (PanelWidth - LauncherDock.Width) / 2);
+        Canvas.SetTop(LauncherDock, 488);
+        Canvas.SetLeft(
+            WheelLauncherScroller,
+            opensLeft ? 22 : PanelWidth - 22 - WheelLauncherScroller.Width);
+        Canvas.SetTop(WheelLauncherScroller, 68);
 
         var actions = new (Button Element, double ArcOffset)[]
         {
@@ -184,6 +213,18 @@ public partial class QuickPanelWindow : Window
         Canvas.SetTop(AnchorHalo, anchor.Y - AnchorHalo.Height / 2);
         Canvas.SetLeft(AnchorRing, anchor.X - AnchorRing.Width / 2);
         Canvas.SetTop(AnchorRing, anchor.Y - AnchorRing.Height / 2);
+        Canvas.SetLeft(
+            AnchorOrbitSmall,
+            anchor.X - AnchorOrbitSmall.Width / 2);
+        Canvas.SetTop(
+            AnchorOrbitSmall,
+            anchor.Y - AnchorOrbitSmall.Height / 2);
+        Canvas.SetLeft(
+            AnchorOrbitLarge,
+            anchor.X - AnchorOrbitLarge.Width / 2);
+        Canvas.SetTop(
+            AnchorOrbitLarge,
+            anchor.Y - AnchorOrbitLarge.Height / 2);
     }
 
     private void UpdateFanGeometry(Point anchor, double direction)
@@ -238,6 +279,24 @@ public partial class QuickPanelWindow : Window
         }
         highlight.Freeze();
         FanHighlight.Data = highlight;
+
+        var outerTop = Clamp(
+            new Point(anchor.X + direction * 545, 58));
+        var outerBottom = Clamp(
+            new Point(anchor.X + direction * 230, 450));
+        var rim = new StreamGeometry();
+        using (var context = rim.Open())
+        {
+            context.BeginFigure(outerTop, isFilled: false, isClosed: false);
+            context.BezierTo(
+                Clamp(new Point(anchor.X + direction * 610, 180)),
+                Clamp(new Point(anchor.X + direction * 465, 390)),
+                outerBottom,
+                isStroked: true,
+                isSmoothJoin: true);
+        }
+        rim.Freeze();
+        FanRim.Data = rim;
     }
 
     private void UpdateConnectorGeometry(
@@ -345,6 +404,50 @@ public partial class QuickPanelWindow : Window
         return grid;
     }
 
+    private static Grid CreateWheelLauncherContent(LauncherItem item)
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition
+        {
+            Width = new GridLength(1, GridUnitType.Star)
+        });
+        var icon = new Border
+        {
+            Width = 28,
+            Height = 28,
+            CornerRadius = new CornerRadius(14),
+            Background = new SolidColorBrush(
+                Color.FromRgb(46, 139, 255)),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock
+            {
+                Text = "\uE71D",
+                FontFamily = new FontFamily(
+                    "Segoe Fluent Icons, Segoe MDL2 Assets"),
+                Foreground = Brushes.White,
+                FontSize = 14,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            }
+        };
+        grid.Children.Add(icon);
+        var text = new TextBlock
+        {
+            Text = item.Name,
+            Margin = new Thickness(8, 0, 0, 0),
+            Foreground = new SolidColorBrush(
+                Color.FromRgb(24, 52, 91)),
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+            MaxWidth = 145
+        };
+        Grid.SetColumn(text, 1);
+        grid.Children.Add(text);
+        return grid;
+    }
     private static TextBlock CreateAddContent() =>
         new TextBlock
         {
@@ -360,6 +463,17 @@ public partial class QuickPanelWindow : Window
         HwndSource.FromHwnd(
             new WindowInteropHelper(this).Handle)?.AddHook(WndProc);
     }
+    private void OnWheelLauncherMouseWheel(
+        object sender,
+        MouseWheelEventArgs e)
+    {
+        if (WheelLauncherScroller.ScrollableHeight <= 0)
+            return;
+        WheelLauncherScroller.ScrollToVerticalOffset(
+            WheelLauncherScroller.VerticalOffset - e.Delta);
+        e.Handled = true;
+    }
+
     private void OnLauncherMouseWheel(
         object sender,
         MouseWheelEventArgs e)

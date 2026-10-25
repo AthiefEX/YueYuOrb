@@ -150,11 +150,6 @@ public partial class SettingsWindow : Window
 
     private void AddLauncher(string path, LauncherKind kind)
     {
-        if (_viewModel.Launchers.Count >= 48)
-        {
-            SaveStatusText.Text = "最多添加 48 个快捷应用。";
-            return;
-        }
         var name = kind == LauncherKind.Folder
             ? new DirectoryInfo(path).Name
             : Path.GetFileNameWithoutExtension(path);
@@ -172,6 +167,39 @@ public partial class SettingsWindow : Window
     {
         if (LauncherGrid.SelectedItem is LauncherItem item)
             _viewModel.Launchers.Remove(item);
+    }
+
+    private void OnAddLauncherToWheelClick(object sender, RoutedEventArgs e) =>
+        SetLauncherWheelVisibility(showInWheel: true);
+
+    private void OnRemoveLauncherFromWheelClick(object sender, RoutedEventArgs e) =>
+        SetLauncherWheelVisibility(showInWheel: false);
+
+    private void SetLauncherWheelVisibility(bool showInWheel)
+    {
+        if (LauncherGrid.SelectedItem is not LauncherItem selected)
+        {
+            SaveStatusText.Text = "请先在列表中选择一个快捷应用。";
+            return;
+        }
+        if (selected.ShowInWheel == showInWheel)
+        {
+            SaveStatusText.Text = showInWheel
+                ? "所选应用已在轮盘中。"
+                : "所选应用已在底部应用坞中。";
+            return;
+        }
+        var index = _viewModel.Launchers.IndexOf(selected);
+        if (index < 0)
+            return;
+        _viewModel.Launchers[index] = selected with
+        {
+            ShowInWheel = showInWheel
+        };
+        LauncherGrid.SelectedIndex = index;
+        SaveStatusText.Text = showInWheel
+            ? "已加入轮盘，点击“应用”后生效。"
+            : "已移出轮盘，点击“应用”后生效。";
     }
 
     private void OnAddInputRuleClick(object sender, RoutedEventArgs e)

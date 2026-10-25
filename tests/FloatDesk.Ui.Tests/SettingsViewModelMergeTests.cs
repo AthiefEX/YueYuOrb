@@ -45,6 +45,29 @@ public sealed class SettingsViewModelMergeTests
     }
 
     [Fact]
+    public void WheelPlacementChangeIsPersisted()
+    {
+        var launcher = new LauncherItem(
+            Guid.NewGuid(),
+            "编辑器",
+            LauncherKind.Exe,
+            @"C:\Apps\editor.exe",
+            [],
+            null,
+            0);
+        var original = AppSettings.CreateDefault() with
+        {
+            Launchers = [launcher]
+        };
+        var viewModel = SettingsViewModel.From(original);
+
+        viewModel.Launchers[0] = launcher with { ShowInWheel = true };
+        var candidate = viewModel.BuildCandidate(original);
+
+        Assert.True(candidate.Launchers.Single().ShowInWheel);
+    }
+
+    [Fact]
     public void InvalidHotkeyPreventsApply()
     {
         var viewModel = SettingsViewModel.From(AppSettings.CreateDefault());

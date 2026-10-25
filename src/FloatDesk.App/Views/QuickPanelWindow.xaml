@@ -29,9 +29,16 @@
         <LinearGradientBrush x:Key="MenuFanBrush"
                              StartPoint="1,0.5"
                              EndPoint="0,0.5">
-            <GradientStop Color="#F2EAF7FF" Offset="0" />
-            <GradientStop Color="#C9DDEEFF" Offset="0.48" />
-            <GradientStop Color="#72D4ECFF" Offset="1" />
+            <GradientStop Color="#C8FFFFFF" Offset="0" />
+            <GradientStop Color="#78E7F7FF" Offset="0.42" />
+            <GradientStop Color="#18BEDCEB" Offset="1" />
+        </LinearGradientBrush>
+        <LinearGradientBrush x:Key="MenuFanEdgeBrush"
+                             StartPoint="1,0.5"
+                             EndPoint="0,0.5">
+            <GradientStop Color="#B8FFFFFF" Offset="0" />
+            <GradientStop Color="#75BCE8FF" Offset="0.55" />
+            <GradientStop Color="#32A9D9F4" Offset="1" />
         </LinearGradientBrush>
         <RadialGradientBrush x:Key="AnchorHaloBrush">
             <GradientStop Color="#BFFFFFFF" Offset="0" />
@@ -93,16 +100,17 @@
         </Style>
 
         <Style x:Key="DockLauncherButtonStyle" TargetType="Button">
-            <Setter Property="MinWidth" Value="96" />
-            <Setter Property="Height" Value="42" />
+            <Setter Property="MinWidth" Value="84" />
+            <Setter Property="Height" Value="32" />
             <Setter Property="Margin" Value="0,0,8,0" />
-            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Padding" Value="8,4" />
             <Setter Property="Background" Value="#D9FFFFFF" />
             <Setter Property="BorderBrush" Value="#80CBE4FF" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Foreground" Value="{StaticResource MenuStrongBrush}" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -110,7 +118,7 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="13"
+                                CornerRadius="11"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                               VerticalAlignment="Center" />
@@ -149,19 +157,25 @@
             <Path x:Name="FanWash"
                   Fill="{StaticResource MenuFanBrush}"
                   IsHitTestVisible="False"
-                  Opacity="0.88">
+                  Opacity="0.76">
                 <Path.Effect>
-                    <BlurEffect Radius="18" />
+                    <BlurEffect Radius="24" />
                 </Path.Effect>
             </Path>
             <Path x:Name="FanHighlight"
-                  Fill="#54FFFFFF"
+                  Fill="#36FFFFFF"
                   IsHitTestVisible="False"
-                  Opacity="0.82">
+                  Opacity="0.86">
                 <Path.Effect>
-                    <BlurEffect Radius="8" />
+                    <BlurEffect Radius="14" />
                 </Path.Effect>
             </Path>
+            <Path x:Name="FanRim"
+                  Fill="Transparent"
+                  Stroke="{StaticResource MenuFanEdgeBrush}"
+                  StrokeThickness="1.5"
+                  Opacity="0.72"
+                  IsHitTestVisible="False" />
             <Path x:Name="ConnectorPath"
                   IsHitTestVisible="False"
                   Stroke="#7E83C8FF"
@@ -184,74 +198,34 @@
                      StrokeThickness="2"
                      Fill="#12FFFFFF"
                      IsHitTestVisible="False" />
-
-            <Border x:Name="BrandChip"
-                    Width="178"
-                    Height="42"
-                    IsHitTestVisible="False"
-                    Background="#EFFFFFFF"
-                    BorderBrush="#94D3E8FF"
-                    BorderThickness="1"
-                    CornerRadius="21"
-                    Padding="14,0">
-                <Border.Effect>
-                    <StaticResource ResourceKey="ActionShadow" />
-                </Border.Effect>
-                <StackPanel Orientation="Horizontal"
-                            VerticalAlignment="Center">
-                    <TextBlock Text="✦"
-                               Foreground="{StaticResource MenuBlueBrush}"
-                               FontSize="18"
-                               Margin="0,-1,8,0" />
-                    <TextBlock Text="FloatDesk 快捷操作"
-                               Foreground="{StaticResource MenuStrongBrush}"
-                               FontSize="14"
-                               FontWeight="SemiBold" />
-                </StackPanel>
-            </Border>
-
-            <Border x:Name="StatusChip"
-                    Width="248"
-                    Height="54"
-                    IsHitTestVisible="False"
-                    Background="#DFFFFFFF"
-                    BorderBrush="#85CBE5FF"
-                    BorderThickness="1"
-                    CornerRadius="18"
-                    Padding="14,9">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Border Width="28"
-                            Height="28"
-                            CornerRadius="14"
-                            Background="#1F2E8BFF"
-                            VerticalAlignment="Center">
-                        <TextBlock Text="&#xE765;"
-                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                   Foreground="{StaticResource MenuBlueBrush}"
-                                   FontSize="15"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center" />
-                    </Border>
-                    <StackPanel Grid.Column="1"
-                                Margin="10,0,0,0"
-                                VerticalAlignment="Center">
-                        <TextBlock x:Name="AutoRuleText"
-                                   Foreground="{StaticResource MenuStrongBrush}"
-                                   FontSize="12"
-                                   FontWeight="SemiBold"
-                                   Text="自动规则：开" />
-                        <TextBlock x:Name="InputStatusText"
-                                   Foreground="{StaticResource MenuMutedBrush}"
-                                   FontSize="11"
-                                   TextTrimming="CharacterEllipsis"
-                                   Text="输入状态：等待前台应用" />
-                    </StackPanel>
-                </Grid>
-            </Border>
+            <Ellipse x:Name="AnchorOrbitSmall"
+                     Width="126"
+                     Height="126"
+                     Stroke="#5E91CAFF"
+                     StrokeThickness="1.2"
+                     StrokeDashArray="2,3"
+                     Fill="Transparent"
+                     IsHitTestVisible="False" />
+            <Ellipse x:Name="AnchorOrbitLarge"
+                     Width="170"
+                     Height="170"
+                     Stroke="#367EBDFF"
+                     StrokeThickness="1"
+                     StrokeDashArray="1,5"
+                     Fill="Transparent"
+                     IsHitTestVisible="False" />
+            <ScrollViewer x:Name="WheelLauncherScroller"
+                          Width="234"
+                          Height="380"
+                          VerticalScrollBarVisibility="Hidden"
+                          HorizontalScrollBarVisibility="Disabled"
+                          PanningMode="VerticalOnly"
+                          ClipToBounds="True"
+                          PreviewMouseWheel="OnWheelLauncherMouseWheel">
+                <StackPanel x:Name="WheelLauncherPanel"
+                            Orientation="Vertical"
+                            HorizontalAlignment="Stretch" />
+            </ScrollViewer>
 
             <Button x:Name="RegionCaptureButton"
                     Width="196"
@@ -537,19 +511,19 @@
             </Button>
 
             <Border x:Name="LauncherDock"
-                    Width="616"
-                    Height="84"
+                    Width="480"
+                    Height="64"
                     Background="{StaticResource DockGlassBrush}"
                     BorderBrush="#91CAE4FF"
                     BorderThickness="1"
-                    CornerRadius="24"
-                    Padding="14,10">
+                    CornerRadius="18"
+                    Padding="10,7">
                 <Border.Effect>
                     <StaticResource ResourceKey="MenuShadow" />
                 </Border.Effect>
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="126" />
+                        <ColumnDefinition Width="110" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center">

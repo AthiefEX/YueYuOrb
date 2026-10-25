@@ -80,6 +80,30 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void ValidatorAllowsMoreThan48WheelLaunchers()
+    {
+        var launchers = Enumerable.Range(0, 64)
+            .Select(index => new LauncherItem(
+                Guid.NewGuid(),
+                $"轮盘应用 {index + 1}",
+                LauncherKind.Exe,
+                $@"C:\Apps\wheel{index}.exe",
+                [],
+                null,
+                index,
+                ShowInWheel: true))
+            .ToArray();
+        var settings = AppSettings.CreateDefault() with
+        {
+            Launchers = launchers
+        };
+
+        var errors = SettingsValidator.Validate(settings);
+
+        Assert.Empty(errors);
+    }
+
+    [Fact]
     public void ValidatorRejectsOutOfRangeValues()
     {
         var settings = AppSettings.CreateDefault() with

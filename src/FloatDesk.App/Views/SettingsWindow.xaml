@@ -150,28 +150,42 @@
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                        <Button Content="添加 exe" Click="OnAddExeClick" Margin="0,0,8,0" />
-                        <Button Content="添加快捷方式" Click="OnAddShortcutClick" Margin="0,0,8,0" />
-                        <Button Content="添加文件夹" Click="OnAddFolderClick" />
-                    </StackPanel>
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="添加 exe" Click="OnAddExeClick" Margin="0,0,8,0" />
+                            <Button Content="添加快捷方式" Click="OnAddShortcutClick" Margin="0,0,8,0" />
+                            <Button Content="添加文件夹" Click="OnAddFolderClick" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1"
+                                   Margin="16,0,0,0"
+                                   VerticalAlignment="Center"
+                                   Text="勾选“轮盘”后应用会进入可滚动轮盘区；未勾选的应用显示在底部应用坞。"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource MutedInkBrush}" />
+                    </Grid>
                     <DataGrid Grid.Row="1"
                               x:Name="LauncherGrid"
                               ItemsSource="{Binding Launchers}"
                               AutoGenerateColumns="False"
                               CanUserAddRows="False">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="名称" Binding="{Binding Name}" Width="160" />
+                            <DataGridTextColumn Header="名称" Binding="{Binding Name}" Width="130" />
                             <DataGridTextColumn Header="路径" Binding="{Binding Path}" Width="*" />
-                            <DataGridTextColumn Header="类型" Binding="{Binding Kind}" Width="90" IsReadOnly="True" />
+                            <DataGridTextColumn Header="类型" Binding="{Binding Kind}" Width="70" IsReadOnly="True" />
+                            <DataGridCheckBoxColumn Header="轮盘"
+                                                    Binding="{Binding ShowInWheel, Mode=OneWay}"
+                                                    Width="70"
+                                                    IsReadOnly="True" />
                         </DataGrid.Columns>
                     </DataGrid>
-                    <Button Grid.Row="2"
-                            Content="移除选中项"
-                            HorizontalAlignment="Left"
-                            Click="OnRemoveLauncherClick"
-                            Margin="0,8,8,0" />
-                    <WrapPanel Grid.Row="2" Margin="145,8,0,0">
+                    <WrapPanel Grid.Row="2" Margin="0,8,0,0">
+                        <Button Content="移除选中项"
+                                Click="OnRemoveLauncherClick"
+                                Margin="0,0,8,0" />
                         <Button Content="编辑选中项"
                                 Click="OnEditLauncherClick"
                                 Margin="0,0,8,0" />
@@ -179,7 +193,13 @@
                                 Click="OnMoveLauncherUpClick"
                                 Margin="0,0,8,0" />
                         <Button Content="下移"
-                                Click="OnMoveLauncherDownClick" />
+                                Click="OnMoveLauncherDownClick"
+                                Margin="0,0,8,0" />
+                        <Button Content="加入轮盘"
+                                Click="OnAddLauncherToWheelClick"
+                                Margin="0,0,8,0" />
+                        <Button Content="移出轮盘"
+                                Click="OnRemoveLauncherFromWheelClick" />
                     </WrapPanel>
                 </Grid>
             </TabItem>

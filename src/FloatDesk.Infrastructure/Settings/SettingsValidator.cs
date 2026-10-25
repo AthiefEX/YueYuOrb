@@ -16,8 +16,6 @@ public static partial class SettingsValidator
             errors.Add("Orb.Opacity must be between 0.3 and 1.0.");
         if (!KlidPattern().IsMatch(value.InputLock.TargetKlid))
             errors.Add("InputLock.TargetKlid must be an eight-digit US layout ID.");
-        if (value.Launchers.Count > 48)
-            errors.Add("At most 48 launcher items are allowed.");
         if (value.Launchers.Any(item =>
                 string.IsNullOrWhiteSpace(item.Name) ||
                 item.Name.Length > 80 ||

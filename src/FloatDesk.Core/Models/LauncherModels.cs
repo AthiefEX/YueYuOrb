@@ -9,4 +9,5 @@ public sealed record LauncherItem(
     string Path,
     IReadOnlyList<string> Arguments,
     string? WorkingDirectory,
-    int Order);
+    int Order,
+    bool ShowInWheel = false);
