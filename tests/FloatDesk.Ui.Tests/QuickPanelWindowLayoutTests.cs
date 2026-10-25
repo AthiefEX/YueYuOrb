@@ -1,6 +1,5 @@
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Shapes;
 using FloatDesk.App.Views;
 using FloatDesk.Core.Models;
 
@@ -181,8 +180,9 @@ public sealed class QuickPanelWindowLayoutTests
         if (failure is not null)
             throw new Xunit.Sdk.XunitException(failure.ToString());
     }
+
     [Fact(Timeout = 10_000)]
-    public async Task WheelMenuUsesSolidBackgroundGuides()
+    public async Task WheelMenuHasNoBackgroundGuideLines()
     {
         Exception? failure = null;
         var thread = new Thread(() =>
@@ -190,9 +190,23 @@ public sealed class QuickPanelWindowLayoutTests
             try
             {
                 var window = new QuickPanelWindow();
-                AssertSolidLine(window.FindName("ConnectorPath"));
-                AssertSolidLine(window.FindName("AnchorOrbitSmall"));
-                AssertSolidLine(window.FindName("AnchorOrbitLarge"));
+                Assert.Null(window.FindName("ConnectorPath"));
+                Assert.Null(window.FindName("FanHighlight"));
+                Assert.Null(window.FindName("FanRim"));
+                Assert.Null(window.FindName("AnchorRing"));
+                Assert.Null(window.FindName("AnchorOrbitSmall"));
+                Assert.Null(window.FindName("AnchorOrbitLarge"));
+
+                var action = Assert.IsType<Button>(
+                    window.FindName("RegionCaptureButton"));
+                var content = Assert.IsType<Grid>(action.Content);
+                var borders = content.Children.OfType<Border>().ToArray();
+                Assert.Equal(2, borders.Length);
+                Assert.All(
+                    borders,
+                    border => Assert.Equal(
+                        new Thickness(0),
+                        border.BorderThickness));
             }
             catch (Exception exception)
             {
@@ -208,15 +222,6 @@ public sealed class QuickPanelWindowLayoutTests
         await Task.CompletedTask;
         if (failure is not null)
             throw new Xunit.Sdk.XunitException(failure.ToString());
-    }
-
-    private static void AssertSolidLine(object? element)
-    {
-        var shape = Assert.IsAssignableFrom<Shape>(element);
-        Assert.True(
-            shape.StrokeDashArray is null ||
-            shape.StrokeDashArray.Count == 0,
-            "Wheel guide lines must be solid.");
     }
 
     private static void AssertNoKeyboardFocusTrigger(

@@ -17,7 +17,6 @@
         Title="FloatDesk 快捷面板">
     <Window.Resources>
         <SolidColorBrush x:Key="MenuLabelBrush" Color="#F2FFFFFF" />
-        <SolidColorBrush x:Key="MenuLabelBorderBrush" Color="#A8DCEBFF" />
         <SolidColorBrush x:Key="MenuMutedBrush" Color="#667B92B7" />
         <SolidColorBrush x:Key="MenuStrongBrush" Color="#FF18345B" />
         <SolidColorBrush x:Key="MenuBlueBrush" Color="#FF2E8BFF" />
@@ -29,16 +28,9 @@
         <LinearGradientBrush x:Key="MenuFanBrush"
                              StartPoint="1,0.5"
                              EndPoint="0,0.5">
-            <GradientStop Color="#A8FFFFFF" Offset="0" />
-            <GradientStop Color="#52E7F4FF" Offset="0.46" />
-            <GradientStop Color="#0CFFFFFF" Offset="1" />
-        </LinearGradientBrush>
-        <LinearGradientBrush x:Key="MenuFanEdgeBrush"
-                             StartPoint="1,0.5"
-                             EndPoint="0,0.5">
-            <GradientStop Color="#86FFFFFF" Offset="0" />
-            <GradientStop Color="#5597D4F4" Offset="0.58" />
-            <GradientStop Color="#168DCAEB" Offset="1" />
+            <GradientStop Color="#A6FFFFFF" Offset="0" />
+            <GradientStop Color="#72EFF6FF" Offset="0.5" />
+            <GradientStop Color="#42FFFFFF" Offset="1" />
         </LinearGradientBrush>
         <RadialGradientBrush x:Key="AnchorHaloBrush">
             <GradientStop Color="#BFFFFFFF" Offset="0" />
@@ -105,8 +97,8 @@
             <Setter Property="Margin" Value="0,0,8,0" />
             <Setter Property="Padding" Value="8,4" />
             <Setter Property="Background" Value="#D9FFFFFF" />
-            <Setter Property="BorderBrush" Value="#80CBE4FF" />
-            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Foreground" Value="{StaticResource MenuStrongBrush}" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="Cursor" Value="Hand" />
@@ -128,9 +120,6 @@
                                 <Setter TargetName="DockButtonSurface"
                                         Property="Background"
                                         Value="#FFFFFFFF" />
-                                <Setter TargetName="DockButtonSurface"
-                                        Property="BorderBrush"
-                                        Value="{StaticResource MenuBlueBrush}" />
                             </Trigger>
 
                         </ControlTemplate.Triggers>
@@ -157,30 +146,11 @@
             <Path x:Name="FanWash"
                   Fill="{StaticResource MenuFanBrush}"
                   IsHitTestVisible="False"
-                  Opacity="0.72">
+                  Opacity="0.78">
                 <Path.Effect>
-                    <BlurEffect Radius="18" />
+                    <BlurEffect Radius="16" />
                 </Path.Effect>
             </Path>
-            <Path x:Name="FanHighlight"
-                  Fill="#20FFFFFF"
-                  IsHitTestVisible="False"
-                  Opacity="0.52">
-                <Path.Effect>
-                    <BlurEffect Radius="9" />
-                </Path.Effect>
-            </Path>
-            <Path x:Name="FanRim"
-                  Fill="Transparent"
-                  Stroke="{StaticResource MenuFanEdgeBrush}"
-                  StrokeThickness="1"
-                  Opacity="0.48"
-                  IsHitTestVisible="False" />
-            <Path x:Name="ConnectorPath"
-                  IsHitTestVisible="False"
-                  Stroke="#4D8EC8F4"
-                  StrokeThickness="1"
-                  Opacity="0.78" />
 
             <Ellipse x:Name="AnchorHalo"
                      Width="146"
@@ -191,27 +161,6 @@
                     <BlurEffect Radius="18" />
                 </Ellipse.Effect>
             </Ellipse>
-            <Ellipse x:Name="AnchorRing"
-                     Width="108"
-                     Height="108"
-                     Stroke="#BFFFFFFF"
-                     StrokeThickness="2"
-                     Fill="#12FFFFFF"
-                     IsHitTestVisible="False" />
-            <Ellipse x:Name="AnchorOrbitSmall"
-                     Width="126"
-                     Height="126"
-                     Stroke="#4891CAFF"
-                     StrokeThickness="1"
-                     Fill="Transparent"
-                     IsHitTestVisible="False" />
-            <Ellipse x:Name="AnchorOrbitLarge"
-                     Width="170"
-                     Height="170"
-                     Stroke="#247EBDFF"
-                     StrokeThickness="0.8"
-                     Fill="Transparent"
-                     IsHitTestVisible="False" />
             <ScrollViewer x:Name="WheelLauncherScroller"
                           Width="234"
                           Height="380"
@@ -239,8 +188,8 @@
                             Height="42"
                             CornerRadius="21"
                             Background="{StaticResource MenuGreenBrush}"
-                            BorderBrush="#DFFFFFFF"
-                            BorderThickness="2"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
                             Effect="{StaticResource ActionShadow}">
                         <TextBlock Text="&#xE722;"
                                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
@@ -252,8 +201,8 @@
                     <Border Grid.Column="1"
                             Margin="6,3,0,3"
                             Background="{StaticResource MenuLabelBrush}"
-                            BorderBrush="{StaticResource MenuLabelBorderBrush}"
-                            BorderThickness="1"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
                             CornerRadius="17"
                             Padding="14,0">
                         <TextBlock Text="快速截图"
@@ -279,8 +228,8 @@
                             Height="42"
                             CornerRadius="21"
                             Background="{StaticResource MenuBlueBrush}"
-                            BorderBrush="#DFFFFFFF"
-                            BorderThickness="2"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
                             Effect="{StaticResource ActionShadow}">
                         <TextBlock Text="&#xE7C4;"
                                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
@@ -292,8 +241,8 @@
                     <Border Grid.Column="1"
                             Margin="6,3,0,3"
                             Background="{StaticResource MenuLabelBrush}"
-                            BorderBrush="{StaticResource MenuLabelBorderBrush}"
-                            BorderThickness="1"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
                             CornerRadius="17"
                             Padding="14,0">
                         <TextBlock Text="窗口"
@@ -319,8 +268,8 @@
                             Height="42"
                             CornerRadius="21"
                             Background="{StaticResource MenuBlueBrush}"
-                            BorderBrush="#DFFFFFFF"
-                            BorderThickness="2"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
                             Effect="{StaticResource ActionShadow}">
                         <TextBlock Text="&#xE7F4;"
                                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
@@ -332,8 +281,8 @@
                     <Border Grid.Column="1"
                             Margin="6,3,0,3"
                             Background="{StaticResource MenuLabelBrush}"
-                            BorderBrush="{StaticResource MenuLabelBorderBrush}"
-                            BorderThickness="1"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
                             CornerRadius="17"
                             Padding="14,0">
                         <TextBlock Text="屏幕"
@@ -359,8 +308,8 @@
                             Height="42"
                             CornerRadius="21"
                             Background="{StaticResource MenuVioletBrush}"
-                            BorderBrush="#DFFFFFFF"
-                            BorderThickness="2"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
                             Effect="{StaticResource ActionShadow}">
                         <TextBlock Text="&#xE8BD;"
                                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
@@ -372,8 +321,8 @@
                     <Border Grid.Column="1"
                             Margin="6,3,0,3"
                             Background="{StaticResource MenuLabelBrush}"
-                            BorderBrush="{StaticResource MenuLabelBorderBrush}"
-                            BorderThickness="1"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
                             CornerRadius="17"
                             Padding="14,0">
                         <TextBlock Text="AI 网页"
@@ -399,8 +348,8 @@
                             Height="42"
                             CornerRadius="21"
                             Background="{StaticResource MenuCoralBrush}"
-                            BorderBrush="#DFFFFFFF"
-                            BorderThickness="2"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
                             Effect="{StaticResource ActionShadow}">
                         <TextBlock Text="&#xE70B;"
                                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
@@ -412,8 +361,8 @@
                     <Border Grid.Column="1"
                             Margin="6,3,0,3"
                             Background="{StaticResource MenuLabelBrush}"
-                            BorderBrush="{StaticResource MenuLabelBorderBrush}"
-                            BorderThickness="1"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
                             CornerRadius="17"
                             Padding="14,0">
                         <TextBlock Text="记事本"
@@ -440,8 +389,8 @@
                             Height="42"
                             CornerRadius="21"
                             Background="{StaticResource MenuBlueBrush}"
-                            BorderBrush="#DFFFFFFF"
-                            BorderThickness="2"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
                             Effect="{StaticResource ActionShadow}">
                         <TextBlock x:Name="InputLockGlyph"
                                    Text="&#xE72E;"
@@ -454,8 +403,8 @@
                     <Border Grid.Column="1"
                             Margin="6,3,0,3"
                             Background="{StaticResource MenuLabelBrush}"
-                            BorderBrush="{StaticResource MenuLabelBorderBrush}"
-                            BorderThickness="1"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
                             CornerRadius="17"
                             Padding="14,0">
                         <TextBlock x:Name="InputLockTitle"
@@ -482,8 +431,8 @@
                             Height="42"
                             CornerRadius="21"
                             Background="{StaticResource MenuSlateBrush}"
-                            BorderBrush="#DFFFFFFF"
-                            BorderThickness="2"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
                             Effect="{StaticResource ActionShadow}">
                         <TextBlock Text="&#xE713;"
                                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
@@ -495,8 +444,8 @@
                     <Border Grid.Column="1"
                             Margin="6,3,0,3"
                             Background="{StaticResource MenuLabelBrush}"
-                            BorderBrush="{StaticResource MenuLabelBorderBrush}"
-                            BorderThickness="1"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
                             CornerRadius="17"
                             Padding="14,0">
                         <TextBlock Text="设置"
@@ -512,8 +461,8 @@
                     Width="480"
                     Height="64"
                     Background="{StaticResource DockGlassBrush}"
-                    BorderBrush="#91CAE4FF"
-                    BorderThickness="1"
+                    BorderBrush="Transparent"
+                    BorderThickness="0"
                     CornerRadius="18"
                     Padding="10,7">
                 <Border.Effect>

@@ -190,7 +190,6 @@ public partial class QuickPanelWindow : Window
             anchor.Y - (totalHeight / 2),
             28d,
             448d - totalHeight);
-        var centers = new List<Point>(actions.Length);
         for (var index = 0; index < actions.Length; index++)
         {
             var (element, arcOffset) = actions[index];
@@ -200,31 +199,15 @@ public partial class QuickPanelWindow : Window
             var y = startY + (index * rowStep);
             Canvas.SetLeft(element, x);
             Canvas.SetTop(element, y);
-            centers.Add(new Point(x + 25, y + (actionHeight / 2)));
         }
         ArrangeAnchor(anchor);
         UpdateFanGeometry(anchor, direction);
-        UpdateConnectorGeometry(anchor, centers);
     }
 
     private void ArrangeAnchor(Point anchor)
     {
         Canvas.SetLeft(AnchorHalo, anchor.X - AnchorHalo.Width / 2);
         Canvas.SetTop(AnchorHalo, anchor.Y - AnchorHalo.Height / 2);
-        Canvas.SetLeft(AnchorRing, anchor.X - AnchorRing.Width / 2);
-        Canvas.SetTop(AnchorRing, anchor.Y - AnchorRing.Height / 2);
-        Canvas.SetLeft(
-            AnchorOrbitSmall,
-            anchor.X - AnchorOrbitSmall.Width / 2);
-        Canvas.SetTop(
-            AnchorOrbitSmall,
-            anchor.Y - AnchorOrbitSmall.Height / 2);
-        Canvas.SetLeft(
-            AnchorOrbitLarge,
-            anchor.X - AnchorOrbitLarge.Width / 2);
-        Canvas.SetTop(
-            AnchorOrbitLarge,
-            anchor.Y - AnchorOrbitLarge.Height / 2);
     }
 
     private void UpdateFanGeometry(Point anchor, double direction)
@@ -235,28 +218,28 @@ public partial class QuickPanelWindow : Window
                 Math.Clamp(point.Y, 8, 452));
 
         var outerTop = Clamp(
-            new Point(anchor.X + direction * 335, 36));
+            new Point(anchor.X + direction * 360, 12));
         var outerBottom = Clamp(
-            new Point(anchor.X + direction * 335, 458));
+            new Point(anchor.X + direction * 360, 468));
 
         var wash = new StreamGeometry();
         using (var context = wash.Open())
         {
             context.BeginFigure(anchor, isFilled: true, isClosed: true);
             context.BezierTo(
-                Clamp(new Point(anchor.X + direction * 70, anchor.Y - 118)),
-                Clamp(new Point(anchor.X + direction * 250, 22)),
+                Clamp(new Point(anchor.X + direction * 80, anchor.Y - 126)),
+                Clamp(new Point(anchor.X + direction * 260, 16)),
                 outerTop,
                 isStroked: false,
                 isSmoothJoin: true);
             context.BezierTo(
-                Clamp(new Point(anchor.X + direction * 368, 150)),
-                Clamp(new Point(anchor.X + direction * 368, 350)),
+                Clamp(new Point(anchor.X + direction * 398, 150)),
+                Clamp(new Point(anchor.X + direction * 398, 350)),
                 outerBottom,
                 isStroked: false,
                 isSmoothJoin: true);
             context.BezierTo(
-                Clamp(new Point(anchor.X + direction * 160, 402)),
+                Clamp(new Point(anchor.X + direction * 165, 410)),
                 Clamp(new Point(anchor.X + direction * 32, 300)),
                 anchor,
                 isStroked: false,
@@ -264,63 +247,6 @@ public partial class QuickPanelWindow : Window
         }
         wash.Freeze();
         FanWash.Data = wash;
-
-        var highlight = new StreamGeometry();
-        using (var context = highlight.Open())
-        {
-            context.BeginFigure(anchor, isFilled: true, isClosed: true);
-            context.BezierTo(
-                Clamp(new Point(anchor.X + direction * 55, anchor.Y - 88)),
-                Clamp(new Point(anchor.X + direction * 215, 74)),
-                Clamp(new Point(anchor.X + direction * 295, 72)),
-                isStroked: false,
-                isSmoothJoin: true);
-            context.BezierTo(
-                Clamp(new Point(anchor.X + direction * 318, 170)),
-                Clamp(new Point(anchor.X + direction * 315, 345)),
-                Clamp(new Point(anchor.X + direction * 295, 432)),
-                isStroked: false,
-                isSmoothJoin: true);
-            context.BezierTo(
-                Clamp(new Point(anchor.X + direction * 145, 370)),
-                Clamp(new Point(anchor.X + direction * 28, 292)),
-                anchor,
-                isStroked: false,
-                isSmoothJoin: true);
-        }
-        highlight.Freeze();
-        FanHighlight.Data = highlight;
-
-        var rim = new StreamGeometry();
-        using (var context = rim.Open())
-        {
-            context.BeginFigure(outerTop, isFilled: false, isClosed: false);
-            context.BezierTo(
-                Clamp(new Point(anchor.X + direction * 368, 150)),
-                Clamp(new Point(anchor.X + direction * 368, 350)),
-                outerBottom,
-                isStroked: true,
-                isSmoothJoin: true);
-        }
-        rim.Freeze();
-        FanRim.Data = rim;
-    }
-
-    private void UpdateConnectorGeometry(
-        Point anchor,
-        IReadOnlyList<Point> centers)
-    {
-        var connectors = new StreamGeometry();
-        using (var context = connectors.Open())
-        {
-            foreach (var center in centers)
-            {
-                context.BeginFigure(anchor, isFilled: false, isClosed: false);
-                context.LineTo(center, isStroked: true, isSmoothJoin: true);
-            }
-        }
-        connectors.Freeze();
-        ConnectorPath.Data = connectors;
     }
 
     private void PlayEntranceAnimation()
