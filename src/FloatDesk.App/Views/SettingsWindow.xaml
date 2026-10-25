@@ -1,41 +1,209 @@
 <Window x:Class="FloatDesk.App.Views.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Width="920"
-        Height="680"
-        MinWidth="760"
-        MinHeight="540"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Width="1160"
+        Height="820"
+        MinWidth="960"
+        MinHeight="620"
         WindowStartupLocation="CenterScreen"
-        Title="FloatDesk 设置">
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+        Title="FloatDesk 设置"
+        Background="#F4F8FE"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="48"
+                            ResizeBorderThickness="7"
+                            GlassFrameThickness="0"
+                            CornerRadius="16"
+                            UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
 
-        <Border Grid.Row="0"
-                Background="{StaticResource AccentBrush}"
-                Padding="24,17">
-            <Grid>
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/FloatDesk;component/Resources/SettingsWindowResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <Style x:Key="SettingsShellStyle" TargetType="{x:Type Border}">
+                <Setter Property="Margin" Value="7" />
+                <Setter Property="CornerRadius" Value="16" />
+                <Setter Property="Background" Value="#F8FBFF" />
+                <Setter Property="BorderBrush" Value="#B9D3ED" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="ClipToBounds" Value="True" />
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding WindowState, RelativeSource={RelativeSource AncestorType=Window}}"
+                                 Value="Maximized">
+                        <Setter Property="Margin" Value="0" />
+                        <Setter Property="CornerRadius" Value="0" />
+                        <Setter Property="BorderThickness" Value="0" />
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Border x:Name="SettingsRoot" Style="{StaticResource SettingsShellStyle}">
+        <Grid Background="#FAFCFF">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="48" />
+                <RowDefinition Height="88" />
+                <RowDefinition Height="60" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="68" />
+            </Grid.RowDefinitions>
+
+            <Grid x:Name="SettingsTitleBar"
+                  Grid.Row="0"
+
+                  MouseLeftButtonDown="OnTitleBarMouseLeftButtonDown">
+                <Grid.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                        <GradientStop Offset="0" Color="#F2F8FF" />
+                        <GradientStop Offset="0.55" Color="#E2F0FF" />
+                        <GradientStop Offset="1" Color="#EEF8FF" />
+                    </LinearGradientBrush>
+                </Grid.Background>
+                <StackPanel Orientation="Horizontal"
+                            Margin="16,0,0,0"
+                            VerticalAlignment="Center">
+                    <Border Width="26"
+                            Height="26"
+                            CornerRadius="8"
+                            Background="{StaticResource SettingsAccentBrush}"
+                            Margin="0,0,9,0">
+                        <TextBlock Text="FD"
+                                   Foreground="White"
+                                   FontSize="10"
+                                   FontWeight="Bold"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock Text="FloatDesk 设置"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource SettingsInkBrush}"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button x:Name="MinimizeSettingsButton"
+                            Style="{StaticResource CaptionButtonStyle}"
+                            Click="OnMinimizeClick"
+                            AutomationProperties.Name="最小化设置窗口">
+                        <TextBlock FontFamily="{StaticResource SettingsIconFont}" FontSize="12" Text="&#xE921;" />
+                    </Button>
+                    <Button x:Name="MaximizeSettingsButton"
+                            Style="{StaticResource CaptionButtonStyle}"
+                            Click="OnMaximizeClick"
+                            AutomationProperties.Name="最大化或还原设置窗口">
+                        <TextBlock x:Name="MaximizeButtonGlyph"
+                                   FontFamily="{StaticResource SettingsIconFont}"
+                                   FontSize="12">
+                            <TextBlock.Style>
+                                <Style TargetType="{x:Type TextBlock}">
+                                    <Setter Property="Text" Value="&#xE922;" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding WindowState, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                     Value="Maximized">
+                                            <Setter Property="Text" Value="&#xE923;" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Button>
+                    <Button x:Name="CloseSettingsButton"
+                            Style="{StaticResource CloseCaptionButtonStyle}"
+                            Click="OnCloseSettingsClick"
+                            AutomationProperties.Name="关闭设置窗口">
+                        <TextBlock FontFamily="{StaticResource SettingsIconFont}" FontSize="12" Text="&#xE8BB;" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <Border Grid.Row="1"
+                    Grid.RowSpan="2"
+                    CornerRadius="0,0,22,22"
+                    ClipToBounds="True">
+                <Grid>
+                    <Grid.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Offset="0" Color="#DDEBFA" />
+                            <GradientStop Offset="0.55" Color="#EEF7FF" />
+                            <GradientStop Offset="1" Color="#F8FBFF" />
+                        </LinearGradientBrush>
+                    </Grid.Background>
+                    <Ellipse Width="310"
+                             Height="130"
+                             HorizontalAlignment="Right"
+                             VerticalAlignment="Top"
+                             Margin="0,-42,-38,0"
+                             Fill="#70FFFFFF" />
+                    <Ellipse Width="230"
+                             Height="110"
+                             HorizontalAlignment="Left"
+                             VerticalAlignment="Bottom"
+                             Margin="40,0,0,-70"
+                             Fill="#55DBECFF" />
+                    <Viewbox Stretch="Fill" Opacity="0.22" IsHitTestVisible="False">
+                        <Canvas Width="1160" Height="148">
+                            <Path Fill="#7EA6C6" Data="M0,118 L116,49 L198,97 L303,31 L414,106 L534,66 L654,112 L775,42 L904,104 L1029,63 L1160,117 L1160,148 L0,148 Z" />
+                            <Path Fill="#C2D9EC" Data="M0,128 L151,81 L278,116 L431,71 L581,124 L742,83 L910,121 L1082,72 L1160,97 L1160,148 L0,148 Z" />
+                        </Canvas>
+                    </Viewbox>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="1" Margin="34,15,34,8" Panel.ZIndex="2">
                 <StackPanel>
                     <TextBlock Text="FloatDesk 设置"
-                               Foreground="White"
-                               FontSize="22"
-                               FontWeight="SemiBold" />
+                               FontSize="32"
+                               FontWeight="SemiBold"
+                               Foreground="#17243B" />
                     <TextBlock Text="调整悬浮球、输入法、网页、笔记与截图"
-                               Foreground="#DFFFFFFF"
-                               Margin="0,3,0,0" />
+                               Margin="1,3,0,0"
+                               FontSize="13"
+                               Foreground="#66758D" />
                 </StackPanel>
-                <TextBlock Text="本地保存 · 普通权限"
-                           Foreground="#DFFFFFFF"
-                           HorizontalAlignment="Right"
-                           VerticalAlignment="Center" />
+                <Border Style="{StaticResource SettingsPillStyle}"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Margin="0,3,0,0">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE72E;"
+                                   FontFamily="{StaticResource SettingsIconFont}"
+                                   FontSize="14"
+                                   Foreground="{StaticResource SettingsAccentBrush}"
+                                   Margin="0,0,7,0"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="本地保存 · 普通权限"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="#3E5F8A"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
             </Grid>
-        </Border>
 
-        <TabControl Grid.Row="1" Margin="18">
-            <TabItem Header="常规">
+            <TabControl x:Name="SettingsTabControl"
+                        Grid.Row="2"
+                        Grid.RowSpan="2"
+                        Style="{StaticResource SettingsTabControlStyle}"
+                        SelectionChanged="OnSettingsTabSelectionChanged"><TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock FontFamily="{StaticResource SettingsIconFont}"
+                                   FontSize="15"
+                                   Text="&#xE80F;"
+                                   Margin="0,0,7,0"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                        <TextBlock Text="常规"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                    </StackPanel>
+                </TabItem.Header>
                 <ScrollViewer Padding="12">
                     <StackPanel MaxWidth="620" HorizontalAlignment="Left">
                         <TextBlock Text="启动与外观" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,14" />
@@ -84,7 +252,18 @@
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem Header="悬浮球">
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock FontFamily="{StaticResource SettingsIconFont}"
+                                   FontSize="15"
+                                   Text="&#xE91F;"
+                                   Margin="0,0,7,0"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                        <TextBlock Text="悬浮球"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                    </StackPanel>
+                </TabItem.Header>
                 <ScrollViewer Padding="12">
                     <StackPanel MaxWidth="650" HorizontalAlignment="Left">
                         <TextBlock Text="外观" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12" />
@@ -143,7 +322,18 @@
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem Header="快捷应用">
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock FontFamily="{StaticResource SettingsIconFont}"
+                                   FontSize="15"
+                                   Text="&#xE71D;"
+                                   Margin="0,0,7,0"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                        <TextBlock Text="快捷应用"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                    </StackPanel>
+                </TabItem.Header>
                 <Grid Margin="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -204,7 +394,18 @@
                 </Grid>
             </TabItem>
 
-            <TabItem x:Name="WheelSettingsTab" Header="轮盘">
+            <TabItem x:Name="WheelSettingsTab">
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock FontFamily="{StaticResource SettingsIconFont}"
+                                   FontSize="15"
+                                   Text="&#xE80A;"
+                                   Margin="0,0,7,0"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                        <TextBlock Text="轮盘"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                    </StackPanel>
+                </TabItem.Header>
                 <ScrollViewer Padding="12">
                     <StackPanel MaxWidth="650" HorizontalAlignment="Left">
                         <TextBlock Text="内置功能"
@@ -279,7 +480,18 @@
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem Header="输入法">
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock FontFamily="{StaticResource SettingsIconFont}"
+                                   FontSize="15"
+                                   Text="&#xE765;"
+                                   Margin="0,0,7,0"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                        <TextBlock Text="输入法"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                    </StackPanel>
+                </TabItem.Header>
                 <Grid Margin="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -324,7 +536,18 @@
                 </Grid>
             </TabItem>
 
-            <TabItem Header="AI 网页">
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock FontFamily="{StaticResource SettingsIconFont}"
+                                   FontSize="15"
+                                   Text="&#xE774;"
+                                   Margin="0,0,7,0"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                        <TextBlock Text="AI 网页"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                    </StackPanel>
+                </TabItem.Header>
                 <Grid Margin="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -363,7 +586,18 @@
                 </Grid>
             </TabItem>
 
-            <TabItem Header="截图">
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock FontFamily="{StaticResource SettingsIconFont}"
+                                   FontSize="15"
+                                   Text="&#xE7A8;"
+                                   Margin="0,0,7,0"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                        <TextBlock Text="截图"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                    </StackPanel>
+                </TabItem.Header>
                 <ScrollViewer Padding="12">
                     <StackPanel MaxWidth="650" HorizontalAlignment="Left">
                         <TextBlock Text="截图" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12" />
@@ -416,7 +650,18 @@
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem Header="关于">
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock FontFamily="{StaticResource SettingsIconFont}"
+                                   FontSize="15"
+                                   Text="&#xE946;"
+                                   Margin="0,0,7,0"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                        <TextBlock Text="关于"
+                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                    </StackPanel>
+                </TabItem.Header>
                 <StackPanel Margin="24">
                     <TextBlock Text="FloatDesk 1.0.0" FontSize="24" FontWeight="SemiBold" />
                     <TextBlock Text="Windows 10/11 x64 桌面悬浮助手" Margin="0,8,0,20" />
@@ -433,19 +678,29 @@
                     </TextBlock>
                 </StackPanel>
             </TabItem>
-        </TabControl>
+                    </TabControl>
 
-        <Border Grid.Row="2" Background="#EEFFFFFF" Padding="18,12">
-            <Grid>
-                <TextBlock x:Name="SaveStatusText"
-                           Foreground="{DynamicResource MutedInkBrush}"
-                           VerticalAlignment="Center"
-                           Text="修改后点击应用。" />
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button Content="取消" Click="OnCancelClick" Margin="0,0,8,0" />
-                    <Button Content="应用" Click="OnApplyClick" Style="{StaticResource PrimaryButtonStyle}" />
-                </StackPanel>
-            </Grid>
-        </Border>
-    </Grid>
+            <Border Grid.Row="4"
+                    Background="#F5FFFFFF"
+                    BorderBrush="{StaticResource SettingsLineBrush}"
+                    BorderThickness="0,1,0,0"
+                    Padding="30,11">
+                <Grid>
+                    <TextBlock x:Name="SaveStatusText"
+                               Style="{StaticResource SettingsCaptionStyle}"
+                               VerticalAlignment="Center"
+                               Text="修改后点击应用。" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="取消"
+                                Click="OnCancelClick"
+                                Margin="0,0,9,0"
+                                Style="{StaticResource ActionButtonStyle}" />
+                        <Button Content="应用"
+                                Click="OnApplyClick"
+                                Style="{StaticResource PrimaryActionButtonStyle}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
 </Window>

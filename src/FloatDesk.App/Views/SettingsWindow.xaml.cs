@@ -1,8 +1,13 @@
 using System.Collections.ObjectModel;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
 using FloatDesk.App.ViewModels;
 using FloatDesk.Core.Contracts;
 using FloatDesk.Core.Models;
@@ -42,6 +47,124 @@ public partial class SettingsWindow : Window
             args.Cancel = true;
             Hide();
         };
+    }
+
+    private void OnSettingsWindowSourceInitialized(object? sender, EventArgs e)
+    {
+        if (PresentationSource.FromVisual(this) is HwndSource source)
+            source.AddHook(WindowProcedure);
+    }
+
+    private nint WindowProcedure(
+        nint hwnd,
+        int message,
+        nint wParam,
+        nint lParam,
+        ref bool handled)
+    {
+        const int WmNcHitTest = 0x0084;
+        const int HtMaxButton = 9;
+        if (message != WmNcHitTest || MaximizeSettingsButton is null)
+            return nint.Zero;
+
+        var packed = lParam.ToInt64();
+        var screenPoint = new Point(
+            unchecked((short)(packed & 0xFFFF)),
+            unchecked((short)((packed >> 16) & 0xFFFF)));
+        var clientPoint = PointFromScreen(screenPoint);
+        var buttonStart = MaximizeSettingsButton.TranslatePoint(
+            new Point(0, 0),
+            this);
+        var buttonEnd = new Point(
+            buttonStart.X + MaximizeSettingsButton.ActualWidth,
+            buttonStart.Y + MaximizeSettingsButton.ActualHeight);
+        if (clientPoint.X >= buttonStart.X &&
+            clientPoint.X <= buttonEnd.X &&
+            clientPoint.Y >= buttonStart.Y &&
+            clientPoint.Y <= buttonEnd.Y)
+        {
+            handled = true;
+            return HtMaxButton;
+        }
+
+        return nint.Zero;
+    }
+
+    private void OnTitleBarMouseLeftButtonDown(
+        object sender,
+        MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left)
+            return;
+        if (e.ClickCount == 2)
+        {
+            ToggleMaximize();
+            e.Handled = true;
+            return;
+        }
+
+        try
+        {
+            DragMove();
+        }
+        catch (InvalidOperationException)
+        {
+            // The mouse button may have been released between the event and drag.
+        }
+    }
+
+    private void OnMinimizeClick(object sender, RoutedEventArgs e) =>
+        WindowState = WindowState.Minimized;
+
+    private void OnMaximizeClick(object sender, RoutedEventArgs e) =>
+        ToggleMaximize();
+
+    private void OnCloseSettingsClick(object sender, RoutedEventArgs e) =>
+        Close();
+
+    private void ToggleMaximize() =>
+        WindowState = WindowState == WindowState.Maximized
+            ? WindowState.Normal
+            : WindowState.Maximized;
+
+    private void OnSettingsTabSelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        if (SettingsTabControl is null ||
+            !SystemParameters.ClientAreaAnimation ||
+            SystemParameters.HighContrast)
+        {
+            return;
+        }
+
+        SettingsTabControl.ApplyTemplate();
+        if (SettingsTabControl.Template?.FindName(
+                "PART_SelectedContentHost",
+                SettingsTabControl) is not ContentPresenter contentHost)
+        {
+            return;
+        }
+
+        contentHost.RenderTransform = new TranslateTransform(0, 6);
+        contentHost.BeginAnimation(
+            OpacityProperty,
+            new DoubleAnimation(0.35, 1, TimeSpan.FromMilliseconds(120))
+            {
+                EasingFunction = new QuadraticEase
+                {
+                    EasingMode = EasingMode.EaseOut
+                }
+            });
+        ((TranslateTransform)contentHost.RenderTransform).BeginAnimation(
+            TranslateTransform.YProperty,
+            new DoubleAnimation(6, 0, TimeSpan.FromMilliseconds(120))
+            {
+                EasingFunction = new QuadraticEase
+                {
+                    EasingMode = EasingMode.EaseOut
+                }
+            });
     }
 
     private async void OnApplyClick(object sender, RoutedEventArgs e)
