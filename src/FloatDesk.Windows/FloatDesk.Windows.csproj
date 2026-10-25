@@ -6,5 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../FloatDesk.Core/FloatDesk.Core.csproj" />
+    <PackageReference Include="System.Drawing.Common" />
   </ItemGroup>
 </Project>

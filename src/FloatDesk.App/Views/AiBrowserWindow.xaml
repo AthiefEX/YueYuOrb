@@ -1,0 +1,98 @@
+<Window x:Class="FloatDesk.App.Views.AiBrowserWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Width="520"
+        Height="720"
+        MinWidth="360"
+        MinHeight="420"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="True"
+        Title="FloatDesk AI 网页">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Background="{DynamicResource SurfaceRaisedBrush}"
+                BorderBrush="#22000000"
+                BorderThickness="0,0,0,1"
+                Padding="8">
+            <StackPanel Orientation="Horizontal">
+                <ComboBox x:Name="SiteComboBox"
+                          Width="150"
+                          MinHeight="34"
+                          DisplayMemberPath="Name"
+                          SelectionChanged="OnSiteSelectionChanged"
+                          Margin="0,0,6,0" />
+                <Button Content="后退" Click="OnBackClick" Margin="0,0,4,0" />
+                <Button Content="前进" Click="OnForwardClick" Margin="0,0,4,0" />
+                <Button Content="刷新" Click="OnRefreshClick" Margin="0,0,4,0" />
+                <Button Content="浏览器打开" Click="OnExternalClick" Margin="0,0,4,0" />
+                <Button x:Name="PinButton"
+                        Content="固定"
+                        Click="OnPinClick"
+                        Margin="0,0,4,0" />
+                <Button Content="−" Click="OnZoomOutClick" Margin="0,0,4,0" />
+                <Button Content="+" Click="OnZoomInClick" />
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="1"
+                Background="#F2FFFFFF"
+                BorderBrush="#22000000"
+                BorderThickness="0,0,0,1"
+                Padding="10,6">
+            <TextBlock x:Name="AddressText"
+                       TextTrimming="CharacterEllipsis"
+                       Foreground="{DynamicResource MutedInkBrush}" />
+        </Border>
+
+        <Grid x:Name="BrowserHost" Grid.Row="2">
+            <Border x:Name="StatusPanel"
+                    Background="#F7F7F4"
+                    Visibility="Collapsed">
+                <StackPanel VerticalAlignment="Center"
+                            HorizontalAlignment="Center"
+                            MaxWidth="360">
+                    <TextBlock x:Name="StatusTitle"
+                               Text="网页暂时不可用"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               TextAlignment="Center" />
+                    <TextBlock x:Name="StatusDetail"
+                               Margin="0,10,0,16"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center"
+                               Foreground="{DynamicResource MutedInkBrush}" />
+                    <StackPanel Orientation="Horizontal"
+                                HorizontalAlignment="Center">
+                        <Button Content="重试"
+                                Click="OnRetryClick"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Margin="0,0,8,0" />
+                        <Button Content="安装/修复 WebView2"
+                                Click="OnInstallRuntimeClick"
+                                Margin="0,0,8,0" />
+                        <Button Content="用默认浏览器打开"
+                                Click="OnExternalClick" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="3"
+                Background="#EEFFFFFF"
+                BorderBrush="#22000000"
+                BorderThickness="0,1,0,0"
+                Padding="10,6">
+            <TextBlock x:Name="FooterText"
+                       Foreground="{DynamicResource MutedInkBrush}"
+                       Text="网页运行在独立浏览器进程中；FloatDesk 不向网页暴露本机命令接口。" />
+        </Border>
+    </Grid>
+</Window>
