@@ -234,25 +234,30 @@ public partial class QuickPanelWindow : Window
                 Math.Clamp(point.X, 8, PanelWidth - 8),
                 Math.Clamp(point.Y, 8, 452));
 
+        var outerTop = Clamp(
+            new Point(anchor.X + direction * 335, 36));
+        var outerBottom = Clamp(
+            new Point(anchor.X + direction * 335, 458));
+
         var wash = new StreamGeometry();
         using (var context = wash.Open())
         {
             context.BeginFigure(anchor, isFilled: true, isClosed: true);
             context.BezierTo(
-                Clamp(new Point(anchor.X + direction * 80, anchor.Y - 120)),
-                Clamp(new Point(anchor.X + direction * 340, 4)),
-                Clamp(new Point(anchor.X + direction * 545, 58)),
+                Clamp(new Point(anchor.X + direction * 70, anchor.Y - 118)),
+                Clamp(new Point(anchor.X + direction * 250, 22)),
+                outerTop,
                 isStroked: false,
                 isSmoothJoin: true);
             context.BezierTo(
-                Clamp(new Point(anchor.X + direction * 610, 180)),
-                Clamp(new Point(anchor.X + direction * 465, 390)),
-                Clamp(new Point(anchor.X + direction * 230, 450)),
+                Clamp(new Point(anchor.X + direction * 368, 150)),
+                Clamp(new Point(anchor.X + direction * 368, 350)),
+                outerBottom,
                 isStroked: false,
                 isSmoothJoin: true);
             context.BezierTo(
-                Clamp(new Point(anchor.X + direction * 95, 390)),
-                Clamp(new Point(anchor.X + direction * 25, 305)),
+                Clamp(new Point(anchor.X + direction * 160, 402)),
+                Clamp(new Point(anchor.X + direction * 32, 300)),
                 anchor,
                 isStroked: false,
                 isSmoothJoin: true);
@@ -265,14 +270,20 @@ public partial class QuickPanelWindow : Window
         {
             context.BeginFigure(anchor, isFilled: true, isClosed: true);
             context.BezierTo(
-                Clamp(new Point(anchor.X + direction * 60, anchor.Y - 90)),
-                Clamp(new Point(anchor.X + direction * 260, 74)),
-                Clamp(new Point(anchor.X + direction * 430, 120)),
+                Clamp(new Point(anchor.X + direction * 55, anchor.Y - 88)),
+                Clamp(new Point(anchor.X + direction * 215, 74)),
+                Clamp(new Point(anchor.X + direction * 295, 72)),
                 isStroked: false,
                 isSmoothJoin: true);
             context.BezierTo(
-                Clamp(new Point(anchor.X + direction * 340, 270)),
-                Clamp(new Point(anchor.X + direction * 160, 370)),
+                Clamp(new Point(anchor.X + direction * 318, 170)),
+                Clamp(new Point(anchor.X + direction * 315, 345)),
+                Clamp(new Point(anchor.X + direction * 295, 432)),
+                isStroked: false,
+                isSmoothJoin: true);
+            context.BezierTo(
+                Clamp(new Point(anchor.X + direction * 145, 370)),
+                Clamp(new Point(anchor.X + direction * 28, 292)),
                 anchor,
                 isStroked: false,
                 isSmoothJoin: true);
@@ -280,17 +291,13 @@ public partial class QuickPanelWindow : Window
         highlight.Freeze();
         FanHighlight.Data = highlight;
 
-        var outerTop = Clamp(
-            new Point(anchor.X + direction * 545, 58));
-        var outerBottom = Clamp(
-            new Point(anchor.X + direction * 230, 450));
         var rim = new StreamGeometry();
         using (var context = rim.Open())
         {
             context.BeginFigure(outerTop, isFilled: false, isClosed: false);
             context.BezierTo(
-                Clamp(new Point(anchor.X + direction * 610, 180)),
-                Clamp(new Point(anchor.X + direction * 465, 390)),
+                Clamp(new Point(anchor.X + direction * 368, 150)),
+                Clamp(new Point(anchor.X + direction * 368, 350)),
                 outerBottom,
                 isStroked: true,
                 isSmoothJoin: true);

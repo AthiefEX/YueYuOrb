@@ -29,16 +29,16 @@
         <LinearGradientBrush x:Key="MenuFanBrush"
                              StartPoint="1,0.5"
                              EndPoint="0,0.5">
-            <GradientStop Color="#C8FFFFFF" Offset="0" />
-            <GradientStop Color="#78E7F7FF" Offset="0.42" />
-            <GradientStop Color="#18BEDCEB" Offset="1" />
+            <GradientStop Color="#A8FFFFFF" Offset="0" />
+            <GradientStop Color="#52E7F4FF" Offset="0.46" />
+            <GradientStop Color="#0CFFFFFF" Offset="1" />
         </LinearGradientBrush>
         <LinearGradientBrush x:Key="MenuFanEdgeBrush"
                              StartPoint="1,0.5"
                              EndPoint="0,0.5">
-            <GradientStop Color="#B8FFFFFF" Offset="0" />
-            <GradientStop Color="#75BCE8FF" Offset="0.55" />
-            <GradientStop Color="#32A9D9F4" Offset="1" />
+            <GradientStop Color="#86FFFFFF" Offset="0" />
+            <GradientStop Color="#5597D4F4" Offset="0.58" />
+            <GradientStop Color="#168DCAEB" Offset="1" />
         </LinearGradientBrush>
         <RadialGradientBrush x:Key="AnchorHaloBrush">
             <GradientStop Color="#BFFFFFFF" Offset="0" />
@@ -157,30 +157,30 @@
             <Path x:Name="FanWash"
                   Fill="{StaticResource MenuFanBrush}"
                   IsHitTestVisible="False"
-                  Opacity="0.76">
+                  Opacity="0.72">
                 <Path.Effect>
-                    <BlurEffect Radius="24" />
+                    <BlurEffect Radius="18" />
                 </Path.Effect>
             </Path>
             <Path x:Name="FanHighlight"
-                  Fill="#36FFFFFF"
+                  Fill="#20FFFFFF"
                   IsHitTestVisible="False"
-                  Opacity="0.86">
+                  Opacity="0.52">
                 <Path.Effect>
-                    <BlurEffect Radius="14" />
+                    <BlurEffect Radius="9" />
                 </Path.Effect>
             </Path>
             <Path x:Name="FanRim"
                   Fill="Transparent"
                   Stroke="{StaticResource MenuFanEdgeBrush}"
-                  StrokeThickness="1.5"
-                  Opacity="0.72"
+                  StrokeThickness="1"
+                  Opacity="0.48"
                   IsHitTestVisible="False" />
             <Path x:Name="ConnectorPath"
                   IsHitTestVisible="False"
-                  Stroke="#7E83C8FF"
-                  StrokeThickness="1.5"
-                  StrokeDashArray="5,5" />
+                  Stroke="#4D8EC8F4"
+                  StrokeThickness="1"
+                  Opacity="0.78" />
 
             <Ellipse x:Name="AnchorHalo"
                      Width="146"
@@ -201,17 +201,15 @@
             <Ellipse x:Name="AnchorOrbitSmall"
                      Width="126"
                      Height="126"
-                     Stroke="#5E91CAFF"
-                     StrokeThickness="1.2"
-                     StrokeDashArray="2,3"
+                     Stroke="#4891CAFF"
+                     StrokeThickness="1"
                      Fill="Transparent"
                      IsHitTestVisible="False" />
             <Ellipse x:Name="AnchorOrbitLarge"
                      Width="170"
                      Height="170"
-                     Stroke="#367EBDFF"
-                     StrokeThickness="1"
-                     StrokeDashArray="1,5"
+                     Stroke="#247EBDFF"
+                     StrokeThickness="0.8"
                      Fill="Transparent"
                      IsHitTestVisible="False" />
             <ScrollViewer x:Name="WheelLauncherScroller"

@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Shapes;
 using FloatDesk.App.Views;
 using FloatDesk.Core.Models;
 
@@ -180,6 +181,44 @@ public sealed class QuickPanelWindowLayoutTests
         if (failure is not null)
             throw new Xunit.Sdk.XunitException(failure.ToString());
     }
+    [Fact(Timeout = 10_000)]
+    public async Task WheelMenuUsesSolidBackgroundGuides()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new QuickPanelWindow();
+                AssertSolidLine(window.FindName("ConnectorPath"));
+                AssertSolidLine(window.FindName("AnchorOrbitSmall"));
+                AssertSolidLine(window.FindName("AnchorOrbitLarge"));
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    private static void AssertSolidLine(object? element)
+    {
+        var shape = Assert.IsAssignableFrom<Shape>(element);
+        Assert.True(
+            shape.StrokeDashArray is null ||
+            shape.StrokeDashArray.Count == 0,
+            "Wheel guide lines must be solid.");
+    }
+
     private static void AssertNoKeyboardFocusTrigger(
         FrameworkElement owner,
         string styleKey)
