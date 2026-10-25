@@ -51,6 +51,7 @@ public partial class QuickPanelWindow : Window
     {
         InitializeComponent();
         SourceInitialized += OnSourceInitialized;
+        Closed += (_, _) => AnchorGlowPopup.IsOpen = false;
     }
 
     public void Apply(AppSettings settings, bool manualLockEnabled, string inputStatus)
@@ -195,6 +196,7 @@ public partial class QuickPanelWindow : Window
             return;
         if (!SystemParameters.ClientAreaAnimation)
         {
+            AnchorGlowPopup.IsOpen = false;
             ResetMotionVisuals();
             Hide();
             return;
@@ -232,6 +234,7 @@ public partial class QuickPanelWindow : Window
             if (!_hideTransitionPending)
                 return;
             _hideTransitionPending = false;
+            AnchorGlowPopup.IsOpen = false;
             ResetMotionVisuals();
             Hide();
         };
@@ -402,20 +405,13 @@ public partial class QuickPanelWindow : Window
 
     private void ArrangeAnchor(Point anchor)
     {
-        Canvas.SetLeft(AnchorHalo, anchor.X - AnchorHalo.Width / 2);
-        Canvas.SetTop(AnchorHalo, anchor.Y - AnchorHalo.Height / 2);
-        Canvas.SetLeft(
-            AnchorOrbitOuter,
-            anchor.X - AnchorOrbitOuter.Width / 2);
-        Canvas.SetTop(
-            AnchorOrbitOuter,
-            anchor.Y - AnchorOrbitOuter.Height / 2);
-        Canvas.SetLeft(
-            AnchorOrbitInner,
-            anchor.X - AnchorOrbitInner.Width / 2);
-        Canvas.SetTop(
-            AnchorOrbitInner,
-            anchor.Y - AnchorOrbitInner.Height / 2);
+        AnchorGlowPopup.PlacementTarget = MenuRoot;
+        AnchorGlowPopup.Placement =
+            System.Windows.Controls.Primitives.PlacementMode.Relative;
+        AnchorGlowPopup.HorizontalOffset =
+            anchor.X - (AnchorGlowSurface.Width / 2);
+        AnchorGlowPopup.VerticalOffset =
+            anchor.Y - (AnchorGlowSurface.Height / 2);
     }
 
     private void UpdateFanGeometry(
@@ -587,6 +583,7 @@ public partial class QuickPanelWindow : Window
     {
         _hideTransitionPending = false;
         IsHitTestVisible = true;
+        AnchorGlowPopup.IsOpen = true;
         ResetMotionVisuals();
         if (!SystemParameters.ClientAreaAnimation)
             return;
@@ -1027,6 +1024,7 @@ public partial class QuickPanelWindow : Window
 
     private void OnDeactivated(object? sender, EventArgs e)
     {
+        AnchorGlowPopup.IsOpen = false;
         Hide();
     }
 
@@ -1034,6 +1032,7 @@ public partial class QuickPanelWindow : Window
     {
         if (e.Key == Key.Escape)
         {
+            AnchorGlowPopup.IsOpen = false;
             Hide();
             e.Handled = true;
         }

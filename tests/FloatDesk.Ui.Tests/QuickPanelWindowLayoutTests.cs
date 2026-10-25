@@ -478,6 +478,65 @@ public sealed class QuickPanelWindowLayoutTests
     }
 
     [Fact(Timeout = 10_000)]
+    public async Task OrbGlowUsesDetachedPopupNearPanelEdge()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new QuickPanelWindow();
+                window.Apply(
+                    AppSettings.CreateDefault(),
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+                var anchor = new Point(12, 280);
+                InvokeArrangeMenu(
+                    window,
+                    anchor,
+                    opensLeft: false);
+
+                var popup = Assert.IsType<
+                    System.Windows.Controls.Primitives.Popup>(
+                    window.FindName("AnchorGlowPopup"));
+                var surface = Assert.IsType<Grid>(popup.Child);
+                var halo = Assert.IsType<System.Windows.Shapes.Ellipse>(
+                    window.FindName("AnchorHalo"));
+                var canvas = Assert.IsType<Canvas>(
+                    window.FindName("MenuCanvas"));
+
+                Assert.True(
+                    surface.IsAncestorOf(halo),
+                    "The halo must live inside the detached glow surface.");
+                Assert.False(
+                    canvas.IsAncestorOf(halo),
+                    "The halo must not inherit the quick-panel clip.");
+                Assert.Equal(236, surface.Width);
+                Assert.Equal(236, surface.Height);
+                Assert.Equal(
+                    anchor.X - (surface.Width / 2),
+                    popup.HorizontalOffset);
+                Assert.Equal(
+                    anchor.Y - (surface.Height / 2),
+                    popup.VerticalOffset);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact(Timeout = 10_000)]
     public async Task WheelKeepsRadialBeamsWithoutVisibleFanBackdrop()
     {
         Exception? failure = null;

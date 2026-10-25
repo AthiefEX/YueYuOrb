@@ -25,9 +25,10 @@
 | 平滑轮盘展开与关闭 | Windows 10 22H2 x64；隔离 STA WPF 窗口壳 | PASS | 三阶段截图哈希均不同；入口按距球心距离逐项出现；关闭后 45 ms 仍在屏幕内，动画结束后隐藏并可再次打开 |
 | 悬浮球拖动平滑性 | Windows 10 22H2 x64；隔离 STA WPF 窗口壳 | PASS | 连续拖动 32 次，最终位置与指针目标重合；最大瞬时采样偏差 2.24 px；位置锁定后不移动，拖动未误触发面板 |
 | 平滑轮盘滚轮动画 | Windows 10 22H2 x64；隔离 STA WPF 窗口 | PASS | 单次滚动从 0 经 27.20 / 108.94 / 119.96 到达 120（中间帧可见）；连续输入从当前约 114.92 继续追到累计目标 240；按钮弧线与放射条几何同步更新，7 张帧图哈希均有效 |
+| 悬浮球光晕边界 | Windows 10 22H2 x64；隔离 STA WPF 渲染 | PASS | 锚点位于面板左缘 12 DIP 时，独立 Popup 使用 -106 DIP 横向偏移绘制 188×188 完整光晕；圆形不被 660×560 主面板裁切，关闭、失焦和 Esc 路径同步关闭弹层 |
 | 备用截图快捷键实机触发 | Windows 10 22H2 x64 | PASS | `Ctrl+Alt+Shift+A` 实际打开双屏框选覆盖层，Esc 取消后会话释放 |
 | 崩溃回归事件 | 上述真实 UI 验证时段 | PASS | 测试后 `Application/.NET Runtime` 无新增 FloatDesk 进程终止事件 |
-| 自动化测试 | Windows 10 22H2 x64 | PASS | 96/96，Release；Core 34、Infrastructure 14、Windows 6、UI 42；构建 0 警告、0 错误 |
+| 自动化测试 | Windows 10 22H2 x64 | PASS | 97/97，Release；Core 34、Infrastructure 14、Windows 6、UI 43；构建 0 警告、0 错误 |
 | 发布包烟测 | Windows 10 22H2 x64，自包含 `win-x64` | PASS | 主实例观察到 `startup.complete` 并持续存活；第二实例以退出码 0 结束 |
 | 跨屏负坐标截图裁剪 | 自动化像素夹具 | PASS | `(-100,50)-(300,250)` 输出 400×200 |
 | 自定义图片图层 | WPF 窗口级测试 | PASS | 自定义 PNG 隐藏默认渐变圆与 `FD` 文本 |

@@ -176,6 +176,54 @@
             </TransformGroup>
         </Grid.RenderTransform>
 
+        <Popup x:Name="AnchorGlowPopup"
+               PlacementTarget="{Binding ElementName=MenuRoot}"
+               Placement="Relative"
+               AllowsTransparency="True"
+               StaysOpen="True"
+               PopupAnimation="None"
+               Focusable="False"
+               IsHitTestVisible="False">
+            <Grid x:Name="AnchorGlowSurface"
+                  Width="236"
+                  Height="236"
+                  IsHitTestVisible="False">
+                <Ellipse x:Name="AnchorHalo"
+                         Width="188"
+                         Height="188"
+                         Fill="{StaticResource AnchorHaloBrush}"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center"
+                         IsHitTestVisible="False">
+                    <Ellipse.Effect>
+                        <BlurEffect Radius="22" />
+                    </Ellipse.Effect>
+                </Ellipse>
+                <Ellipse x:Name="AnchorOrbitOuter"
+                         Width="184"
+                         Height="184"
+                         Fill="{StaticResource AnchorOrbitBrush}"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center"
+                         IsHitTestVisible="False">
+                    <Ellipse.Effect>
+                        <BlurEffect Radius="4" />
+                    </Ellipse.Effect>
+                </Ellipse>
+                <Ellipse x:Name="AnchorOrbitInner"
+                         Width="146"
+                         Height="146"
+                         Fill="{StaticResource AnchorOrbitBrush}"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center"
+                         IsHitTestVisible="False"
+                         Opacity="0.72">
+                    <Ellipse.Effect>
+                        <BlurEffect Radius="2" />
+                    </Ellipse.Effect>
+                </Ellipse>
+            </Grid>
+        </Popup>
         <Canvas x:Name="MenuCanvas"
                 Width="660"
                 Height="560">
@@ -192,34 +240,6 @@
                 </Path.Effect>
             </Path>
 
-            <Ellipse x:Name="AnchorHalo"
-                     Width="188"
-                     Height="188"
-                     Fill="{StaticResource AnchorHaloBrush}"
-                     IsHitTestVisible="False">
-                <Ellipse.Effect>
-                    <BlurEffect Radius="22" />
-                </Ellipse.Effect>
-            </Ellipse>
-            <Ellipse x:Name="AnchorOrbitOuter"
-                     Width="184"
-                     Height="184"
-                     Fill="{StaticResource AnchorOrbitBrush}"
-                     IsHitTestVisible="False">
-                <Ellipse.Effect>
-                    <BlurEffect Radius="4" />
-                </Ellipse.Effect>
-            </Ellipse>
-            <Ellipse x:Name="AnchorOrbitInner"
-                     Width="146"
-                     Height="146"
-                     Fill="{StaticResource AnchorOrbitBrush}"
-                     IsHitTestVisible="False"
-                     Opacity="0.72">
-                <Ellipse.Effect>
-                    <BlurEffect Radius="2" />
-                </Ellipse.Effect>
-            </Ellipse>
             <ScrollViewer x:Name="WheelScroller"
                           Width="380"
                           Height="420"
