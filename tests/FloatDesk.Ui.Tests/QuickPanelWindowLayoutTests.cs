@@ -477,6 +477,52 @@ public sealed class QuickPanelWindowLayoutTests
     }
 
     [Fact(Timeout = 10_000)]
+    public async Task WheelKeepsRadialBeamsWithoutVisibleFanBackdrop()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new QuickPanelWindow();
+                window.Apply(
+                    AppSettings.CreateDefault(),
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+                InvokeArrangeMenu(
+                    window,
+                    new Point(37, 280),
+                    opensLeft: false);
+
+                var fan = Assert.IsType<System.Windows.Shapes.Path>(
+                    window.FindName("FanWash"));
+                var beams = Assert.IsType<System.Windows.Shapes.Path>(
+                    window.FindName("ActionBeamsPath"));
+
+                Assert.Equal(Visibility.Collapsed, fan.Visibility);
+                Assert.NotNull(beams.Fill);
+                Assert.NotEqual(Visibility.Collapsed, beams.Visibility);
+                Assert.False(
+                    Assert.IsAssignableFrom<Geometry>(beams.Data).Bounds.IsEmpty,
+                    "The radial white pointer beams must remain visible.");
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact(Timeout = 10_000)]
     public async Task FunctionsAndApplicationsShareOneScrollableWheel()
     {
         Exception? failure = null;

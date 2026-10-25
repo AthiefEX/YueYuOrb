@@ -50,13 +50,6 @@
             <GradientStop Color="#616C80" Offset="1" />
         </RadialGradientBrush>
 
-        <LinearGradientBrush x:Key="MenuFanBrush"
-                             StartPoint="0,0"
-                             EndPoint="1,1">
-            <GradientStop Color="#B8FFFFFF" Offset="0" />
-            <GradientStop Color="#72F3F9FF" Offset="0.62" />
-            <GradientStop Color="#38E6F2FF" Offset="1" />
-        </LinearGradientBrush>
         <SolidColorBrush x:Key="ActionBeamBrush" Color="#34FFFFFF" />
         <RadialGradientBrush x:Key="AnchorHaloBrush">
             <GradientStop Color="#BFFFFFFF" Offset="0" />
@@ -184,13 +177,8 @@
                 Width="660"
                 Height="560">
             <Path x:Name="FanWash"
-                  Fill="{StaticResource MenuFanBrush}"
-                  IsHitTestVisible="False"
-                  Opacity="0.68">
-                <Path.Effect>
-                    <BlurEffect Radius="12" />
-                </Path.Effect>
-            </Path>
+                  Visibility="Collapsed"
+                  IsHitTestVisible="False" />
 
             <Path x:Name="ActionBeamsPath"
                   Fill="{StaticResource ActionBeamBrush}"
