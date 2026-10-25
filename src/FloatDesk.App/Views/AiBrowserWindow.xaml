@@ -3,7 +3,6 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        xmlns:system="clr-namespace:System.Windows;assembly=PresentationFramework"
         Width="680"
         Height="760"
         MinWidth="560"
@@ -69,22 +68,26 @@
                             HorizontalAlignment="Right"
                             VerticalAlignment="Center"
                             shell:WindowChrome.IsHitTestVisibleInChrome="True">
-                    <Button Style="{StaticResource CaptionButtonStyle}"
-                            Command="{x:Static system:SystemCommands.MinimizeWindowCommand}"
+                    <Button x:Name="AiMinimizeButton"
+                            Style="{StaticResource CaptionButtonStyle}"
+                            Click="OnMinimizeClick"
                             AutomationProperties.Name="最小化 AI 网页">
                         <TextBlock FontFamily="{StaticResource SettingsIconFont}"
                                    FontSize="12"
                                    Text="&#xE921;" />
                     </Button>
-                    <Button Style="{StaticResource CaptionButtonStyle}"
+                    <Button x:Name="AiMaximizeRestoreButton"
+                            Style="{StaticResource CaptionButtonStyle}"
                             Click="OnMaximizeRestoreClick"
                             AutomationProperties.Name="最大化或还原 AI 网页">
-                        <TextBlock FontFamily="{StaticResource SettingsIconFont}"
+                        <TextBlock x:Name="AiMaximizeGlyph"
+                                   FontFamily="{StaticResource SettingsIconFont}"
                                    FontSize="12"
                                    Text="&#xE922;" />
                     </Button>
-                    <Button Style="{StaticResource CloseCaptionButtonStyle}"
-                            Command="{x:Static system:SystemCommands.CloseWindowCommand}"
+                    <Button x:Name="AiCloseButton"
+                            Style="{StaticResource CloseCaptionButtonStyle}"
+                            Click="OnCloseClick"
                             AutomationProperties.Name="关闭 AI 网页">
                         <TextBlock FontFamily="{StaticResource SettingsIconFont}"
                                    FontSize="12"

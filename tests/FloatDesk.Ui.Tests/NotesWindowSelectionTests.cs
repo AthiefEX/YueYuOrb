@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using FloatDesk.Core.Geometry;
+using FloatDesk.App;
 using FloatDesk.App.Views;
 using FloatDesk.Core.Contracts;
 using FloatDesk.Core.Models;
@@ -125,8 +126,91 @@ public sealed class NotesWindowSelectionTests
             File.Delete(invalidDirectory);
         }
 
+        await window.Dispatcher.InvokeAsync(async () =>
+        {
+            using var captionNotes = new NotesWindow(
+                new FailingSaveRepository(first, second));
+            await AssertCaptionButtonsAsync(
+                captionNotes,
+                "NotesMinimizeButton",
+                "NotesMaximizeRestoreButton",
+                "NotesCloseButton",
+                "NotesMaximizeGlyph",
+                "最大化记事本",
+                "还原记事本");
+            using var captionBrowser = new AiBrowserWindow(
+                new AppDataPaths(),
+                _ => Task.CompletedTask);
+            await AssertCaptionButtonsAsync(
+                captionBrowser,
+                "AiMinimizeButton",
+                "AiMaximizeRestoreButton",
+                "AiCloseButton",
+                "AiMaximizeGlyph",
+                "最大化 AI 网页",
+                "还原 AI 网页");
+        }).Task.Unwrap();
+
         await window.Dispatcher.InvokeAsync(window.Hide);
         await Task.CompletedTask;
+    }
+
+    private static async Task AssertCaptionButtonsAsync(
+        Window window,
+        string minimizeName,
+        string maximizeName,
+        string closeName,
+        string glyphName,
+        string maximizeAutomationName,
+        string restoreAutomationName)
+    {
+        window.Show();
+        var minimize = Assert.IsType<Button>(window.FindName(minimizeName));
+        var maximize = Assert.IsType<Button>(window.FindName(maximizeName));
+        var close = Assert.IsType<Button>(window.FindName(closeName));
+        var glyph = Assert.IsType<TextBlock>(window.FindName(glyphName));
+        var closeRequested = false;
+        window.Closing += (_, _) => closeRequested = true;
+
+        Assert.Equal(WindowState.Normal, window.WindowState);
+        Assert.Equal("\uE922", glyph.Text);
+        Assert.Equal(
+            maximizeAutomationName,
+            System.Windows.Automation.AutomationProperties.GetName(maximize));
+
+        InvokeButton(maximize);
+        await WaitUntilAsync(() => window.WindowState == WindowState.Maximized);
+
+        Assert.Equal("\uE923", glyph.Text);
+        Assert.Equal(
+            restoreAutomationName,
+            System.Windows.Automation.AutomationProperties.GetName(maximize));
+
+        InvokeButton(maximize);
+        await WaitUntilAsync(() => window.WindowState == WindowState.Normal);
+
+        Assert.Equal("\uE922", glyph.Text);
+        Assert.Equal(
+            maximizeAutomationName,
+            System.Windows.Automation.AutomationProperties.GetName(maximize));
+
+        InvokeButton(minimize);
+        await WaitUntilAsync(() => window.WindowState == WindowState.Minimized);
+        window.WindowState = WindowState.Normal;
+        InvokeButton(close);
+
+        await WaitUntilAsync(() => closeRequested);
+        window.Hide();
+    }
+
+    private static void InvokeButton(Button button)
+    {
+        var peer = new System.Windows.Automation.Peers.ButtonAutomationPeer(button);
+        var provider = Assert.IsAssignableFrom<
+            System.Windows.Automation.Provider.IInvokeProvider>(
+            peer.GetPattern(
+                System.Windows.Automation.Peers.PatternInterface.Invoke));
+        provider.Invoke();
     }
 
     private static T GetField<T>(object target, string name) =>

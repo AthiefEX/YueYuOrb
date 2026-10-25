@@ -135,6 +135,66 @@ public sealed class ToolWindowVisualTests
             StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(
+        "src/FloatDesk.App/Views/NotesWindow.xaml",
+        "NotesMinimizeButton",
+        "NotesMaximizeRestoreButton",
+        "NotesCloseButton",
+        "NotesMaximizeGlyph")]
+    [InlineData(
+        "src/FloatDesk.App/Views/AiBrowserWindow.xaml",
+        "AiMinimizeButton",
+        "AiMaximizeRestoreButton",
+        "AiCloseButton",
+        "AiMaximizeGlyph")]
+    public void ToolWindowCaptionButtonsUseExplicitClickHandlers(
+        string relativePath,
+        string minimizeName,
+        string maximizeName,
+        string closeName,
+        string maximizeGlyphName)
+    {
+        var document = XDocument.Load(FindRepoFile(relativePath));
+        var xaml = document.ToString(SaveOptions.DisableFormatting);
+        var buttons = document
+            .Descendants()
+            .Where(element => element.Name.LocalName == "Button")
+            .ToArray();
+
+        foreach (var (name, handler) in new[]
+                 {
+                     (minimizeName, "OnMinimizeClick"),
+                     (maximizeName, "OnMaximizeRestoreClick"),
+                     (closeName, "OnCloseClick")
+                 })
+        {
+            var button = Assert.Single(
+                buttons,
+                element =>
+                    (string?)element.Attribute(
+                        XName.Get(
+                            "Name",
+                            "http://schemas.microsoft.com/winfx/2006/xaml")) == name);
+            Assert.Equal(
+                handler,
+                (string?)button.Attribute("Click"));
+        }
+
+        Assert.DoesNotContain(
+            "SystemCommands.MinimizeWindowCommand",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "SystemCommands.CloseWindowCommand",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            $"x:Name=\"{maximizeGlyphName}\"",
+            xaml,
+            StringComparison.Ordinal);
+    }
+
     private static string FindRepoFile(string relativePath)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

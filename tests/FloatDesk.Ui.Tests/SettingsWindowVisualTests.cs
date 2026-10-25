@@ -131,6 +131,36 @@ public sealed class SettingsWindowVisualTests
                 (string?)button.Attribute("AutomationProperties.Name")));
         }
     }
+
+    [Fact]
+    public void NavigationTabsUseTheCustomRoundedContainerStyle()
+    {
+        var document = XDocument.Load(FindRepoFile(
+            "src/FloatDesk.App/Views/SettingsWindow.xaml"));
+        var tabControl = Assert.Single(
+            document.Descendants()
+                .Where(element => element.Name.LocalName == "TabControl"),
+            element =>
+                (string?)element.Attribute(
+                    XName.Get(
+                        "Name",
+                        "http://schemas.microsoft.com/winfx/2006/xaml")) ==
+                "SettingsTabControl");
+        var tabs = document.Descendants()
+            .Where(element => element.Name.LocalName == "TabItem")
+            .ToArray();
+
+        Assert.Equal(
+            "{StaticResource NavigationTabItemStyle}",
+            (string?)tabControl.Attribute("ItemContainerStyle"));
+        Assert.Equal(8, tabs.Length);
+        Assert.All(
+            tabs,
+            tab => Assert.Equal(
+                "{StaticResource NavigationTabItemStyle}",
+                (string?)tab.Attribute("Style")));
+    }
+
     private static string FindRepoFile(string relativePath)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

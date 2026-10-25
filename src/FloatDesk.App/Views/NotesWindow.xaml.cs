@@ -37,6 +37,8 @@ public partial class NotesWindow : Window, IDisposable
             await RefreshListAsync();
         };
         Closing += OnClosing;
+        StateChanged += (_, _) => UpdateWindowStateVisuals();
+        UpdateWindowStateVisuals();
         Loaded += async (_, _) => await RefreshListAsync();
     }
 
@@ -66,12 +68,28 @@ public partial class NotesWindow : Window, IDisposable
         }
     }
 
+    private void OnMinimizeClick(object sender, RoutedEventArgs e) =>
+        SystemCommands.MinimizeWindow(this);
+
     private void OnMaximizeRestoreClick(object sender, RoutedEventArgs e)
     {
         if (WindowState == WindowState.Maximized)
             SystemCommands.RestoreWindow(this);
         else
             SystemCommands.MaximizeWindow(this);
+    }
+
+    private void OnCloseClick(object sender, RoutedEventArgs e) =>
+        Close();
+
+    private void UpdateWindowStateVisuals()
+    {
+        var isMaximized = WindowState == WindowState.Maximized;
+        NotesMaximizeGlyph.Text = isMaximized ? "\uE923" : "\uE922";
+        NotesMaximizeRestoreButton.ToolTip = isMaximized ? "还原" : "最大化";
+        System.Windows.Automation.AutomationProperties.SetName(
+            NotesMaximizeRestoreButton,
+            isMaximized ? "还原记事本" : "最大化记事本");
     }
 
     public bool HasUnsavedChanges => _dirty;

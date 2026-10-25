@@ -34,6 +34,8 @@ public partial class AiBrowserWindow : Window, IDisposable
         _browser = CreateBrowser();
         BrowserHost.Children.Insert(0, _browser);
         Closing += OnClosing;
+        StateChanged += (_, _) => UpdateWindowStateVisuals();
+        UpdateWindowStateVisuals();
     }
 
     private void OnTitleBarMouseLeftButtonDown(
@@ -62,12 +64,28 @@ public partial class AiBrowserWindow : Window, IDisposable
         }
     }
 
+    private void OnMinimizeClick(object sender, RoutedEventArgs e) =>
+        SystemCommands.MinimizeWindow(this);
+
     private void OnMaximizeRestoreClick(object sender, RoutedEventArgs e)
     {
         if (WindowState == WindowState.Maximized)
             SystemCommands.RestoreWindow(this);
         else
             SystemCommands.MaximizeWindow(this);
+    }
+
+    private void OnCloseClick(object sender, RoutedEventArgs e) =>
+        Close();
+
+    private void UpdateWindowStateVisuals()
+    {
+        var isMaximized = WindowState == WindowState.Maximized;
+        AiMaximizeGlyph.Text = isMaximized ? "\uE923" : "\uE922";
+        AiMaximizeRestoreButton.ToolTip = isMaximized ? "还原" : "最大化";
+        System.Windows.Automation.AutomationProperties.SetName(
+            AiMaximizeRestoreButton,
+            isMaximized ? "还原 AI 网页" : "最大化 AI 网页");
     }
 
     public string CurrentAddress => _browser.Source?.AbsoluteUri ?? "";
