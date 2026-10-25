@@ -17,10 +17,10 @@
 | 前台热键冲突自动备用 | 19045；`Ctrl+Alt+A` 被其他程序占用 | PASS | 实际绑定 `Ctrl+Alt+Shift+A`，日志记录 `hotkey.initial.fallback`，托盘提示与快捷面板 ToolTip 显示备用键 |
 | 设置页悬停与应用 | Windows 10 22H2 x64，管理员交互会话 | PASS | 鼠标悬停并点击“应用”后进程存活，日志无 `hotkey.rebind.failed` |
 | 快捷面板框选与编辑器 | Windows 10 22H2 x64，双屏 2560×1440 + 800×600 | PASS | 两个覆盖层正常显示；拖动生成 500×340 选区，Enter 打开 `FloatDesk 截图标注` |
-| 放射式快捷菜单视觉布局 | Windows 10 22H2 x64；主屏右缘与 800×600 副屏 | PASS | 660×560 玻璃扇形、球心锚点、7 个现有功能入口和应用坞完整显示且不重叠；主副屏均未越出工作区 |
+| 放射式快捷菜单视觉布局 | Windows 10 22H2 x64；主屏右缘与 800×600 副屏 | PASS | 660×560 玻璃扇形、球心锚点、7 个 196×48 统一入口沿弧形等距排列，应用坞完整显示且不重叠；点击按钮不显示键盘焦点框 |
 | 备用截图快捷键实机触发 | Windows 10 22H2 x64 | PASS | `Ctrl+Alt+Shift+A` 实际打开双屏框选覆盖层，Esc 取消后会话释放 |
 | 崩溃回归事件 | 上述真实 UI 验证时段 | PASS | 测试后 `Application/.NET Runtime` 无新增 FloatDesk 进程终止事件 |
-| 自动化测试 | Windows 10 22H2 x64 | PASS | 61/61，Debug；Core 31、Infrastructure 12、Windows 6、UI 12 |
+| 自动化测试 | Windows 10 22H2 x64 | PASS | 62/62，Debug；Core 31、Infrastructure 12、Windows 6、UI 13 |
 | 跨屏负坐标截图裁剪 | 自动化像素夹具 | PASS | `(-100,50)-(300,250)` 输出 400×200 |
 | 自定义图片图层 | WPF 窗口级测试 | PASS | 自定义 PNG 隐藏默认渐变圆与 `FD` 文本 |
 | 笔记保存失败回退 | WPF 窗口级测试 | PASS | 切换笔记保存失败后恢复原选择，未保存正文保留 |

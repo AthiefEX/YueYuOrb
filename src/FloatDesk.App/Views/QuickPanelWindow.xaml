@@ -69,14 +69,7 @@
                     <ControlTemplate TargetType="Button">
                         <Grid x:Name="ActionRoot"
                               RenderTransformOrigin="0.5,0.5">
-                            <Border x:Name="FocusRing"
-                                    Background="Transparent"
-                                    BorderBrush="Transparent"
-                                    BorderThickness="2"
-                                    CornerRadius="30"
-                                    Padding="2">
-                                <ContentPresenter />
-                            </Border>
+                            <ContentPresenter />
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -89,50 +82,9 @@
                                         Property="Opacity"
                                         Value="0.82" />
                             </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="FocusRing"
-                                        Property="BorderBrush"
-                                        Value="{StaticResource MenuBlueBrush}" />
-                            </Trigger>
+
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.55" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style x:Key="SecondaryActionButtonStyle"
-               TargetType="Button"
-               BasedOn="{StaticResource RadialActionButtonStyle}">
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="SecondarySurface"
-                                Background="#DFFFFFFF"
-                                BorderBrush="#9DCBE7FF"
-                                BorderThickness="1"
-                                CornerRadius="18"
-                                Padding="10,7">
-                            <ContentPresenter />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="SecondarySurface"
-                                        Property="Background"
-                                        Value="#FFFFFFFF" />
-                                <Setter TargetName="SecondarySurface"
-                                        Property="BorderBrush"
-                                        Value="{StaticResource MenuBlueBrush}" />
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="SecondarySurface"
-                                        Property="BorderBrush"
-                                        Value="{StaticResource MenuBlueBrush}" />
-                                <Setter TargetName="SecondarySurface"
-                                        Property="BorderThickness"
-                                        Value="2" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -172,14 +124,7 @@
                                         Property="BorderBrush"
                                         Value="{StaticResource MenuBlueBrush}" />
                             </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="DockButtonSurface"
-                                        Property="BorderBrush"
-                                        Value="{StaticResource MenuBlueBrush}" />
-                                <Setter TargetName="DockButtonSurface"
-                                        Property="BorderThickness"
-                                        Value="2" />
-                            </Trigger>
+
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -309,18 +254,18 @@
             </Border>
 
             <Button x:Name="RegionCaptureButton"
-                    Width="190"
-                    Height="58"
+                    Width="196"
+                    Height="48"
                     Style="{StaticResource RadialActionButtonStyle}"
                     Click="OnRegionCaptureClick">
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="58" />
+                        <ColumnDefinition Width="50" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <Border Width="52"
-                            Height="52"
-                            CornerRadius="26"
+                    <Border Width="42"
+                            Height="42"
+                            CornerRadius="21"
                             Background="{StaticResource MenuGreenBrush}"
                             BorderBrush="#DFFFFFFF"
                             BorderThickness="2"
@@ -328,20 +273,20 @@
                         <TextBlock Text="&#xE722;"
                                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                    Foreground="White"
-                                   FontSize="23"
+                                   FontSize="20"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center" />
                     </Border>
                     <Border Grid.Column="1"
-                            Margin="7,4,0,4"
+                            Margin="6,3,0,3"
                             Background="{StaticResource MenuLabelBrush}"
                             BorderBrush="{StaticResource MenuLabelBorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="20"
+                            CornerRadius="17"
                             Padding="14,0">
                         <TextBlock Text="快速截图"
                                    Foreground="{StaticResource MenuStrongBrush}"
-                                   FontSize="15"
+                                   FontSize="14"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center" />
                     </Border>
@@ -349,54 +294,98 @@
             </Button>
 
             <Button x:Name="WindowCaptureButton"
-                    Width="116"
-                    Height="40"
-                    Style="{StaticResource SecondaryActionButtonStyle}"
+                    Width="196"
+                    Height="48"
+                    Style="{StaticResource RadialActionButtonStyle}"
                     Click="OnWindowCaptureClick">
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="&#xE7C4;"
-                               FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                               Foreground="{StaticResource MenuBlueBrush}"
-                               FontSize="16"
-                               Margin="0,0,7,0" />
-                    <TextBlock Text="窗口"
-                               Foreground="{StaticResource MenuStrongBrush}"
-                               FontSize="13"
-                               FontWeight="SemiBold" />
-                </StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="50" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Width="42"
+                            Height="42"
+                            CornerRadius="21"
+                            Background="{StaticResource MenuBlueBrush}"
+                            BorderBrush="#DFFFFFFF"
+                            BorderThickness="2"
+                            Effect="{StaticResource ActionShadow}">
+                        <TextBlock Text="&#xE7C4;"
+                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                   Foreground="White"
+                                   FontSize="18"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                    <Border Grid.Column="1"
+                            Margin="6,3,0,3"
+                            Background="{StaticResource MenuLabelBrush}"
+                            BorderBrush="{StaticResource MenuLabelBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="17"
+                            Padding="14,0">
+                        <TextBlock Text="窗口"
+                                   Foreground="{StaticResource MenuStrongBrush}"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                </Grid>
             </Button>
 
             <Button x:Name="MonitorCaptureButton"
-                    Width="116"
-                    Height="40"
-                    Style="{StaticResource SecondaryActionButtonStyle}"
+                    Width="196"
+                    Height="48"
+                    Style="{StaticResource RadialActionButtonStyle}"
                     Click="OnMonitorCaptureClick">
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="&#xE7F4;"
-                               FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                               Foreground="{StaticResource MenuBlueBrush}"
-                               FontSize="16"
-                               Margin="0,0,7,0" />
-                    <TextBlock Text="屏幕"
-                               Foreground="{StaticResource MenuStrongBrush}"
-                               FontSize="13"
-                               FontWeight="SemiBold" />
-                </StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="50" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Width="42"
+                            Height="42"
+                            CornerRadius="21"
+                            Background="{StaticResource MenuBlueBrush}"
+                            BorderBrush="#DFFFFFFF"
+                            BorderThickness="2"
+                            Effect="{StaticResource ActionShadow}">
+                        <TextBlock Text="&#xE7F4;"
+                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                   Foreground="White"
+                                   FontSize="18"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                    <Border Grid.Column="1"
+                            Margin="6,3,0,3"
+                            Background="{StaticResource MenuLabelBrush}"
+                            BorderBrush="{StaticResource MenuLabelBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="17"
+                            Padding="14,0">
+                        <TextBlock Text="屏幕"
+                                   Foreground="{StaticResource MenuStrongBrush}"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                </Grid>
             </Button>
 
             <Button x:Name="AiButton"
-                    Width="178"
-                    Height="58"
+                    Width="196"
+                    Height="48"
                     Style="{StaticResource RadialActionButtonStyle}"
                     Click="OnAiClick">
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="58" />
+                        <ColumnDefinition Width="50" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <Border Width="52"
-                            Height="52"
-                            CornerRadius="26"
+                    <Border Width="42"
+                            Height="42"
+                            CornerRadius="21"
                             Background="{StaticResource MenuVioletBrush}"
                             BorderBrush="#DFFFFFFF"
                             BorderThickness="2"
@@ -404,20 +393,20 @@
                         <TextBlock Text="&#xE8BD;"
                                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                    Foreground="White"
-                                   FontSize="22"
+                                   FontSize="20"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center" />
                     </Border>
                     <Border Grid.Column="1"
-                            Margin="7,4,0,4"
+                            Margin="6,3,0,3"
                             Background="{StaticResource MenuLabelBrush}"
                             BorderBrush="{StaticResource MenuLabelBorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="20"
+                            CornerRadius="17"
                             Padding="14,0">
                         <TextBlock Text="AI 网页"
                                    Foreground="{StaticResource MenuStrongBrush}"
-                                   FontSize="15"
+                                   FontSize="14"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center" />
                     </Border>
@@ -425,18 +414,18 @@
             </Button>
 
             <Button x:Name="NotesButton"
-                    Width="178"
-                    Height="58"
+                    Width="196"
+                    Height="48"
                     Style="{StaticResource RadialActionButtonStyle}"
                     Click="OnNotesClick">
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="58" />
+                        <ColumnDefinition Width="50" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <Border Width="52"
-                            Height="52"
-                            CornerRadius="26"
+                    <Border Width="42"
+                            Height="42"
+                            CornerRadius="21"
                             Background="{StaticResource MenuCoralBrush}"
                             BorderBrush="#DFFFFFFF"
                             BorderThickness="2"
@@ -444,20 +433,20 @@
                         <TextBlock Text="&#xE70B;"
                                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                    Foreground="White"
-                                   FontSize="22"
+                                   FontSize="20"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center" />
                     </Border>
                     <Border Grid.Column="1"
-                            Margin="7,4,0,4"
+                            Margin="6,3,0,3"
                             Background="{StaticResource MenuLabelBrush}"
                             BorderBrush="{StaticResource MenuLabelBorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="20"
+                            CornerRadius="17"
                             Padding="14,0">
                         <TextBlock Text="记事本"
                                    Foreground="{StaticResource MenuStrongBrush}"
-                                   FontSize="15"
+                                   FontSize="14"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center" />
                     </Border>
@@ -465,19 +454,19 @@
             </Button>
 
             <Button x:Name="InputLockButton"
-                    Width="188"
-                    Height="58"
+                    Width="196"
+                    Height="48"
                     Style="{StaticResource RadialActionButtonStyle}"
                     Click="OnInputLockClick">
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="58" />
+                        <ColumnDefinition Width="50" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <Border x:Name="InputLockGlyphHost"
-                            Width="52"
-                            Height="52"
-                            CornerRadius="26"
+                            Width="42"
+                            Height="42"
+                            CornerRadius="21"
                             Background="{StaticResource MenuBlueBrush}"
                             BorderBrush="#DFFFFFFF"
                             BorderThickness="2"
@@ -486,21 +475,21 @@
                                    Text="&#xE72E;"
                                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                    Foreground="White"
-                                   FontSize="21"
+                                   FontSize="19"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center" />
                     </Border>
                     <Border Grid.Column="1"
-                            Margin="7,4,0,4"
+                            Margin="6,3,0,3"
                             Background="{StaticResource MenuLabelBrush}"
                             BorderBrush="{StaticResource MenuLabelBorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="20"
+                            CornerRadius="17"
                             Padding="14,0">
                         <TextBlock x:Name="InputLockTitle"
                                    Text="锁定英文"
                                    Foreground="{StaticResource MenuStrongBrush}"
-                                   FontSize="15"
+                                   FontSize="14"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center" />
                     </Border>
@@ -508,18 +497,18 @@
             </Button>
 
             <Button x:Name="SettingsButton"
-                    Width="150"
-                    Height="58"
+                    Width="196"
+                    Height="48"
                     Style="{StaticResource RadialActionButtonStyle}"
                     Click="OnSettingsClick">
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="58" />
+                        <ColumnDefinition Width="50" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <Border Width="52"
-                            Height="52"
-                            CornerRadius="26"
+                    <Border Width="42"
+                            Height="42"
+                            CornerRadius="21"
                             Background="{StaticResource MenuSlateBrush}"
                             BorderBrush="#DFFFFFFF"
                             BorderThickness="2"
@@ -527,20 +516,20 @@
                         <TextBlock Text="&#xE713;"
                                    FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
                                    Foreground="White"
-                                   FontSize="22"
+                                   FontSize="20"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center" />
                     </Border>
                     <Border Grid.Column="1"
-                            Margin="7,4,0,4"
+                            Margin="6,3,0,3"
                             Background="{StaticResource MenuLabelBrush}"
                             BorderBrush="{StaticResource MenuLabelBorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="20"
+                            CornerRadius="17"
                             Padding="14,0">
                         <TextBlock Text="设置"
                                    Foreground="{StaticResource MenuStrongBrush}"
-                                   FontSize="15"
+                                   FontSize="14"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center" />
                     </Border>

@@ -141,31 +141,38 @@ public partial class QuickPanelWindow : Window
         Canvas.SetLeft(LauncherDock, 22);
         Canvas.SetTop(LauncherDock, 462);
 
-        var actions = new[]
+        var actions = new (Button Element, double ArcOffset)[]
         {
-            (RegionCaptureButton, 105d, -145d),
-            (WindowCaptureButton, 92d, -63d),
-            (MonitorCaptureButton, 92d, -17d),
-            (AiButton, 210d, -60d),
-            (NotesButton, 225d, 20d),
-            (InputLockButton, 180d, 85d),
-            (SettingsButton, 88d, 145d)
+            (RegionCaptureButton, 18d),
+            (WindowCaptureButton, 9d),
+            (MonitorCaptureButton, 3d),
+            (AiButton, 0d),
+            (NotesButton, 3d),
+            (InputLockButton, 9d),
+            (SettingsButton, 18d)
         };
-        var centers = new List<Point>(actions.Length);
+        const double columnX = 300d;
+        const double actionWidth = 196d;
+        const double actionHeight = 48d;
+        const double rowStep = 55d;
         var direction = opensLeft ? -1 : 1;
-        foreach (var (element, distance, verticalOffset) in actions)
+        var totalHeight = ((actions.Length - 1) * rowStep) + actionHeight;
+        var startY = Math.Clamp(
+            anchor.Y - (totalHeight / 2),
+            28d,
+            448d - totalHeight);
+        var centers = new List<Point>(actions.Length);
+        for (var index = 0; index < actions.Length; index++)
         {
-            var x = anchor.X +
-                    direction * distance -
-                    (opensLeft ? element.Width : 0);
-            var y = anchor.Y + verticalOffset - element.Height / 2;
-            x = Math.Clamp(x, 14, PanelWidth - element.Width - 14);
-            y = Math.Clamp(y, 14, 440 - element.Height);
+            var (element, arcOffset) = actions[index];
+            var x = opensLeft
+                ? columnX + arcOffset
+                : PanelWidth - columnX - actionWidth - arcOffset;
+            var y = startY + (index * rowStep);
             Canvas.SetLeft(element, x);
             Canvas.SetTop(element, y);
-            centers.Add(new Point(x + 29, y + element.Height / 2));
+            centers.Add(new Point(x + 25, y + (actionHeight / 2)));
         }
-
         ArrangeAnchor(anchor);
         UpdateFanGeometry(anchor, direction);
         UpdateConnectorGeometry(anchor, centers);
