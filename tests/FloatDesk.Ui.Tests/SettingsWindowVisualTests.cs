@@ -87,6 +87,50 @@ public sealed class SettingsWindowVisualTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void NavigationTabsAndCaptionButtonsExposeAccessibleNames()
+    {
+        var document = XDocument.Load(FindRepoFile(
+            "src/FloatDesk.App/Views/SettingsWindow.xaml"));
+        var tabs = document
+            .Descendants()
+            .Where(element => element.Name.LocalName == "TabItem")
+            .ToArray();
+
+        Assert.Equal(8, tabs.Length);
+        foreach (var tab in tabs)
+        {
+            var label = tab
+                .Elements()
+                .Single(element => element.Name.LocalName == "TabItem.Header")
+                .Descendants()
+                .Where(element => element.Name.LocalName == "TextBlock")
+                .Select(element => (string?)element.Attribute("Text"))
+                .Last(text => !string.IsNullOrWhiteSpace(text));
+            Assert.Equal(
+                label,
+                (string?)tab.Attribute("AutomationProperties.Name"));
+        }
+
+        foreach (var name in new[]
+                 {
+                     "MinimizeSettingsButton",
+                     "MaximizeSettingsButton",
+                     "CloseSettingsButton"
+                 })
+        {
+            var button = document
+                .Descendants()
+                .Single(element =>
+                    element.Name.LocalName == "Button" &&
+                    (string?)element.Attribute(
+                        XName.Get(
+                            "Name",
+                            "http://schemas.microsoft.com/winfx/2006/xaml")) == name);
+            Assert.False(string.IsNullOrWhiteSpace(
+                (string?)button.Attribute("AutomationProperties.Name")));
+        }
+    }
     private static string FindRepoFile(string relativePath)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

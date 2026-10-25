@@ -192,7 +192,7 @@
                         Grid.Row="2"
                         Grid.RowSpan="2"
                         Style="{StaticResource SettingsTabControlStyle}"
-                        SelectionChanged="OnSettingsTabSelectionChanged">                    <TabItem>
+                        SelectionChanged="OnSettingsTabSelectionChanged">                    <TabItem AutomationProperties.Name="常规">
                         <TabItem.Header>
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock FontFamily="{StaticResource SettingsIconFont}" FontSize="15" Text="&#xE80F;" Margin="0,0,7,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
@@ -321,10 +321,10 @@
                         </ScrollViewer>
                     </TabItem>
 
-                    <TabItem>
+                    <TabItem AutomationProperties.Name="悬浮球">
                         <TabItem.Header>
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock FontFamily="{StaticResource SettingsIconFont}" FontSize="15" Text="&#xE91F;" Margin="0,0,7,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                                <TextBlock FontFamily="{StaticResource SettingsIconFont}" FontSize="15" Text="&#xE707;" Margin="0,0,7,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
                                 <TextBlock Text="悬浮球" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
                             </StackPanel>
                         </TabItem.Header>
@@ -334,7 +334,7 @@
                                     <StackPanel>
                                         <StackPanel Orientation="Horizontal">
                                             <Border Style="{StaticResource SettingsIconTileStyle}">
-                                                <TextBlock Style="{StaticResource SettingsIconGlyphStyle}" Text="&#xE91F;" />
+                                                <TextBlock Style="{StaticResource SettingsIconGlyphStyle}" Text="&#xE707;" />
                                             </Border>
                                             <StackPanel VerticalAlignment="Center">
                                                 <TextBlock Style="{StaticResource SettingsSectionTitleStyle}" Text="外观与尺寸" />
@@ -421,7 +421,7 @@
                         </ScrollViewer>
                     </TabItem>
 
-                    <TabItem>
+                    <TabItem AutomationProperties.Name="快捷应用">
                         <TabItem.Header>
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock FontFamily="{StaticResource SettingsIconFont}" FontSize="15" Text="&#xE71D;" Margin="0,0,7,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
@@ -487,7 +487,7 @@
                         </Grid>
                     </TabItem>
 
-                    <TabItem x:Name="WheelSettingsTab">
+                    <TabItem x:Name="WheelSettingsTab" AutomationProperties.Name="轮盘">
                         <TabItem.Header>
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock FontFamily="{StaticResource SettingsIconFont}" FontSize="15" Text="&#xE80A;" Margin="0,0,7,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
@@ -553,7 +553,7 @@
                         </ScrollViewer>
                     </TabItem>
 
-                    <TabItem>
+                    <TabItem AutomationProperties.Name="输入法">
                         <TabItem.Header>
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock FontFamily="{StaticResource SettingsIconFont}" FontSize="15" Text="&#xE765;" Margin="0,0,7,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
@@ -637,7 +637,7 @@
                         </Grid>
                     </TabItem>
 
-                    <TabItem>
+                    <TabItem AutomationProperties.Name="AI 网页">
                         <TabItem.Header>
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock FontFamily="{StaticResource SettingsIconFont}" FontSize="15" Text="&#xE774;" Margin="0,0,7,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
@@ -710,7 +710,7 @@
                         </Grid>
                     </TabItem>
 
-                    <TabItem>
+                    <TabItem AutomationProperties.Name="截图">
                         <TabItem.Header>
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock FontFamily="{StaticResource SettingsIconFont}" FontSize="15" Text="&#xE7A8;" Margin="0,0,7,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
@@ -804,7 +804,7 @@
                         </ScrollViewer>
                     </TabItem>
 
-                    <TabItem>
+                    <TabItem AutomationProperties.Name="关于">
                         <TabItem.Header>
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock FontFamily="{StaticResource SettingsIconFont}" FontSize="15" Text="&#xE946;" Margin="0,0,7,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
