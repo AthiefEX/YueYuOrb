@@ -8,13 +8,21 @@
         ShowActivated="False"
         ShowInTaskbar="False"
         SizeToContent="Height"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
         Title="FloatDesk">
     <StackPanel x:Name="OrbLayout" Margin="20">
         <Grid x:Name="OrbRoot"
               Width="56"
               Height="56"
+              RenderTransformOrigin="0.5,0.5"
               Cursor="Hand"
               ToolTip="单击打开快捷面板，拖动移动">
+            <Grid.RenderTransform>
+                <ScaleTransform x:Name="OrbDragScale"
+                                ScaleX="1"
+                                ScaleY="1" />
+            </Grid.RenderTransform>
             <Ellipse x:Name="OrbCircle">
                 <Ellipse.Fill>
                     <RadialGradientBrush GradientOrigin="0.32,0.24">

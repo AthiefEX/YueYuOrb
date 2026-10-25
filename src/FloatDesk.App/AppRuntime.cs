@@ -306,7 +306,7 @@ internal sealed class AppRuntime : IDisposable
 
     private async void OnLaunchRequested(LauncherItem item)
     {
-        _panel?.Hide();
+        _panel?.HideAnimated();
         var result = await _launcher.LaunchAsync(item, _lifetime.Token);
         if (!result.Success)
         {
@@ -367,7 +367,7 @@ internal sealed class AppRuntime : IDisposable
         _userVisible = !_userVisible;
         ApplyOverlay(_foreground.Current);
         if (!_userVisible)
-            _panel?.Hide();
+            _panel?.HideAnimated();
     }
 
     private async Task ReEvaluateCurrentAsync()
@@ -504,7 +504,7 @@ internal sealed class AppRuntime : IDisposable
             _settings.Current.Overlay.FullscreenPolicy);
         _orb.ApplyOverlay(decision.Visible, decision.Topmost);
         if (!decision.Visible)
-            _panel?.Hide();
+            _panel?.HideAnimated();
     }
 
     private void OnSettingsChanged(AppSettings settings) =>

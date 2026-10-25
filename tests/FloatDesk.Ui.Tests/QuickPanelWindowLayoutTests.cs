@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using FloatDesk.App.Views;
 using FloatDesk.Core.Models;
 
@@ -728,6 +729,94 @@ public sealed class QuickPanelWindowLayoutTests
             throw new Xunit.Sdk.XunitException(failure.ToString());
     }
 
+    [Fact(Timeout = 10_000)]
+    public async Task OpeningWheelAddsOutwardPerItemTransition()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new QuickPanelWindow();
+                window.Apply(
+                    AppSettings.CreateDefault(),
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+                InvokeArrangeMenu(window, new Point(37, 280), opensLeft: false);
+                InvokePlayEntranceAnimation(window);
+
+                var button = Assert.IsType<Button>(
+                    window.FindName("RegionCaptureButton"));
+                var transforms = Assert.IsType<TransformGroup>(
+                    button.RenderTransform);
+
+                Assert.Contains(
+                    transforms.Children,
+                    transform => transform is TranslateTransform);
+                Assert.Contains(
+                    transforms.Children,
+                    transform => transform is ScaleTransform);
+                Assert.Equal(
+                    new Point(0.5, 0.5),
+                    button.RenderTransformOrigin);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task AnimatedCloseFinishesWithoutLeavingThePanelVisible()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new QuickPanelWindow();
+                window.Apply(
+                    AppSettings.CreateDefault(),
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+                window.Show();
+                window.UpdateLayout();
+                Assert.True(window.IsVisible);
+
+                InvokeAnimatedHide(window);
+                PumpDispatcherUntil(() => !window.IsVisible);
+
+                Assert.False(
+                    window.IsVisible,
+                    "The quick panel must leave hit testing after its " +
+                    "closing transition completes.");
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
     private static void InvokeArrangeMenu(
         QuickPanelWindow window,
         Point anchor,
@@ -740,6 +829,51 @@ public sealed class QuickPanelWindowLayoutTests
             ?? throw new InvalidOperationException(
                 "ArrangeMenu was not found.");
         method.Invoke(window, [anchor, opensLeft]);
+    }
+
+    private static void InvokePlayEntranceAnimation(
+        QuickPanelWindow window)
+    {
+        var method = typeof(QuickPanelWindow).GetMethod(
+            "PlayEntranceAnimation",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(
+                "PlayEntranceAnimation was not found.");
+        method.Invoke(window, null);
+    }
+
+    private static void InvokeAnimatedHide(QuickPanelWindow window)
+    {
+        var method = typeof(QuickPanelWindow).GetMethod(
+            "HideAnimated",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.Public)
+            ?? throw new InvalidOperationException(
+                "HideAnimated was not found.");
+        method.Invoke(window, null);
+    }
+
+    private static void PumpDispatcherUntil(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (!condition() && DateTime.UtcNow < deadline)
+        {
+            var frame = new DispatcherFrame();
+            var timer = new DispatcherTimer(
+                DispatcherPriority.Background,
+                Dispatcher.CurrentDispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(10)
+            };
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                frame.Continue = false;
+            };
+            timer.Start();
+            Dispatcher.PushFrame(frame);
+        }
     }
 
     private static Rect SurfaceBounds(

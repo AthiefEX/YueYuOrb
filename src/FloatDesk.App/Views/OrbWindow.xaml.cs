@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using FloatDesk.Core.Geometry;
@@ -21,10 +22,10 @@ public partial class OrbWindow : Window
     private readonly Action _toggleVisibility;
     private readonly Action _exit;
     private readonly string _orbImagePath;
+    private readonly OrbDragMotion _dragMotion = new();
     private AppSettings? _settings;
-    private System.Windows.Point _pointerDown;
-    private System.Windows.Point _windowDown;
-    private bool _dragging;
+    private PixelRect? _pendingDragBounds;
+    private bool _dragFrameSubscribed;
     private double _sizeDip = 56;
     private bool _snap = true;
     private bool _positionLocked;
@@ -157,9 +158,23 @@ public partial class OrbWindow : Window
 
     private void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        _pointerDown = e.GetPosition(this);
-        _windowDown = new System.Windows.Point(Left, Top);
-        _dragging = false;
+        if (GetCursorPos(out var cursor))
+        {
+            var handle = new WindowInteropHelper(this).Handle;
+            var threshold = Math.Max(
+                1,
+                (int)Math.Round(
+                    3 * DesktopGeometry.GetWindowDpiScale(handle)));
+            _dragMotion.Begin(
+                new PixelPoint(cursor.X, cursor.Y),
+                GetPhysicalBounds(),
+                threshold,
+                canDrag: !_positionLocked);
+        }
+        else
+        {
+            _dragMotion.Reset();
+        }
         OrbRoot.CaptureMouse();
         e.Handled = true;
     }
@@ -168,22 +183,38 @@ public partial class OrbWindow : Window
     {
         if (!OrbRoot.IsMouseCaptured || _positionLocked)
             return;
-        var pointer = e.GetPosition(this);
-        if (!_dragging &&
-            Math.Abs(pointer.X - _pointerDown.X) < 3 &&
-            Math.Abs(pointer.Y - _pointerDown.Y) < 3)
+        if (!GetCursorPos(out var cursor) ||
+            !_dragMotion.TryUpdate(
+                new PixelPoint(cursor.X, cursor.Y),
+                out var target))
+        {
             return;
-        _dragging = true;
-        Left = _windowDown.X + pointer.X - _pointerDown.X;
-        Top = _windowDown.Y + pointer.Y - _pointerDown.Y;
+        }
+
+        if (!_dragFrameSubscribed)
+            BeginDragVisuals();
+        QueueDragPosition(target);
+        e.Handled = true;
     }
 
     private void OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         if (!OrbRoot.IsMouseCaptured)
             return;
+        if (GetCursorPos(out var cursor) &&
+            _dragMotion.TryUpdate(
+                new PixelPoint(cursor.X, cursor.Y),
+                out var finalTarget))
+        {
+            _pendingDragBounds = finalTarget;
+        }
+        FlushPendingDragMove();
+        var wasDragging = _dragMotion.IsDragging;
         OrbRoot.ReleaseMouseCapture();
-        if (_dragging)
+        EndDragVisuals();
+        _dragMotion.Reset();
+        _pendingDragBounds = null;
+        if (wasDragging)
         {
             SnapIfNeeded();
             _positionChanged(GetPhysicalBounds());
@@ -194,6 +225,75 @@ public partial class OrbWindow : Window
         }
         e.Handled = true;
     }
+
+    private void QueueDragPosition(PixelRect target)
+    {
+        _pendingDragBounds = target;
+        if (_dragFrameSubscribed)
+            return;
+        CompositionTarget.Rendering += OnDragRenderFrame;
+        _dragFrameSubscribed = true;
+    }
+
+    private void OnDragRenderFrame(object? sender, EventArgs e) =>
+        FlushPendingDragMove();
+
+    private void FlushPendingDragMove()
+    {
+        if (_pendingDragBounds is not { } target)
+            return;
+        _pendingDragBounds = null;
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == 0)
+            return;
+        SetWindowPos(
+            handle,
+            0,
+            target.Left,
+            target.Top,
+            0,
+            0,
+            0x0001 | 0x0004 | 0x0010);
+    }
+
+    private void BeginDragVisuals()
+    {
+        OrbDragScale.BeginAnimation(
+            ScaleTransform.ScaleXProperty,
+            ScaleAnimation(1.045, 90));
+        OrbDragScale.BeginAnimation(
+            ScaleTransform.ScaleYProperty,
+            ScaleAnimation(1.045, 90));
+    }
+
+    private void EndDragVisuals()
+    {
+        _pendingDragBounds = null;
+        if (_dragFrameSubscribed)
+        {
+            CompositionTarget.Rendering -= OnDragRenderFrame;
+            _dragFrameSubscribed = false;
+        }
+        OrbDragScale.BeginAnimation(
+            ScaleTransform.ScaleXProperty,
+            ScaleAnimation(1, 150));
+        OrbDragScale.BeginAnimation(
+            ScaleTransform.ScaleYProperty,
+            ScaleAnimation(1, 150));
+    }
+
+    private static DoubleAnimation ScaleAnimation(
+        double to,
+        int durationMilliseconds) =>
+        new()
+        {
+            To = to,
+            Duration = TimeSpan.FromMilliseconds(durationMilliseconds),
+            EasingFunction = new CubicEase
+            {
+                EasingMode = EasingMode.EaseOut
+            }
+        };
 
     private void SnapIfNeeded()
     {

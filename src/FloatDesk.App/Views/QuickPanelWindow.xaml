@@ -168,9 +168,12 @@
           Opacity="0"
           RenderTransformOrigin="0.5,0.5">
         <Grid.RenderTransform>
-            <ScaleTransform x:Name="MenuScaleTransform"
-                            ScaleX="0.97"
-                            ScaleY="0.97" />
+            <TransformGroup>
+                <ScaleTransform x:Name="MenuScaleTransform"
+                                ScaleX="0.97"
+                                ScaleY="0.97" />
+                <TranslateTransform x:Name="MenuTranslateTransform" />
+            </TransformGroup>
         </Grid.RenderTransform>
 
         <Canvas x:Name="MenuCanvas"

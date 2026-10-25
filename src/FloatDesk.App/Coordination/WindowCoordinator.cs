@@ -69,7 +69,13 @@ public sealed class WindowCoordinator : IWindowCoordinator
         _quickPanel.Activate();
     }
 
-    public void HideQuickPanel() => _quickPanel?.Hide();
+    public void HideQuickPanel()
+    {
+        if (_quickPanel is FloatDesk.App.Views.QuickPanelWindow panel)
+            panel.HideAnimated();
+        else
+            _quickPanel?.Hide();
+    }
 
     public IReadOnlyList<Window> ToolWindows => _windows.Values.ToArray();
 
