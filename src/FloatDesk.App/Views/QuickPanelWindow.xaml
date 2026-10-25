@@ -43,6 +43,14 @@
             <GradientStop Color="#EFFFFFFF" Offset="0" />
             <GradientStop Color="#DCEAF5FF" Offset="1" />
         </LinearGradientBrush>
+        <LinearGradientBrush x:Key="WheelDrawerMask"
+                             StartPoint="0,0"
+                             EndPoint="0,1">
+            <GradientStop Color="#00FFFFFF" Offset="0" />
+            <GradientStop Color="#FFFFFFFF" Offset="0.08" />
+            <GradientStop Color="#FFFFFFFF" Offset="0.92" />
+            <GradientStop Color="#00FFFFFF" Offset="1" />
+        </LinearGradientBrush>
 
         <DropShadowEffect x:Key="MenuShadow"
                           BlurRadius="24"
@@ -168,6 +176,7 @@
                           HorizontalScrollBarVisibility="Disabled"
                           PanningMode="VerticalOnly"
                           ClipToBounds="True"
+                          OpacityMask="{StaticResource WheelDrawerMask}"
                           PreviewMouseWheel="OnWheelLauncherMouseWheel">
                 <StackPanel x:Name="WheelLauncherPanel"
                             Orientation="Vertical"

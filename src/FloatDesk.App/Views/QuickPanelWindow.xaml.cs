@@ -201,7 +201,10 @@ public partial class QuickPanelWindow : Window
             Canvas.SetTop(element, y);
         }
         ArrangeAnchor(anchor);
-        UpdateFanGeometry(anchor, direction);
+        UpdateFanGeometry(
+            anchor,
+            direction,
+            actions.Select(item => item.Element).ToArray());
     }
 
     private void ArrangeAnchor(Point anchor)
@@ -210,33 +213,71 @@ public partial class QuickPanelWindow : Window
         Canvas.SetTop(AnchorHalo, anchor.Y - AnchorHalo.Height / 2);
     }
 
-    private void UpdateFanGeometry(Point anchor, double direction)
+    private void UpdateFanGeometry(
+        Point anchor,
+        double direction,
+        IReadOnlyList<FrameworkElement> actions)
     {
         const double edge = 10;
-        const double top = 8;
-        const double bottom = PanelHeight - 8;
-        const double corner = 38;
-        var nearX = anchor.X + (direction * 48);
-        var farX = direction > 0 ? PanelWidth - edge : edge;
+        const double contentGap = 18;
+        var actionTop = actions.Min(element => Canvas.GetTop(element));
+        var actionBottom = actions.Max(
+            element => Canvas.GetTop(element) + element.Height);
+        var actionNear = direction > 0
+            ? actions.Max(element => Canvas.GetLeft(element) + element.Width)
+            : actions.Min(element => Canvas.GetLeft(element));
+        var top = actionTop;
+        var bottom = actionBottom;
+        var farX = actionNear;
+
+        if (WheelLauncherScroller.Visibility == Visibility.Visible)
+        {
+            var launcherLeft = Canvas.GetLeft(WheelLauncherScroller);
+            var launcherTop = Canvas.GetTop(WheelLauncherScroller);
+            top = Math.Min(top, launcherTop);
+            bottom = Math.Max(
+                bottom,
+                launcherTop + WheelLauncherScroller.Height);
+            farX = direction > 0
+                ? Math.Max(
+                    farX,
+                    launcherLeft + WheelLauncherScroller.Width)
+                : Math.Min(farX, launcherLeft);
+        }
+
+        top = Math.Clamp(top - contentGap, 8, PanelHeight - 80);
+        bottom = Math.Clamp(
+            bottom + contentGap,
+            top + 80,
+            PanelHeight - 8);
+        farX = direction > 0
+            ? Math.Clamp(farX + (contentGap * 1.35), edge, PanelWidth - edge)
+            : Math.Clamp(farX - (contentGap * 1.35), edge, PanelWidth - edge);
+        var distance = Math.Abs(farX - anchor.X);
+        var shoulderX = anchor.X +
+                        (direction * Math.Min(96, Math.Max(64, distance * 0.15)));
+        var corner = Math.Min(38, Math.Max(22, distance * 0.11));
+        var outerTop = top + Math.Min(32, Math.Max(16, distance * 0.05));
+        var nearBottom = Math.Min(bottom, actionBottom + 10);
 
         var wash = new StreamGeometry();
         using (var context = wash.Open())
         {
             context.BeginFigure(anchor, isFilled: true, isClosed: true);
             context.BezierTo(
-                new Point(anchor.X + (direction * 22), anchor.Y - 98),
-                new Point(anchor.X + (direction * 43), top),
-                new Point(nearX, top),
+                new Point(anchor.X + (direction * 24), anchor.Y - 104),
+                new Point(anchor.X + (direction * 48), top),
+                new Point(shoulderX, top),
                 isStroked: false,
                 isSmoothJoin: true);
             context.LineTo(
-                new Point(farX - (direction * corner), top),
+                new Point(farX - (direction * corner), outerTop),
                 isStroked: false,
                 isSmoothJoin: true);
             context.BezierTo(
-                new Point(farX - (direction * 10), top),
-                new Point(farX, top + 10),
-                new Point(farX, top + corner),
+                new Point(farX - (direction * 10), outerTop),
+                new Point(farX, outerTop + 10),
+                new Point(farX, outerTop + corner),
                 isStroked: false,
                 isSmoothJoin: true);
             context.LineTo(
@@ -250,18 +291,45 @@ public partial class QuickPanelWindow : Window
                 isStroked: false,
                 isSmoothJoin: true);
             context.LineTo(
-                new Point(nearX, bottom),
+                new Point(shoulderX, nearBottom),
                 isStroked: false,
                 isSmoothJoin: true);
             context.BezierTo(
-                new Point(anchor.X + (direction * 42), bottom),
-                new Point(anchor.X + (direction * 22), anchor.Y + 118),
+                new Point(anchor.X + (direction * 48), bottom),
+                new Point(anchor.X + (direction * 24), anchor.Y + 116),
                 anchor,
                 isStroked: false,
                 isSmoothJoin: true);
         }
         wash.Freeze();
         FanWash.Data = wash;
+        UpdateWheelDrawerClip(wash);
+    }
+
+    private void UpdateWheelDrawerClip(Geometry fan)
+    {
+        if (WheelLauncherScroller.Visibility != Visibility.Visible)
+        {
+            WheelLauncherScroller.Clip = null;
+            return;
+        }
+
+        var left = Canvas.GetLeft(WheelLauncherScroller);
+        var top = Canvas.GetTop(WheelLauncherScroller);
+        var viewport = new Rect(
+            left,
+            top,
+            WheelLauncherScroller.Width,
+            WheelLauncherScroller.Height);
+        var clipped = new CombinedGeometry(
+            GeometryCombineMode.Intersect,
+            fan,
+            new RectangleGeometry(viewport, 18, 18))
+        {
+            Transform = new TranslateTransform(-left, -top)
+        };
+        clipped.Freeze();
+        WheelLauncherScroller.Clip = clipped;
     }
 
     private void PlayEntranceAnimation()

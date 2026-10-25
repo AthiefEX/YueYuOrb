@@ -9,6 +9,17 @@ namespace FloatDesk.Ui.Tests;
 [Collection("WPF")]
 public sealed class QuickPanelWindowLayoutTests
 {
+    private static readonly string[] FixedActionNames =
+    [
+        "RegionCaptureButton",
+        "WindowCaptureButton",
+        "MonitorCaptureButton",
+        "AiButton",
+        "NotesButton",
+        "InputLockButton",
+        "SettingsButton"
+    ];
+
     [Fact(Timeout = 10_000)]
     public async Task ActionsUseUniformGeometryWithoutSelectionBorder()
     {
@@ -18,18 +29,7 @@ public sealed class QuickPanelWindowLayoutTests
             try
             {
                 var window = new QuickPanelWindow();
-                string[] actionNames =
-                [
-                    "RegionCaptureButton",
-                    "WindowCaptureButton",
-                    "MonitorCaptureButton",
-                    "AiButton",
-                    "NotesButton",
-                    "InputLockButton",
-                    "SettingsButton"
-                ];
-
-                foreach (var name in actionNames)
+                foreach (var name in FixedActionNames)
                 {
                     var button = Assert.IsType<Button>(
                         window.FindName(name));
@@ -228,7 +228,7 @@ public sealed class QuickPanelWindowLayoutTests
     [Theory(Timeout = 10_000)]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task BackdropContainsEveryVisibleMenuSurface(
+    public async Task FanBackdropContainsWheelAndLeavesDockOutside(
         bool opensLeft)
     {
         Exception? failure = null;
@@ -271,8 +271,23 @@ public sealed class QuickPanelWindowLayoutTests
 
                 var fan = Assert.IsType<System.Windows.Shapes.Path>(
                     window.FindName("FanWash"));
+                var scroller = Assert.IsType<ScrollViewer>(
+                    window.FindName("WheelLauncherScroller"));
                 var geometry = Assert.IsAssignableFrom<Geometry>(fan.Data);
                 Assert.Null(fan.Stroke);
+                Assert.NotNull(scroller.Clip);
+                Assert.IsType<LinearGradientBrush>(
+                    scroller.OpacityMask);
+                Assert.True(
+                    geometry.Bounds.Height <= 480,
+                    "The fan must hug the wheel instead of covering " +
+                    "the complete 560-pixel panel.");
+                var taperedCorner = new Point(
+                    opensLeft ? geometry.Bounds.Left + 20 : geometry.Bounds.Right - 20,
+                    geometry.Bounds.Top + 8);
+                Assert.False(
+                    geometry.FillContains(taperedCorner),
+                    "The outer edge must taper toward the anchor like a fan.");
                 string[] surfaces =
                 [
                     "RegionCaptureButton",
@@ -281,9 +296,7 @@ public sealed class QuickPanelWindowLayoutTests
                     "AiButton",
                     "NotesButton",
                     "InputLockButton",
-                    "SettingsButton",
-                    "WheelLauncherScroller",
-                    "LauncherDock"
+                    "SettingsButton"
                 ];
                 foreach (var name in surfaces)
                 {
@@ -296,6 +309,76 @@ public sealed class QuickPanelWindowLayoutTests
                         geometry.FillContains(bounds.BottomLeft) &&
                         geometry.FillContains(bounds.BottomRight),
                         $"{name} must be inside the continuous glass backdrop.");
+                }
+
+                var dock = Assert.IsType<Border>(
+                    window.FindName("LauncherDock"));
+                var dockCenter = SurfaceBounds(dock, inset: 4);
+                Assert.False(
+                    geometry.FillContains(
+                        new Point(
+                            dockCenter.Left + (dockCenter.Width / 2),
+                            dockCenter.Top + (dockCenter.Height / 2))),
+                    "The separate quick-app dock must keep its own surface.");
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Theory(Timeout = 10_000)]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EmptyWheelFanCollapsesToActionArc(bool opensLeft)
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new QuickPanelWindow();
+                window.Apply(
+                    AppSettings.CreateDefault(),
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+                InvokeArrangeMenu(
+                    window,
+                    new Point(opensLeft ? 623 : 37, 280),
+                    opensLeft);
+
+                var fan = Assert.IsType<System.Windows.Shapes.Path>(
+                    window.FindName("FanWash"));
+                var geometry = Assert.IsAssignableFrom<Geometry>(fan.Data);
+                Assert.True(
+                    geometry.Bounds.Width < 400,
+                    "An empty wheel should not keep the full-width " +
+                    "application drawer surface.");
+                Assert.True(
+                    geometry.Bounds.Height < 450,
+                    "An empty wheel should only cover its action arc.");
+
+                foreach (var name in FixedActionNames)
+                {
+                    var button = Assert.IsAssignableFrom<FrameworkElement>(
+                        window.FindName(name));
+                    var bounds = SurfaceBounds(button, inset: 4);
+                    Assert.True(
+                        geometry.FillContains(bounds.TopLeft) &&
+                        geometry.FillContains(bounds.TopRight) &&
+                        geometry.FillContains(bounds.BottomLeft) &&
+                        geometry.FillContains(bounds.BottomRight),
+                        $"{name} must remain inside the compact fan.");
                 }
             }
             catch (Exception exception)
