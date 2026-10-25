@@ -212,35 +212,50 @@ public partial class QuickPanelWindow : Window
 
     private void UpdateFanGeometry(Point anchor, double direction)
     {
-        static Point Clamp(Point point) =>
-            new(
-                Math.Clamp(point.X, 8, PanelWidth - 8),
-                Math.Clamp(point.Y, 8, 452));
-
-        var outerTop = Clamp(
-            new Point(anchor.X + direction * 360, 12));
-        var outerBottom = Clamp(
-            new Point(anchor.X + direction * 360, 468));
+        const double edge = 10;
+        const double top = 8;
+        const double bottom = PanelHeight - 8;
+        const double corner = 38;
+        var nearX = anchor.X + (direction * 48);
+        var farX = direction > 0 ? PanelWidth - edge : edge;
 
         var wash = new StreamGeometry();
         using (var context = wash.Open())
         {
             context.BeginFigure(anchor, isFilled: true, isClosed: true);
             context.BezierTo(
-                Clamp(new Point(anchor.X + direction * 80, anchor.Y - 126)),
-                Clamp(new Point(anchor.X + direction * 260, 16)),
-                outerTop,
+                new Point(anchor.X + (direction * 22), anchor.Y - 98),
+                new Point(anchor.X + (direction * 43), top),
+                new Point(nearX, top),
+                isStroked: false,
+                isSmoothJoin: true);
+            context.LineTo(
+                new Point(farX - (direction * corner), top),
                 isStroked: false,
                 isSmoothJoin: true);
             context.BezierTo(
-                Clamp(new Point(anchor.X + direction * 398, 150)),
-                Clamp(new Point(anchor.X + direction * 398, 350)),
-                outerBottom,
+                new Point(farX - (direction * 10), top),
+                new Point(farX, top + 10),
+                new Point(farX, top + corner),
+                isStroked: false,
+                isSmoothJoin: true);
+            context.LineTo(
+                new Point(farX, bottom - corner),
                 isStroked: false,
                 isSmoothJoin: true);
             context.BezierTo(
-                Clamp(new Point(anchor.X + direction * 165, 410)),
-                Clamp(new Point(anchor.X + direction * 32, 300)),
+                new Point(farX, bottom - 10),
+                new Point(farX - (direction * 10), bottom),
+                new Point(farX - (direction * corner), bottom),
+                isStroked: false,
+                isSmoothJoin: true);
+            context.LineTo(
+                new Point(nearX, bottom),
+                isStroked: false,
+                isSmoothJoin: true);
+            context.BezierTo(
+                new Point(anchor.X + (direction * 42), bottom),
+                new Point(anchor.X + (direction * 22), anchor.Y + 118),
                 anchor,
                 isStroked: false,
                 isSmoothJoin: true);

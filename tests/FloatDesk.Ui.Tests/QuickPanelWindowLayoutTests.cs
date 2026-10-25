@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using FloatDesk.App.Views;
 using FloatDesk.Core.Models;
 
@@ -222,6 +223,130 @@ public sealed class QuickPanelWindowLayoutTests
         await Task.CompletedTask;
         if (failure is not null)
             throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Theory(Timeout = 10_000)]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BackdropContainsEveryVisibleMenuSurface(
+        bool opensLeft)
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new QuickPanelWindow();
+                var launchers = new[]
+                {
+                    new LauncherItem(
+                        Guid.NewGuid(),
+                        "轮盘应用",
+                        LauncherKind.Exe,
+                        @"C:\Apps\wheel.exe",
+                        [],
+                        null,
+                        0,
+                        ShowInWheel: true),
+                    new LauncherItem(
+                        Guid.NewGuid(),
+                        "底栏应用",
+                        LauncherKind.Exe,
+                        @"C:\Apps\dock.exe",
+                        [],
+                        null,
+                        1)
+                };
+                window.Apply(
+                    AppSettings.CreateDefault() with
+                    {
+                        Launchers = launchers
+                    },
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+                InvokeArrangeMenu(
+                    window,
+                    new Point(opensLeft ? 623 : 37, 280),
+                    opensLeft);
+
+                var fan = Assert.IsType<System.Windows.Shapes.Path>(
+                    window.FindName("FanWash"));
+                var geometry = Assert.IsAssignableFrom<Geometry>(fan.Data);
+                Assert.Null(fan.Stroke);
+                string[] surfaces =
+                [
+                    "RegionCaptureButton",
+                    "WindowCaptureButton",
+                    "MonitorCaptureButton",
+                    "AiButton",
+                    "NotesButton",
+                    "InputLockButton",
+                    "SettingsButton",
+                    "WheelLauncherScroller",
+                    "LauncherDock"
+                ];
+                foreach (var name in surfaces)
+                {
+                    var element = Assert.IsAssignableFrom<FrameworkElement>(
+                        window.FindName(name));
+                    var bounds = SurfaceBounds(element, inset: 4);
+                    Assert.True(
+                        geometry.FillContains(bounds.TopLeft) &&
+                        geometry.FillContains(bounds.TopRight) &&
+                        geometry.FillContains(bounds.BottomLeft) &&
+                        geometry.FillContains(bounds.BottomRight),
+                        $"{name} must be inside the continuous glass backdrop.");
+                }
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    private static void InvokeArrangeMenu(
+        QuickPanelWindow window,
+        Point anchor,
+        bool opensLeft)
+    {
+        var method = typeof(QuickPanelWindow).GetMethod(
+            "ArrangeMenu",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(
+                "ArrangeMenu was not found.");
+        method.Invoke(window, [anchor, opensLeft]);
+    }
+
+    private static Rect SurfaceBounds(
+        FrameworkElement element,
+        double inset)
+    {
+        var width = element.Width;
+        var height = element.Height;
+        if (double.IsNaN(width))
+            width = element.ActualWidth;
+        if (double.IsNaN(height))
+            height = element.ActualHeight;
+        var left = Canvas.GetLeft(element);
+        var top = Canvas.GetTop(element);
+        Assert.False(double.IsNaN(left));
+        Assert.False(double.IsNaN(top));
+        return new Rect(
+            left + inset,
+            top + inset,
+            Math.Max(1, width - (inset * 2)),
+            Math.Max(1, height - (inset * 2)));
     }
 
     private static void AssertNoKeyboardFocusTrigger(

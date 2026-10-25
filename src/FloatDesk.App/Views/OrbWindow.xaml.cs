@@ -14,6 +14,7 @@ namespace FloatDesk.App.Views;
 
 public partial class OrbWindow : Window
 {
+    private const double OrbChromePadding = 20;
     private readonly DispatcherTimer _clockTimer = new();
     private readonly Action _openPanel;
     private readonly Action<PixelRect> _positionChanged;
@@ -83,11 +84,13 @@ public partial class OrbWindow : Window
         _snap = settings.Orb.SnapToEdge;
         _positionLocked = settings.Orb.PositionLocked;
         _imageShape = settings.Orb.ImageShape;
-        Width = _sizeDip + 8;
+        OrbLayout.Margin = new Thickness(OrbChromePadding);
+        Width = _sizeDip + (OrbChromePadding * 2);
         OrbRoot.Width = _sizeDip;
         OrbRoot.Height = _sizeDip;
         Opacity = settings.Orb.Opacity;
-        OrbRoot.Clip = settings.Orb.ImageShape == OrbImageShape.Circle
+        OrbRoot.Clip = null;
+        OrbImage.Clip = settings.Orb.ImageShape == OrbImageShape.Circle
             ? new System.Windows.Media.EllipseGeometry(
                 new System.Windows.Point(_sizeDip / 2, _sizeDip / 2),
                 _sizeDip / 2,
@@ -287,7 +290,7 @@ public partial class OrbWindow : Window
             return false;
         }
         var scale = DesktopGeometry.GetWindowDpiScale(handle);
-        var margin = 4 * scale;
+        var margin = OrbChromePadding * scale;
         var orbLeft = window.Left + margin;
         var orbTop = window.Top + margin;
         var orbSize = _sizeDip * scale;

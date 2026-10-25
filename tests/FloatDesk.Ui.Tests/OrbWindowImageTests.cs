@@ -68,6 +68,61 @@ public sealed class OrbWindowImageTests
         }
     }
 
+    [Fact(Timeout = 10_000)]
+    public async Task OrbGlowHasTransparentRoomAndIsNotRootClipped()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new OrbWindow(
+                    () => { },
+                    _ => { },
+                    () => { },
+                    () => { },
+                    () => { },
+                    () => { },
+                    () => { },
+                    () => { });
+                window.ApplySettings(AppSettings.CreateDefault());
+
+                var layout = Assert.IsType<StackPanel>(
+                    window.FindName("OrbLayout"));
+                var root = Assert.IsType<Grid>(
+                    window.FindName("OrbRoot"));
+                var image = Assert.IsType<Image>(
+                    window.FindName("OrbImage"));
+
+                Assert.Null(root.Clip);
+                Assert.IsType<EllipseGeometry>(image.Clip);
+                Assert.True(
+                    layout.Margin.Left >= 20 &&
+                    layout.Margin.Top >= 20 &&
+                    layout.Margin.Right >= 20 &&
+                    layout.Margin.Bottom >= 20,
+                    "The per-pixel transparent window must leave room " +
+                    "for the orb shadow and glow.");
+                Assert.Equal(
+                    AppSettings.CreateDefault().Orb.SizeDip + 40,
+                    window.Width);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
     private static void WriteTransparentPng(string path)
     {
         var bitmap = BitmapSource.Create(

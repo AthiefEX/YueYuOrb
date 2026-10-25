@@ -9,7 +9,7 @@
         ShowInTaskbar="False"
         SizeToContent="Height"
         Title="FloatDesk">
-    <StackPanel x:Name="OrbLayout" Margin="4">
+    <StackPanel x:Name="OrbLayout" Margin="20">
         <Grid x:Name="OrbRoot"
               Width="56"
               Height="56"

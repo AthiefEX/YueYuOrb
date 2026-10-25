@@ -26,11 +26,11 @@
         <SolidColorBrush x:Key="MenuSlateBrush" Color="#FF758197" />
 
         <LinearGradientBrush x:Key="MenuFanBrush"
-                             StartPoint="1,0.5"
-                             EndPoint="0,0.5">
-            <GradientStop Color="#A6FFFFFF" Offset="0" />
-            <GradientStop Color="#72EFF6FF" Offset="0.5" />
-            <GradientStop Color="#42FFFFFF" Offset="1" />
+                             StartPoint="0,0"
+                             EndPoint="1,1">
+            <GradientStop Color="#DEFFFFFF" Offset="0" />
+            <GradientStop Color="#C8F5FAFF" Offset="0.62" />
+            <GradientStop Color="#B4EAF4FF" Offset="1" />
         </LinearGradientBrush>
         <RadialGradientBrush x:Key="AnchorHaloBrush">
             <GradientStop Color="#BFFFFFFF" Offset="0" />
@@ -146,9 +146,9 @@
             <Path x:Name="FanWash"
                   Fill="{StaticResource MenuFanBrush}"
                   IsHitTestVisible="False"
-                  Opacity="0.78">
+                  Opacity="0.88">
                 <Path.Effect>
-                    <BlurEffect Radius="16" />
+                    <BlurEffect Radius="6" />
                 </Path.Effect>
             </Path>
 
