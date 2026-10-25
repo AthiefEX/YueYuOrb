@@ -708,10 +708,11 @@ public sealed class QuickPanelWindowLayoutTests
                 Assert.Equal(0, scroller.VerticalOffset, 1);
                 PumpDispatcherFor(TimeSpan.FromMilliseconds(75));
                 scroller.UpdateLayout();
-                Assert.InRange(
-                    scroller.VerticalOffset,
-                    1,
-                    expectedOffset - 1);
+                Assert.True(
+                    scroller.VerticalOffset > 0 &&
+                    scroller.VerticalOffset < expectedOffset,
+                    $"Expected an intermediate offset between 0 and " +
+                    $"{expectedOffset}, but observed {scroller.VerticalOffset}.");
 
                 PumpDispatcherFor(TimeSpan.FromMilliseconds(350));
                 scroller.UpdateLayout();

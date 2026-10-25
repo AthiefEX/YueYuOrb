@@ -1,7 +1,7 @@
 # FloatDesk 设置界面视觉重构设计
 
-日期：2026-10-26  
-状态：等待设计确认  
+日期：2026-10-26
+状态：已实现并完成发布验证
 技术栈：WPF / .NET 10 / Windows 10 和 Windows 11 x64
 
 ## 目标
@@ -87,3 +87,17 @@
 ## 自检结论
 
 该方案可用现有 WPF 架构完成，风险集中在自绘窗口的系统行为和全页控件模板覆盖。实现顺序会先建立视觉资源与结构测试，再重写页面，最后通过运行时截图和 Release 测试收敛布局。
+
+## 发布验证记录
+
+验证日期：2026-10-26（Asia/Hong_Kong）
+
+- 环境：Windows 10 22H2 x64（19045），.NET 10 SDK 10.0.400。
+- Release 构建：0 warnings，0 errors。
+- Release 测试：100/100 passed；Core 34、Infrastructure 14、Windows 6、UI 46。
+- 运行时检查：100% 与 125% DPI 页面截图通过；八页导航、键盘方向键、滑块状态跨页保留、非法快捷键校验、拖动、最小化、最大化/还原、关闭隐藏与重新打开均通过。
+- 冒烟修复：应用日志按 UTC 日期分文件，`scripts/smoke.ps1` 已统一使用 UTC 定位当日日志，并在超时信息中输出实际检查路径。
+- 发布冒烟：`FloatDesk.exe` 主实例观察到 `startup.complete` 并持续存活；第二实例在 5 秒内以退出码 0 结束。
+- 发布物：`FloatDesk-1.0.0-win-x64.zip`，SHA256 `39403cadacdafaf59da6313f5cb1a67c134882f4a5d4b04af44c9fc9dd778ad6`。
+- 可执行文件：`publish/win-x64/FloatDesk.exe`，SHA256 `fa121d15a3f57c7f0e8701f29a787fe75f076030eede9f051d13fde87a49eade`。
+- 视觉证据：`settings-redesign-runtime.png`、`settings-redesign-125.png`、`settings-pages-contact-sheet.png` 和 `settings-pages/` 下的八页截图。

@@ -15,7 +15,8 @@ if (Get-Process FloatDesk -ErrorAction SilentlyContinue) {
     throw 'Stop any running FloatDesk instance before running this smoke test.'
 }
 
-$logPath = Join-Path $env:LOCALAPPDATA ('FloatDesk/logs/app-' + (Get-Date -Format 'yyyyMMdd') + '.log')
+$logPath = Join-Path $env:LOCALAPPDATA (
+    'FloatDesk/logs/app-' + [DateTime]::UtcNow.ToString('yyyyMMdd') + '.log')
 $beforeLines = if (Test-Path -LiteralPath $logPath) {
     (Get-Content -LiteralPath $logPath).Count
 }
@@ -38,7 +39,9 @@ try {
             break
         }
     }
-    if (-not $startupComplete) { throw 'startup.complete was not observed within 15 seconds.' }
+    if (-not $startupComplete) {
+        throw "startup.complete was not observed within 15 seconds in $logPath."
+    }
     if ($first.HasExited) { throw "Primary process exited unexpectedly: $($first.ExitCode)" }
 
     $second = Start-Process -FilePath $Executable -PassThru -WindowStyle Hidden
