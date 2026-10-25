@@ -94,10 +94,12 @@
 
 - 环境：Windows 10 22H2 x64（19045），.NET 10 SDK 10.0.400。
 - Release 构建：0 warnings，0 errors。
-- Release 测试：100/100 passed；Core 34、Infrastructure 14、Windows 6、UI 46。
+- Release 测试：106/106 passed；Core 34、Infrastructure 14、Windows 6、UI 52。
 - 运行时检查：100% 与 125% DPI 页面截图通过；八页导航、键盘方向键、滑块状态跨页保留、非法快捷键校验、拖动、最小化、最大化/还原、关闭隐藏与重新打开均通过。
+- 浅色/深色切换：设置、记事本、AI 网页、悬浮球时间与截图工具栏均使用动态语义画笔；二级轮盘的内置功能和动态应用名称栏同步切换，未残留固定浅色底。
+- 控件统一：设置、记事本与 AI 网页共用冰蓝玻璃窗口外壳、圆角按钮、下拉框、输入框和隐藏系统箭头槽的细滚动条。
 - 冒烟修复：应用日志按 UTC 日期分文件，`scripts/smoke.ps1` 已统一使用 UTC 定位当日日志，并在超时信息中输出实际检查路径。
 - 发布冒烟：`FloatDesk.exe` 主实例观察到 `startup.complete` 并持续存活；第二实例在 5 秒内以退出码 0 结束。
-- 发布物：`FloatDesk-1.0.0-win-x64.zip`，SHA256 `39403cadacdafaf59da6313f5cb1a67c134882f4a5d4b04af44c9fc9dd778ad6`。
-- 可执行文件：`publish/win-x64/FloatDesk.exe`，SHA256 `fa121d15a3f57c7f0e8701f29a787fe75f076030eede9f051d13fde87a49eade`。
-- 视觉证据：`settings-redesign-runtime.png`、`settings-redesign-125.png`、`settings-pages-contact-sheet.png` 和 `settings-pages/` 下的八页截图。
+- 发布物：`FloatDesk-1.0.0-win-x64.zip`，SHA256 `24a8cf4d300741fec6fa5927e6ef51471abb9ce58c51a6a1126fbebd5c628c3f`。
+- 可执行文件：`publish/win-x64/FloatDesk.exe`，SHA256 `e45d6d830170c601d9fc4101c81f444363a274842855da287bee9e07f36d1128`。
+- 视觉证据：`settings-redesign-runtime.png`、`settings-redesign-125.png`、`settings-pages-contact-sheet.png`、`FloatDesk-theme-light-dark.png` 和 `theme-verification/` 下的浅色/深色窗口截图。

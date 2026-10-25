@@ -3,18 +3,70 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
-        <Color x:Key="AccentColor">#146C5B</Color>
-        <Color x:Key="AccentDarkColor">#0F5144</Color>
-        <SolidColorBrush x:Key="AccentDarkBrush" Color="{StaticResource AccentDarkColor}" />
-        <Color x:Key="SurfaceColor">#F7F7F4</Color>
-        <Color x:Key="SurfaceRaisedColor">#FFFFFF</Color>
-        <Color x:Key="InkColor">#1D2623</Color>
-        <Color x:Key="MutedInkColor">#62706B</Color>
-        <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
-        <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}" />
-        <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="{StaticResource SurfaceRaisedColor}" />
-        <SolidColorBrush x:Key="InkBrush" Color="{StaticResource InkColor}" />
-        <SolidColorBrush x:Key="MutedInkBrush" Color="{StaticResource MutedInkColor}" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#2176E8" />
+        <SolidColorBrush x:Key="AccentDarkBrush" Color="#175FC2" />
+        <SolidColorBrush x:Key="AccentSoftBrush" Color="#E7F2FF" />
+        <SolidColorBrush x:Key="AccentPaleBrush" Color="#F2F7FF" />
+        <SolidColorBrush x:Key="AccentOutlineBrush" Color="#B7D4F8" />
+        <SolidColorBrush x:Key="SurfaceBrush" Color="#F4F8FE" />
+        <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="SurfaceMutedBrush" Color="#EDF5FF" />
+        <SolidColorBrush x:Key="InkBrush" Color="#17243B" />
+        <SolidColorBrush x:Key="MutedInkBrush" Color="#64738C" />
+        <SolidColorBrush x:Key="SubtleInkBrush" Color="#8190A6" />
+        <SolidColorBrush x:Key="ControlBorderBrush" Color="#224C75A9" />
+        <SolidColorBrush x:Key="ControlHoverBrush" Color="#EDF5FF" />
+        <SolidColorBrush x:Key="ControlPressedBrush" Color="#DCEBFF" />
+
+        <SolidColorBrush x:Key="SettingsCardBrush" Color="#F7FFFFFF" />
+        <SolidColorBrush x:Key="SettingsCardSubtleBrush" Color="#EFFFFFFF" />
+        <SolidColorBrush x:Key="SettingsFieldBrush" Color="#F8FFFFFF" />
+        <SolidColorBrush x:Key="SettingsHeaderBrush" Color="#F5FBFF" />
+        <SolidColorBrush x:Key="SettingsInkBrush" Color="#17243B" />
+        <SolidColorBrush x:Key="SettingsMutedBrush" Color="#64738C" />
+        <SolidColorBrush x:Key="SettingsSubtleBrush" Color="#8190A6" />
+        <SolidColorBrush x:Key="SettingsAccentBrush" Color="#2176E8" />
+        <SolidColorBrush x:Key="SettingsAccentDarkBrush" Color="#175FC2" />
+        <SolidColorBrush x:Key="SettingsAccentSoftBrush" Color="#E7F2FF" />
+        <SolidColorBrush x:Key="SettingsAccentPaleBrush" Color="#F2F7FF" />
+        <SolidColorBrush x:Key="SettingsAccentOutlineBrush" Color="#B7D4F8" />
+        <SolidColorBrush x:Key="SettingsLineBrush" Color="#1F4D78A9" />
+        <SolidColorBrush x:Key="SettingsHoverBrush" Color="#EDF5FF" />
+        <SolidColorBrush x:Key="SettingsPressedBrush" Color="#DCEBFF" />
+        <SolidColorBrush x:Key="SettingsButtonBrush" Color="#F9FFFFFF" />
+        <SolidColorBrush x:Key="SettingsNavBarBrush" Color="#C9F7FBFF" />
+        <SolidColorBrush x:Key="SettingsNavBorderBrush" Color="#72FFFFFF" />
+        <SolidColorBrush x:Key="SettingsNavHoverBrush" Color="#66FFFFFF" />
+        <SolidColorBrush x:Key="SettingsSwitchOffBrush" Color="#BCC7D4" />
+        <SolidColorBrush x:Key="SettingsSwitchKnobBrush" Color="#FFFFFF" />
+        <SolidColorBrush x:Key="SettingsCaptionInkBrush" Color="#53627A" />
+        <SolidColorBrush x:Key="SettingsCaptionHoverBrush" Color="#80FFFFFF" />
+        <SolidColorBrush x:Key="SettingsCaptionPressedBrush" Color="#B8E7F1FF" />
+        <SolidColorBrush x:Key="SettingsPopupBrush" Color="#FEFFFFFF" />
+        <SolidColorBrush x:Key="SettingsGridRowBrush" Color="#F9FFFFFF" />
+        <SolidColorBrush x:Key="SettingsGridAltRowBrush" Color="#66F5F9FF" />
+        <SolidColorBrush x:Key="SettingsGridHoverBrush" Color="#77EFF6FF" />
+        <SolidColorBrush x:Key="SettingsToolbarBrush" Color="#F2F7FF" />
+        <SolidColorBrush x:Key="SettingsScrollTrackBrush" Color="#0A2176E8" />
+        <SolidColorBrush x:Key="SettingsScrollThumbBrush" Color="#8CB7D4F0" />
+        <SolidColorBrush x:Key="SettingsScrollThumbHoverBrush" Color="#697E99B8" />
+        <SolidColorBrush x:Key="SettingsHeroBrush" Color="#EEF7FF" />
+        <SolidColorBrush x:Key="SettingsAtmosphereBrush" Color="#DDEBFA" />
+        <SolidColorBrush x:Key="SettingsShellBrush" Color="#FAFCFF" />
+        <SolidColorBrush x:Key="SettingsWindowBackgroundBrush" Color="#F4F8FE" />
+        <SolidColorBrush x:Key="ToolWindowTitleBarBrush" Color="#EEF6FF" />
+        <SolidColorBrush x:Key="ToolWindowContentBrush" Color="#F8FBFF" />
+        <SolidColorBrush x:Key="ToolWindowInsetBrush" Color="#F2F7FF" />
+        <SolidColorBrush x:Key="ToolWindowEditorBrush" Color="#FFFFFFFF" />
+        <SolidColorBrush x:Key="ToolWindowProxyBrush" Color="#EAF3FD" />
+
+        <SolidColorBrush x:Key="MenuLabelBrush" Color="#F5FFFFFF" />
+        <SolidColorBrush x:Key="MenuStrongBrush" Color="#18345B" />
+        <SolidColorBrush x:Key="MenuMutedBrush" Color="#667B92B7" />
+        <SolidColorBrush x:Key="MenuDockGlassBrush" Color="#E9FFFFFF" />
+        <SolidColorBrush x:Key="MenuActionBeamBrush" Color="#34FFFFFF" />
+        <SolidColorBrush x:Key="MenuDockButtonBrush" Color="#D9FFFFFF" />
+        <SolidColorBrush x:Key="MenuDockButtonHoverBrush" Color="#FFFFFFFF" />
 
         <Style TargetType="Window">
             <Setter Property="FontFamily" Value="Segoe UI Variable, Microsoft YaHei UI" />
@@ -25,7 +77,7 @@
 
         <Style x:Key="PanelBorderStyle" TargetType="Border">
             <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
-            <Setter Property="BorderBrush" Value="#22000000" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="14" />
             <Setter Property="Padding" Value="12" />
@@ -37,7 +89,7 @@
             <Setter Property="Margin" Value="0" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
-            <Setter Property="BorderBrush" Value="#22000000" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -55,8 +107,8 @@
             </Setter>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#E6F1ED" />
-                    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                    <Setter Property="Background" Value="{DynamicResource ControlHoverBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                 </Trigger>
                 <Trigger Property="IsEnabled" Value="False">
                     <Setter Property="Opacity" Value="0.5" />
@@ -68,11 +120,11 @@
                TargetType="Button"
                BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Foreground" Value="White" />
-            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="{StaticResource AccentDarkBrush}" />
+                    <Setter Property="Background" Value="{DynamicResource AccentDarkBrush}" />
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -80,12 +132,14 @@
         <Style TargetType="TextBox">
             <Setter Property="Padding" Value="9,7" />
             <Setter Property="MinHeight" Value="34" />
-            <Setter Property="BorderBrush" Value="#33000000" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
 
         <Style TargetType="ListBox">
-            <Setter Property="BorderBrush" Value="#22000000" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceRaisedBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource InkBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
         </Style>
     </Application.Resources>
 </Application>

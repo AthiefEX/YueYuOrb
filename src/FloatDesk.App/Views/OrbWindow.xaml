@@ -50,8 +50,8 @@
         </Grid>
         <Border x:Name="ClockBorder"
                 Visibility="Collapsed"
-                Background="#E6FFFFFF"
-                BorderBrush="#22000000"
+                Background="{DynamicResource ToolWindowEditorBrush}"
+                BorderBrush="{DynamicResource ControlBorderBrush}"
                 BorderThickness="1"
                 CornerRadius="9"
                 Padding="7,3"

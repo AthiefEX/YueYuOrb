@@ -16,6 +16,10 @@ Plan: `01-产品与技术规格.md`, `02-Agent开发计划.md`,
   NOT TESTED; see `docs/manual-tests.md`.
 - Release build/test, self-contained publish, ZIP and SHA256: complete after
   the final self-review fixes.
+- Settings, Notes, AI browser and QuickPanel theme surfaces: Light/Dark
+  runtime rendering PASS; wheel label bars follow semantic theme brushes.
+- Final automated verification: 106/106 Release tests PASS
+  (Core 34, Infrastructure 14, Windows 6, UI 52), 0 build warnings/errors.
 - Inno Setup package: NOT GENERATED because `iscc` is not installed; the
   complete script remains in `installer/FloatDesk.iss`.
 - Final self-review: complete by the implementing agent. This is weaker than

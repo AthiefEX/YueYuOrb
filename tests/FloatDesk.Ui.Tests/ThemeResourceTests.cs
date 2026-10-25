@@ -3,6 +3,8 @@ using System.Windows.Controls;
 using System.Windows.Markup;
 using System.Windows.Media;
 using System.Xml.Linq;
+using FloatDesk.App;
+using FloatDesk.Core.Models;
 
 namespace FloatDesk.Ui.Tests;
 
@@ -30,7 +32,14 @@ public sealed class ThemeResourceTests
                     candidate =>
                         candidate.Property == Control.BackgroundProperty);
 
-                Assert.IsAssignableFrom<Brush>(setter.Value);
+                if (setter.Value is DynamicResourceExtension dynamicResource)
+                {
+                    Assert.Equal("AccentDarkBrush", dynamicResource.ResourceKey);
+                }
+                else
+                {
+                    Assert.IsAssignableFrom<Brush>(setter.Value);
+                }
             }
             catch (Exception exception)
             {
@@ -41,6 +50,128 @@ public sealed class ThemeResourceTests
         thread.Start();
 
         Assert.True(thread.Join(TimeSpan.FromSeconds(5)), "STA test thread timed out.");
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact]
+    public void DarkAndLightThemesReplaceEverySemanticBrush()
+    {
+        var resources = LoadApplicationResources();
+        var keys = new[]
+        {
+            "AccentBrush",
+            "AccentDarkBrush",
+            "SurfaceBrush",
+            "SurfaceRaisedBrush",
+            "InkBrush",
+            "MutedInkBrush",
+            "SettingsCardBrush",
+            "SettingsCardSubtleBrush",
+            "SettingsFieldBrush",
+            "SettingsLineBrush",
+            "SettingsHoverBrush",
+            "SettingsPressedBrush",
+            "MenuLabelBrush",
+            "MenuStrongBrush",
+            "MenuMutedBrush",
+            "MenuDockGlassBrush",
+            "MenuActionBeamBrush"
+        };
+
+        ThemeService.ApplyToResources(
+            resources,
+            AppTheme.Dark,
+            highContrast: false,
+            systemUsesDarkTheme: false);
+        var dark = keys.ToDictionary(
+            key => key,
+            key => GetColor(resources, key));
+
+        ThemeService.ApplyToResources(
+            resources,
+            AppTheme.Light,
+            highContrast: false,
+            systemUsesDarkTheme: true);
+        var light = keys.ToDictionary(
+            key => key,
+            key => GetColor(resources, key));
+
+        foreach (var key in keys)
+        {
+            Assert.NotEqual(light[key], dark[key]);
+        }
+        Assert.True(Brightness(dark["SurfaceBrush"]) < Brightness(light["SurfaceBrush"]));
+        Assert.True(Brightness(dark["InkBrush"]) > Brightness(light["InkBrush"]));
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task WheelLauncherLabelsFollowThemeResources()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var lightBackground = Color.FromRgb(250, 251, 252);
+                var lightForeground = Color.FromRgb(20, 30, 45);
+                var darkBackground = Color.FromRgb(32, 40, 52);
+                var darkForeground = Color.FromRgb(240, 246, 255);
+                var window = new FloatDesk.App.Views.QuickPanelWindow();
+                window.Resources["MenuLabelBrush"] =
+                    new SolidColorBrush(lightBackground);
+                window.Resources["MenuStrongBrush"] =
+                    new SolidColorBrush(lightForeground);
+
+                var settings = AppSettings.CreateDefault() with
+                {
+                    Launchers =
+                    [
+                        new LauncherItem(
+                            Guid.NewGuid(),
+                            "主题测试应用",
+                            LauncherKind.Exe,
+                            @"C:\Apps\theme.exe",
+                            [],
+                            null,
+                            0,
+                            ShowInWheel: true)
+                    ]
+                };
+                window.Apply(
+                    settings,
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+                AssertWheelLabelColors(
+                    window,
+                    lightBackground,
+                    lightForeground);
+
+                window.Resources["MenuLabelBrush"] =
+                    new SolidColorBrush(darkBackground);
+                window.Resources["MenuStrongBrush"] =
+                    new SolidColorBrush(darkForeground);
+                window.Apply(
+                    settings,
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+                AssertWheelLabelColors(
+                    window,
+                    darkBackground,
+                    darkForeground);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
         if (failure is not null)
             throw new Xunit.Sdk.XunitException(failure.ToString());
     }
@@ -80,5 +211,58 @@ public sealed class ThemeResourceTests
             "</ResourceDictionary>";
         return Assert.IsType<ResourceDictionary>(
             XamlReader.Parse(resourceDictionaryXaml));
+    }
+
+    private static Color GetColor(
+        ResourceDictionary resources,
+        string key) =>
+        Assert.IsType<SolidColorBrush>(resources[key]).Color;
+
+    private static void AssertWheelLabelColors(
+        FloatDesk.App.Views.QuickPanelWindow window,
+        Color expectedBackground,
+        Color expectedForeground)
+    {
+        var canvas = Assert.IsType<Canvas>(window.FindName("WheelCanvas"));
+        var button = Assert.Single(
+            canvas.Children.OfType<Button>(),
+            candidate =>
+                candidate.Tag is LauncherItem
+                {
+                    Name: "主题测试应用"
+                });
+        var content = Assert.IsType<Grid>(button.Content);
+        var label = Assert.Single(
+            content.Children.OfType<Border>(),
+            candidate =>
+                Grid.GetColumn(candidate) == 1 &&
+                candidate.Child is TextBlock);
+        var text = Assert.IsType<TextBlock>(label.Child);
+
+        Assert.Equal(
+            expectedBackground,
+            Assert.IsType<SolidColorBrush>(label.Background).Color);
+        Assert.Equal(
+            expectedForeground,
+            Assert.IsType<SolidColorBrush>(text.Foreground).Color);
+    }
+
+    private static double Brightness(Color color) =>
+        ((0.2126 * color.R) + (0.7152 * color.G) + (0.0722 * color.B)) /
+        byte.MaxValue;
+
+    private static string FindRepoFile(string relativePath)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var candidate = Path.Combine(directory.FullName, relativePath);
+            if (File.Exists(candidate))
+                return candidate;
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException(
+            $"Could not find repository file '{relativePath}'.");
     }
 }

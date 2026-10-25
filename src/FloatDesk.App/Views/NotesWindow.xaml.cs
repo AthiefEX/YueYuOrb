@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Threading;
 using FloatDesk.Core.Contracts;
 using FloatDesk.Core.Models;
@@ -37,6 +38,40 @@ public partial class NotesWindow : Window, IDisposable
         };
         Closing += OnClosing;
         Loaded += async (_, _) => await RefreshListAsync();
+    }
+
+    private void OnTitleBarMouseLeftButtonDown(
+        object sender,
+        MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left)
+            return;
+        if (e.ClickCount == 2)
+        {
+            if (WindowState == WindowState.Maximized)
+                SystemCommands.RestoreWindow(this);
+            else
+                SystemCommands.MaximizeWindow(this);
+            e.Handled = true;
+            return;
+        }
+
+        try
+        {
+            DragMove();
+        }
+        catch (InvalidOperationException)
+        {
+            // The pointer may be released before WPF starts the drag loop.
+        }
+    }
+
+    private void OnMaximizeRestoreClick(object sender, RoutedEventArgs e)
+    {
+        if (WindowState == WindowState.Maximized)
+            SystemCommands.RestoreWindow(this);
+        else
+            SystemCommands.MaximizeWindow(this);
     }
 
     public bool HasUnsavedChanges => _dirty;

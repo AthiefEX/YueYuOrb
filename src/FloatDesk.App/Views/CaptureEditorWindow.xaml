@@ -7,53 +7,71 @@
         MinWidth="520"
         MinHeight="380"
         WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource SettingsWindowBackgroundBrush}"
         PreviewKeyDown="OnPreviewKeyDown"
         Closing="OnClosing">
-    <Grid Background="#222725">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/FloatDesk;component/Resources/SettingsWindowResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <Grid Background="{DynamicResource SettingsWindowBackgroundBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Border Background="#F7F7F4" Padding="10">
+        <Border Background="{DynamicResource SettingsCardBrush}"
+                BorderBrush="{DynamicResource SettingsLineBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="10">
             <DockPanel>
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
                     <Button x:Name="RectangleToolButton"
                             Content="矩形"
                             Click="OnRectangleToolClick"
+                            Style="{StaticResource ToolbarButtonStyle}"
                             Margin="0,0,6,0" />
                     <Button x:Name="ArrowToolButton"
                             Content="箭头"
                             Click="OnArrowToolClick"
+                            Style="{StaticResource ToolbarButtonStyle}"
                             Margin="0,0,6,0" />
                     <Button x:Name="TextToolButton"
                             Content="文字"
                             Click="OnTextToolClick"
+                            Style="{StaticResource ToolbarButtonStyle}"
                             Margin="0,0,14,0" />
                     <Button Content="撤销"
                             Click="OnUndoClick"
+                            Style="{StaticResource ToolbarButtonStyle}"
                             Margin="0,0,6,0" />
                     <Button Content="重做"
-                            Click="OnRedoClick" />
+                            Click="OnRedoClick"
+                            Style="{StaticResource ToolbarButtonStyle}" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Content="取消"
                             Click="OnCancelClick"
+                            Style="{StaticResource ToolbarButtonStyle}"
                             Margin="0,0,6,0" />
                     <Button Content="另存为"
                             Click="OnSaveAsClick"
+                            Style="{StaticResource ToolbarButtonStyle}"
                             Margin="0,0,6,0" />
                     <Button Content="复制并完成"
                             Click="OnConfirmClick"
-                            Style="{StaticResource PrimaryButtonStyle}" />
+                            Style="{StaticResource PrimaryActionButtonStyle}" />
                 </StackPanel>
             </DockPanel>
         </Border>
 
         <Grid Grid.Row="1"
               x:Name="Viewport"
-              Background="#171A19"
+              Background="{DynamicResource ToolWindowEditorBrush}"
               Margin="14"
               ClipToBounds="True">
             <Viewbox Stretch="Uniform"
@@ -73,7 +91,9 @@
         </Grid>
 
         <Border Grid.Row="2"
-                Background="#F7F7F4"
+                Background="{DynamicResource SettingsCardBrush}"
+                BorderBrush="{DynamicResource SettingsLineBrush}"
+                BorderThickness="0,1,0,0"
                 Padding="12,9">
             <DockPanel>
                 <TextBlock x:Name="StatusText"

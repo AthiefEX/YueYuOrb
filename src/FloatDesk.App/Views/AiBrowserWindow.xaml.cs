@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Input;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 using FloatDesk.Core.Browser;
@@ -35,6 +36,40 @@ public partial class AiBrowserWindow : Window, IDisposable
         Closing += OnClosing;
     }
 
+    private void OnTitleBarMouseLeftButtonDown(
+        object sender,
+        MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left)
+            return;
+        if (e.ClickCount == 2)
+        {
+            if (WindowState == WindowState.Maximized)
+                SystemCommands.RestoreWindow(this);
+            else
+                SystemCommands.MaximizeWindow(this);
+            e.Handled = true;
+            return;
+        }
+
+        try
+        {
+            DragMove();
+        }
+        catch (InvalidOperationException)
+        {
+            // The pointer may be released before WPF starts the drag loop.
+        }
+    }
+
+    private void OnMaximizeRestoreClick(object sender, RoutedEventArgs e)
+    {
+        if (WindowState == WindowState.Maximized)
+            SystemCommands.RestoreWindow(this);
+        else
+            SystemCommands.MaximizeWindow(this);
+    }
+
     public string CurrentAddress => _browser.Source?.AbsoluteUri ?? "";
 
     public void ApplySettings(AppSettings settings)
@@ -54,6 +89,7 @@ public partial class AiBrowserWindow : Window, IDisposable
         }
         if (_initialized)
             _browser.ZoomFactor = _zoomPercent / 100.0;
+        ZoomText.Text = $"{_zoomPercent}%";
     }
 
     public async Task ShowAndEnsureAsync(CancellationToken cancellationToken)
@@ -378,6 +414,7 @@ public partial class AiBrowserWindow : Window, IDisposable
         _zoomPercent = Math.Clamp(value, 75, 150);
         if (_initialized)
             _browser.ZoomFactor = _zoomPercent / 100.0;
+        ZoomText.Text = $"{_zoomPercent}%";
         FooterText.Text = $"网页缩放：{_zoomPercent}%";
     }
 

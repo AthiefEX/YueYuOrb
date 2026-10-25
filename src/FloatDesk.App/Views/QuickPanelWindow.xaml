@@ -16,9 +16,6 @@
         PreviewKeyDown="OnPreviewKeyDown"
         Title="FloatDesk 快捷面板">
     <Window.Resources>
-        <SolidColorBrush x:Key="MenuLabelBrush" Color="#F5FFFFFF" />
-        <SolidColorBrush x:Key="MenuMutedBrush" Color="#667B92B7" />
-        <SolidColorBrush x:Key="MenuStrongBrush" Color="#FF18345B" />
         <RadialGradientBrush x:Key="MenuBlueBrush"
                              GradientOrigin="0.28,0.22">
             <GradientStop Color="#70B8FF" Offset="0" />
@@ -50,7 +47,6 @@
             <GradientStop Color="#616C80" Offset="1" />
         </RadialGradientBrush>
 
-        <SolidColorBrush x:Key="ActionBeamBrush" Color="#34FFFFFF" />
         <RadialGradientBrush x:Key="AnchorHaloBrush">
             <GradientStop Color="#BFFFFFFF" Offset="0" />
             <GradientStop Color="#4D9BD8FF" Offset="0.55" />
@@ -62,12 +58,6 @@
             <GradientStop Color="#26A9D8FF" Offset="0.76" />
             <GradientStop Color="#00FFFFFF" Offset="0.84" />
         </RadialGradientBrush>
-        <LinearGradientBrush x:Key="DockGlassBrush"
-                             StartPoint="0,0"
-                             EndPoint="1,1">
-            <GradientStop Color="#EFFFFFFF" Offset="0" />
-            <GradientStop Color="#DCEAF5FF" Offset="1" />
-        </LinearGradientBrush>
         <LinearGradientBrush x:Key="WheelDrawerMask"
                              StartPoint="0,0"
                              EndPoint="0,1">
@@ -129,10 +119,10 @@
             <Setter Property="Height" Value="32" />
             <Setter Property="Margin" Value="0,0,8,0" />
             <Setter Property="Padding" Value="8,4" />
-            <Setter Property="Background" Value="#D9FFFFFF" />
+            <Setter Property="Background" Value="{DynamicResource MenuDockButtonBrush}" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Foreground" Value="{StaticResource MenuStrongBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource MenuStrongBrush}" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -152,7 +142,7 @@
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="DockButtonSurface"
                                         Property="Background"
-                                        Value="#FFFFFFFF" />
+                                        Value="{DynamicResource MenuDockButtonHoverBrush}" />
                             </Trigger>
 
                         </ControlTemplate.Triggers>
@@ -232,7 +222,7 @@
                   IsHitTestVisible="False" />
 
             <Path x:Name="ActionBeamsPath"
-                  Fill="{StaticResource ActionBeamBrush}"
+                  Fill="{DynamicResource MenuActionBeamBrush}"
                   IsHitTestVisible="False"
                   Opacity="1">
                 <Path.Effect>
@@ -280,13 +270,13 @@
                     </Border>
                     <Border Grid.Column="1"
                             Margin="6,3,0,3"
-                            Background="{StaticResource MenuLabelBrush}"
+                            Background="{DynamicResource MenuLabelBrush}"
                             BorderBrush="Transparent"
                             BorderThickness="0"
                             CornerRadius="17"
                             Padding="14,0">
                         <TextBlock Text="快速截图"
-                                   Foreground="{StaticResource MenuStrongBrush}"
+                                   Foreground="{DynamicResource MenuStrongBrush}"
                                    FontSize="14"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center" />
@@ -320,13 +310,13 @@
                     </Border>
                     <Border Grid.Column="1"
                             Margin="6,3,0,3"
-                            Background="{StaticResource MenuLabelBrush}"
+                            Background="{DynamicResource MenuLabelBrush}"
                             BorderBrush="Transparent"
                             BorderThickness="0"
                             CornerRadius="17"
                             Padding="14,0">
                         <TextBlock Text="窗口"
-                                   Foreground="{StaticResource MenuStrongBrush}"
+                                   Foreground="{DynamicResource MenuStrongBrush}"
                                    FontSize="14"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center" />
@@ -360,13 +350,13 @@
                     </Border>
                     <Border Grid.Column="1"
                             Margin="6,3,0,3"
-                            Background="{StaticResource MenuLabelBrush}"
+                            Background="{DynamicResource MenuLabelBrush}"
                             BorderBrush="Transparent"
                             BorderThickness="0"
                             CornerRadius="17"
                             Padding="14,0">
                         <TextBlock Text="屏幕"
-                                   Foreground="{StaticResource MenuStrongBrush}"
+                                   Foreground="{DynamicResource MenuStrongBrush}"
                                    FontSize="14"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center" />
@@ -400,13 +390,13 @@
                     </Border>
                     <Border Grid.Column="1"
                             Margin="6,3,0,3"
-                            Background="{StaticResource MenuLabelBrush}"
+                            Background="{DynamicResource MenuLabelBrush}"
                             BorderBrush="Transparent"
                             BorderThickness="0"
                             CornerRadius="17"
                             Padding="14,0">
                         <TextBlock Text="AI 网页"
-                                   Foreground="{StaticResource MenuStrongBrush}"
+                                   Foreground="{DynamicResource MenuStrongBrush}"
                                    FontSize="14"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center" />
@@ -440,13 +430,13 @@
                     </Border>
                     <Border Grid.Column="1"
                             Margin="6,3,0,3"
-                            Background="{StaticResource MenuLabelBrush}"
+                            Background="{DynamicResource MenuLabelBrush}"
                             BorderBrush="Transparent"
                             BorderThickness="0"
                             CornerRadius="17"
                             Padding="14,0">
                         <TextBlock Text="记事本"
-                                   Foreground="{StaticResource MenuStrongBrush}"
+                                   Foreground="{DynamicResource MenuStrongBrush}"
                                    FontSize="14"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center" />
@@ -482,14 +472,14 @@
                     </Border>
                     <Border Grid.Column="1"
                             Margin="6,3,0,3"
-                            Background="{StaticResource MenuLabelBrush}"
+                            Background="{DynamicResource MenuLabelBrush}"
                             BorderBrush="Transparent"
                             BorderThickness="0"
                             CornerRadius="17"
                             Padding="14,0">
                         <TextBlock x:Name="InputLockTitle"
                                    Text="锁定英文"
-                                   Foreground="{StaticResource MenuStrongBrush}"
+                                   Foreground="{DynamicResource MenuStrongBrush}"
                                    FontSize="14"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center" />
@@ -523,13 +513,13 @@
                     </Border>
                     <Border Grid.Column="1"
                             Margin="6,3,0,3"
-                            Background="{StaticResource MenuLabelBrush}"
+                            Background="{DynamicResource MenuLabelBrush}"
                             BorderBrush="Transparent"
                             BorderThickness="0"
                             CornerRadius="17"
                             Padding="14,0">
                         <TextBlock Text="设置"
-                                   Foreground="{StaticResource MenuStrongBrush}"
+                                   Foreground="{DynamicResource MenuStrongBrush}"
                                    FontSize="14"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center" />
@@ -543,7 +533,7 @@
             <Border x:Name="LauncherDock"
                     Width="480"
                     Height="64"
-                    Background="{StaticResource DockGlassBrush}"
+                    Background="{DynamicResource MenuDockGlassBrush}"
                     BorderBrush="Transparent"
                     BorderThickness="0"
                     CornerRadius="18"
@@ -558,11 +548,11 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="快捷应用"
-                                   Foreground="{StaticResource MenuStrongBrush}"
+                                   Foreground="{DynamicResource MenuStrongBrush}"
                                    FontSize="14"
                                    FontWeight="SemiBold" />
                         <TextBlock x:Name="LauncherCountText"
-                                   Foreground="{StaticResource MenuMutedBrush}"
+                                   Foreground="{DynamicResource MenuMutedBrush}"
                                    FontSize="11"
                                    Text="0 个项目" />
                     </StackPanel>

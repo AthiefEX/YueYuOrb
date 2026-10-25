@@ -8,7 +8,7 @@
         MinHeight="620"
         WindowStartupLocation="CenterScreen"
         Title="FloatDesk 设置"
-        Background="#F4F8FE"
+        Background="{DynamicResource SettingsWindowBackgroundBrush}"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True">
     <shell:WindowChrome.WindowChrome>
@@ -27,8 +27,8 @@
             <Style x:Key="SettingsShellStyle" TargetType="{x:Type Border}">
                 <Setter Property="Margin" Value="7" />
                 <Setter Property="CornerRadius" Value="16" />
-                <Setter Property="Background" Value="#F8FBFF" />
-                <Setter Property="BorderBrush" Value="#B9D3ED" />
+                <Setter Property="Background" Value="{DynamicResource SettingsShellBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource SettingsAccentOutlineBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="ClipToBounds" Value="True" />
                 <Style.Triggers>
@@ -44,7 +44,7 @@
     </Window.Resources>
 
     <Border x:Name="SettingsRoot" Style="{StaticResource SettingsShellStyle}">
-        <Grid Background="#FAFCFF">
+        <Grid Background="{DynamicResource SettingsShellBrush}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="48" />
                 <RowDefinition Height="88" />
@@ -55,22 +55,15 @@
 
             <Grid x:Name="SettingsTitleBar"
                   Grid.Row="0"
-
+                  Background="{DynamicResource ToolWindowTitleBarBrush}"
                   MouseLeftButtonDown="OnTitleBarMouseLeftButtonDown">
-                <Grid.Background>
-                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                        <GradientStop Offset="0" Color="#F2F8FF" />
-                        <GradientStop Offset="0.55" Color="#E2F0FF" />
-                        <GradientStop Offset="1" Color="#EEF8FF" />
-                    </LinearGradientBrush>
-                </Grid.Background>
                 <StackPanel Orientation="Horizontal"
                             Margin="16,0,0,0"
                             VerticalAlignment="Center">
                     <Border Width="26"
                             Height="26"
                             CornerRadius="8"
-                            Background="{StaticResource SettingsAccentBrush}"
+                            Background="{DynamicResource SettingsAccentBrush}"
                             Margin="0,0,9,0">
                         <TextBlock Text="FD"
                                    Foreground="White"
@@ -82,7 +75,7 @@
                     <TextBlock Text="FloatDesk 设置"
                                FontSize="13"
                                FontWeight="SemiBold"
-                               Foreground="{StaticResource SettingsInkBrush}"
+                               Foreground="{DynamicResource SettingsInkBrush}"
                                VerticalAlignment="Center" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal"
@@ -126,32 +119,28 @@
 
             <Border Grid.Row="1"
                     Grid.RowSpan="2"
+                    Background="{DynamicResource SettingsHeroBrush}"
                     CornerRadius="0,0,22,22"
                     ClipToBounds="True">
                 <Grid>
-                    <Grid.Background>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                            <GradientStop Offset="0" Color="#DDEBFA" />
-                            <GradientStop Offset="0.55" Color="#EEF7FF" />
-                            <GradientStop Offset="1" Color="#F8FBFF" />
-                        </LinearGradientBrush>
-                    </Grid.Background>
                     <Ellipse Width="310"
                              Height="130"
                              HorizontalAlignment="Right"
                              VerticalAlignment="Top"
                              Margin="0,-42,-38,0"
-                             Fill="#70FFFFFF" />
+                             Fill="{DynamicResource SettingsCardBrush}"
+                             Opacity="0.58" />
                     <Ellipse Width="230"
                              Height="110"
                              HorizontalAlignment="Left"
                              VerticalAlignment="Bottom"
                              Margin="40,0,0,-70"
-                             Fill="#55DBECFF" />
+                             Fill="{DynamicResource SettingsAccentOutlineBrush}"
+                             Opacity="0.34" />
                     <Viewbox Stretch="Fill" Opacity="0.22" IsHitTestVisible="False">
                         <Canvas Width="1160" Height="148">
-                            <Path Fill="#7EA6C6" Data="M0,118 L116,49 L198,97 L303,31 L414,106 L534,66 L654,112 L775,42 L904,104 L1029,63 L1160,117 L1160,148 L0,148 Z" />
-                            <Path Fill="#C2D9EC" Data="M0,128 L151,81 L278,116 L431,71 L581,124 L742,83 L910,121 L1082,72 L1160,97 L1160,148 L0,148 Z" />
+                            <Path Fill="{DynamicResource SettingsAccentOutlineBrush}" Data="M0,118 L116,49 L198,97 L303,31 L414,106 L534,66 L654,112 L775,42 L904,104 L1029,63 L1160,117 L1160,148 L0,148 Z" />
+                            <Path Fill="{DynamicResource SettingsAccentSoftBrush}" Data="M0,128 L151,81 L278,116 L431,71 L581,124 L742,83 L910,121 L1082,72 L1160,97 L1160,148 L0,148 Z" />
                         </Canvas>
                     </Viewbox>
                 </Grid>
@@ -162,11 +151,11 @@
                     <TextBlock Text="FloatDesk 设置"
                                FontSize="32"
                                FontWeight="SemiBold"
-                               Foreground="#17243B" />
+                               Foreground="{DynamicResource SettingsInkBrush}" />
                     <TextBlock Text="调整悬浮球、输入法、网页、笔记与截图"
                                Margin="1,3,0,0"
                                FontSize="13"
-                               Foreground="#66758D" />
+                               Foreground="{DynamicResource SettingsMutedBrush}" />
                 </StackPanel>
                 <Border Style="{StaticResource SettingsPillStyle}"
                         HorizontalAlignment="Right"
@@ -176,13 +165,13 @@
                         <TextBlock Text="&#xE72E;"
                                    FontFamily="{StaticResource SettingsIconFont}"
                                    FontSize="14"
-                                   Foreground="{StaticResource SettingsAccentBrush}"
+                                   Foreground="{DynamicResource SettingsAccentBrush}"
                                    Margin="0,0,7,0"
                                    VerticalAlignment="Center" />
                         <TextBlock Text="本地保存 · 普通权限"
                                    FontSize="12"
                                    FontWeight="SemiBold"
-                                   Foreground="#3E5F8A"
+                                   Foreground="{DynamicResource SettingsAccentBrush}"
                                    VerticalAlignment="Center" />
                     </StackPanel>
                 </Border>
@@ -269,13 +258,13 @@
                                                     <TextBlock Text="打开 FloatDesk 快捷面板" Style="{StaticResource SettingsDescriptionStyle}" />
                                                 </StackPanel>
                                                 <TextBox Grid.Column="1" Text="{Binding PanelHotkey}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" />
-                                                <Border Grid.Row="1" Grid.ColumnSpan="2" BorderBrush="{StaticResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <Border Grid.Row="1" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
                                                 <StackPanel Grid.Row="1" VerticalAlignment="Center">
                                                     <TextBlock Text="框选截图" Style="{StaticResource SettingsLabelStyle}" />
                                                     <TextBlock Text="启动框选截图功能" Style="{StaticResource SettingsDescriptionStyle}" />
                                                 </StackPanel>
                                                 <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding RegionCaptureHotkey}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" />
-                                                <Border Grid.Row="2" Grid.ColumnSpan="2" BorderBrush="{StaticResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <Border Grid.Row="2" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
                                                 <StackPanel Grid.Row="2" VerticalAlignment="Center">
                                                     <TextBlock Text="暂停输入规则" Style="{StaticResource SettingsLabelStyle}" />
                                                     <TextBlock Text="临时暂停输入法相关规则" Style="{StaticResource SettingsDescriptionStyle}" />
@@ -356,11 +345,11 @@
                                                 <TextBlock Text="悬浮球尺寸" Style="{StaticResource SettingsLabelStyle}" />
                                                 <Slider Grid.Column="1" Minimum="32" Maximum="128" TickFrequency="4" IsSnapToTickEnabled="True" Value="{Binding OrbSizeDip}" Style="{StaticResource SettingsSliderStyle}" VerticalAlignment="Center" Margin="0,0,12,0" />
                                                 <TextBlock Grid.Column="2" Text="{Binding OrbSizeDip, StringFormat={}{0} px}" Style="{StaticResource SettingsCaptionStyle}" />
-                                                <Border Grid.Row="1" Grid.ColumnSpan="3" BorderBrush="{StaticResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <Border Grid.Row="1" Grid.ColumnSpan="3" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
                                                 <TextBlock Grid.Row="1" Text="不透明度" Style="{StaticResource SettingsLabelStyle}" />
                                                 <Slider Grid.Row="1" Grid.Column="1" Minimum="30" Maximum="100" Value="{Binding OrbOpacityPercent}" Style="{StaticResource SettingsSliderStyle}" VerticalAlignment="Center" Margin="0,0,12,0" />
                                                 <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding OrbOpacityPercent, StringFormat={}{0:0}%}" Style="{StaticResource SettingsCaptionStyle}" />
-                                                <Border Grid.Row="2" Grid.ColumnSpan="3" BorderBrush="{StaticResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <Border Grid.Row="2" Grid.ColumnSpan="3" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
                                                 <TextBlock Grid.Row="2" Text="图片裁切" Style="{StaticResource SettingsLabelStyle}" />
                                                 <ComboBox Grid.Row="2" Grid.Column="1" SelectedIndex="{Binding ImageShapeIndex}" Style="{StaticResource SettingsComboBoxStyle}" VerticalAlignment="Center">
                                                     <ComboBoxItem Content="圆形裁切" />
@@ -474,7 +463,7 @@
                                     </DataGrid.Columns>
                                 </DataGrid>
                             </Border>
-                            <Border Grid.Row="2" Background="#F5FFFFFF" BorderBrush="{StaticResource SettingsLineBrush}" BorderThickness="0,1,0,0" CornerRadius="0,0,16,16" Padding="14,10">
+                            <Border Grid.Row="2" Background="{DynamicResource SettingsCardSubtleBrush}" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" CornerRadius="0,0,16,16" Padding="14,10">
                                 <WrapPanel>
                                     <Button Content="移除选中项" Click="OnRemoveLauncherClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
                                     <Button Content="编辑选中项" Click="OnEditLauncherClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
@@ -595,7 +584,7 @@
                                         <RowDefinition Height="70" />
                                         <RowDefinition Height="*" />
                                     </Grid.RowDefinitions>
-                                    <Border Background="{StaticResource SettingsAccentPaleBrush}" CornerRadius="16,16,0,0" Padding="18,12">
+                                    <Border Background="{DynamicResource SettingsAccentPaleBrush}" CornerRadius="16,16,0,0" Padding="18,12">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="190" />
@@ -677,7 +666,7 @@
                                         <RowDefinition Height="64" />
                                         <RowDefinition Height="*" />
                                     </Grid.RowDefinitions>
-                                    <Border Background="{StaticResource SettingsAccentPaleBrush}" CornerRadius="16,16,0,0" Padding="18,11">
+                                    <Border Background="{DynamicResource SettingsAccentPaleBrush}" CornerRadius="16,16,0,0" Padding="18,11">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="180" />
@@ -744,7 +733,7 @@
                                                         <ComboBoxItem Content="5 秒" />
                                                     </ComboBox>
                                                 </Grid>
-                                                <Border BorderBrush="{StaticResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <Border BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
                                                 <Grid Height="58">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="180" />
@@ -790,10 +779,10 @@
                                                 </Grid.RowDefinitions>
                                                 <TextBlock Text="颜色（#RRGGBB）" Style="{StaticResource SettingsLabelStyle}" />
                                                 <TextBox Grid.Column="1" Text="{Binding AnnotationColor}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" />
-                                                <Border Grid.Row="1" Grid.ColumnSpan="2" BorderBrush="{StaticResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <Border Grid.Row="1" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
                                                 <TextBlock Grid.Row="1" Text="线宽（1–12px）" Style="{StaticResource SettingsLabelStyle}" />
                                                 <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding StrokeWidthPx}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" />
-                                                <Border Grid.Row="2" Grid.ColumnSpan="2" BorderBrush="{StaticResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <Border Grid.Row="2" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
                                                 <TextBlock Grid.Row="2" Text="字号（10–72px）" Style="{StaticResource SettingsLabelStyle}" />
                                                 <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding FontSizePx}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" />
                                             </Grid>
@@ -819,7 +808,7 @@
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <Border Width="74" Height="74" CornerRadius="22" Background="{StaticResource SettingsAccentBrush}" Margin="0,0,20,0">
+                                        <Border Width="74" Height="74" CornerRadius="22" Background="{DynamicResource SettingsAccentBrush}" Margin="0,0,20,0">
                                             <TextBlock Text="FD"
                                                        Foreground="White"
                                                        FontSize="25"
@@ -828,14 +817,14 @@
                                                        VerticalAlignment="Center" />
                                         </Border>
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                            <TextBlock Text="FloatDesk 1.0.0" FontSize="26" FontWeight="SemiBold" Foreground="{StaticResource SettingsInkBrush}" />
+                                            <TextBlock Text="FloatDesk 1.0.0" FontSize="26" FontWeight="SemiBold" Foreground="{DynamicResource SettingsInkBrush}" />
                                             <TextBlock Text="Windows 10/11 x64 桌面悬浮助手" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,4,0,0" />
                                             <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                                                 <Border Style="{StaticResource SettingsPillStyle}" Margin="0,0,8,0">
-                                                    <TextBlock Text="本地保存" FontSize="12" Foreground="{StaticResource SettingsAccentBrush}" FontWeight="SemiBold" />
+                                                    <TextBlock Text="本地保存" FontSize="12" Foreground="{DynamicResource SettingsAccentBrush}" FontWeight="SemiBold" />
                                                 </Border>
                                                 <Border Style="{StaticResource SettingsPillStyle}">
-                                                    <TextBlock Text="普通权限" FontSize="12" Foreground="{StaticResource SettingsAccentBrush}" FontWeight="SemiBold" />
+                                                    <TextBlock Text="普通权限" FontSize="12" Foreground="{DynamicResource SettingsAccentBrush}" FontWeight="SemiBold" />
                                                 </Border>
                                             </StackPanel>
                                         </StackPanel>
@@ -863,8 +852,8 @@
 </TabControl>
 
             <Border Grid.Row="4"
-                    Background="#F5FFFFFF"
-                    BorderBrush="{StaticResource SettingsLineBrush}"
+                    Background="{DynamicResource SettingsCardSubtleBrush}"
+                    BorderBrush="{DynamicResource SettingsLineBrush}"
                     BorderThickness="0,1,0,0"
                     Padding="30,11">
                 <Grid>

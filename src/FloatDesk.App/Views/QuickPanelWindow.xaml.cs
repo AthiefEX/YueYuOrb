@@ -50,6 +50,9 @@ public partial class QuickPanelWindow : Window
     public QuickPanelWindow()
     {
         InitializeComponent();
+        ActionBeamsPath.Fill ??= ThemeBrush(
+            "MenuActionBeamBrush",
+            Color.FromArgb(0x34, 0xFF, 0xFF, 0xFF));
         SourceInitialized += OnSourceInitialized;
         Closed += (_, _) => AnchorGlowPopup.IsOpen = false;
     }
@@ -766,7 +769,7 @@ public partial class QuickPanelWindow : Window
             FillBehavior = FillBehavior.HoldEnd
         };
 
-    private static Grid CreateLauncherContent(string label)
+    private Grid CreateLauncherContent(string label)
     {
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -798,8 +801,9 @@ public partial class QuickPanelWindow : Window
         {
             Text = label,
             Margin = new Thickness(7, 0, 0, 0),
-            Foreground = new SolidColorBrush(
-                Color.FromRgb(24, 52, 91)),
+            Foreground = ThemeBrush(
+                "MenuStrongBrush",
+                Colors.Black),
             FontSize = 12,
             FontWeight = FontWeights.SemiBold,
             TextTrimming = TextTrimming.CharacterEllipsis,
@@ -811,7 +815,7 @@ public partial class QuickPanelWindow : Window
         return grid;
     }
 
-    private static Grid CreateWheelLauncherContent(LauncherItem item)
+    private Grid CreateWheelLauncherContent(LauncherItem item)
     {
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(50) });
@@ -844,7 +848,8 @@ public partial class QuickPanelWindow : Window
         var label = new Border
         {
             Margin = new Thickness(6, 3, 0, 3),
-            Background = new SolidColorBrush(
+            Background = ThemeBrush(
+                "MenuLabelBrush",
                 Color.FromArgb(0xF5, 0xFF, 0xFF, 0xFF)),
             BorderThickness = new Thickness(0),
             CornerRadius = new CornerRadius(17),
@@ -854,8 +859,9 @@ public partial class QuickPanelWindow : Window
         var text = new TextBlock
         {
             Text = item.Name,
-            Foreground = new SolidColorBrush(
-                Color.FromRgb(24, 52, 91)),
+            Foreground = ThemeBrush(
+                "MenuStrongBrush",
+                Colors.Black),
             FontSize = 14,
             FontWeight = FontWeights.SemiBold,
             TextTrimming = TextTrimming.CharacterEllipsis,
@@ -866,15 +872,19 @@ public partial class QuickPanelWindow : Window
         grid.Children.Add(label);
         return grid;
     }
-    private static TextBlock CreateAddContent() =>
+    private TextBlock CreateAddContent() =>
         new TextBlock
         {
             Text = "+ 添加应用",
-            Foreground = new SolidColorBrush(
-                Color.FromRgb(46, 139, 255)),
+            Foreground = ThemeBrush(
+                "AccentBrush",
+                Colors.DodgerBlue),
             FontSize = 12,
             FontWeight = FontWeights.SemiBold
         };
+
+    private Brush ThemeBrush(string key, Color fallback) =>
+        TryFindResource(key) as Brush ?? new SolidColorBrush(fallback);
 
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
