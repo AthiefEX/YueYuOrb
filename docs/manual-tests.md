@@ -29,7 +29,7 @@
 | 备用截图快捷键实机触发 | Windows 10 22H2 x64 | PASS | `Ctrl+Alt+Shift+A` 实际打开双屏框选覆盖层，Esc 取消后会话释放 |
 | 崩溃回归事件 | 上述真实 UI 验证时段 | PASS | 测试后 `Application/.NET Runtime` 无新增 FloatDesk 进程终止事件 |
 | 自动化测试 | Windows 10 22H2 x64 | PASS | 97/97，Release；Core 34、Infrastructure 14、Windows 6、UI 43；构建 0 警告、0 错误 |
-| 发布包烟测 | Windows 10 22H2 x64，自包含 `win-x64` | PASS | 主实例观察到 `startup.complete` 并持续存活；第二实例以退出码 0 结束 |
+| 发布包烟测 | Windows 10 22H2 x64，最新光晕修复自包含 `win-x64` | PASS | 2026-10-25 执行：主实例观察到 `startup.complete` 并持续存活；第二实例以退出码 0 结束，烟测进程随后正常清理 |
 | 跨屏负坐标截图裁剪 | 自动化像素夹具 | PASS | `(-100,50)-(300,250)` 输出 400×200 |
 | 自定义图片图层 | WPF 窗口级测试 | PASS | 自定义 PNG 隐藏默认渐变圆与 `FD` 文本 |
 | 笔记保存失败回退 | WPF 窗口级测试 | PASS | 切换笔记保存失败后恢复原选择，未保存正文保留 |
