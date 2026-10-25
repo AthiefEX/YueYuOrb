@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <UseSystemDrawing>true</UseSystemDrawing>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../FloatDesk.Core/FloatDesk.Core.csproj" />
+  </ItemGroup>
+</Project>

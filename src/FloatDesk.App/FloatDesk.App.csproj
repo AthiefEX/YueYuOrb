@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>FloatDesk</AssemblyName>
+    <RootNamespace>FloatDesk.App</RootNamespace>
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../FloatDesk.Core/FloatDesk.Core.csproj" />
+    <ProjectReference Include="../FloatDesk.Infrastructure/FloatDesk.Infrastructure.csproj" />
+    <ProjectReference Include="../FloatDesk.Windows/FloatDesk.Windows.csproj" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Web.WebView2" />
+  </ItemGroup>
+</Project>
