@@ -23,11 +23,22 @@ public partial class QuickPanelWindow : Window
     private const double MaximumWheelArcOffset = 84;
     private const int WmNcHitTest = 0x0084;
     private const int HtTransparent = -1;
+    private static readonly DependencyProperty SmoothWheelScrollOffsetProperty =
+        DependencyProperty.Register(
+            "SmoothWheelScrollOffset",
+            typeof(double),
+            typeof(QuickPanelWindow),
+            new PropertyMetadata(
+                0d,
+                OnSmoothWheelScrollOffsetChanged));
     private Point _wheelAnchor;
     private bool _wheelOpensLeft;
     private bool _wheelLayoutReady;
     private bool _updatingWheelLayout;
     private bool _hideTransitionPending;
+    private double _smoothWheelTargetOffset;
+    private int _smoothWheelAnimationVersion;
+    private bool _smoothWheelAnimationActive;
 
     public event Action<LauncherItem>? LaunchRequested;
     public event Action? SettingsRequested;
@@ -88,7 +99,7 @@ public partial class QuickPanelWindow : Window
         WheelScroller.Visibility = GetVisibleWheelButtons().Length > 0
             ? Visibility.Visible
             : Visibility.Collapsed;
-        WheelScroller.ScrollToVerticalOffset(0);
+        ResetSmoothWheelScroll();
 
         LauncherPanel.Children.Clear();
         LauncherDock.Visibility = dockLaunchers.Length > 0
@@ -339,7 +350,7 @@ public partial class QuickPanelWindow : Window
             }
 
             if (resetScroll)
-                WheelScroller.ScrollToVerticalOffset(0);
+                ResetSmoothWheelScroll();
         }
         finally
         {
@@ -879,15 +890,96 @@ public partial class QuickPanelWindow : Window
     {
         if (WheelScroller.ScrollableHeight <= 0)
             return;
-        WheelScroller.ScrollToVerticalOffset(
-            WheelScroller.VerticalOffset - e.Delta);
+        BeginSmoothWheelScroll(e.Delta);
         e.Handled = true;
     }
 
     private void OnWheelScrollChanged(
         object sender,
-        ScrollChangedEventArgs e) =>
+        ScrollChangedEventArgs e)
+    {
+        if (!_smoothWheelAnimationActive)
+            _smoothWheelTargetOffset = WheelScroller.VerticalOffset;
         UpdateWheelForScroll();
+    }
+
+    private void BeginSmoothWheelScroll(int delta)
+    {
+        var maximum = WheelScroller.ScrollableHeight;
+        if (maximum <= 0)
+            return;
+
+        var current = WheelScroller.VerticalOffset;
+        var startingTarget = _smoothWheelAnimationActive
+            ? _smoothWheelTargetOffset
+            : current;
+        var target = Math.Clamp(
+            startingTarget - delta,
+            0,
+            maximum);
+        if (Math.Abs(target - current) < 0.01)
+            return;
+
+        _smoothWheelTargetOffset = target;
+        var version = ++_smoothWheelAnimationVersion;
+        if (!SystemParameters.ClientAreaAnimation)
+        {
+            _smoothWheelAnimationActive = false;
+            BeginAnimation(SmoothWheelScrollOffsetProperty, null);
+            SetCurrentValue(SmoothWheelScrollOffsetProperty, target);
+            return;
+        }
+
+        _smoothWheelAnimationActive = true;
+        var duration = TimeSpan.FromMilliseconds(Math.Clamp(
+            110 + (int)Math.Round(Math.Abs(target - current) * 0.45),
+            135,
+            260));
+        var animation = new DoubleAnimation
+        {
+            From = current,
+            To = target,
+            Duration = duration,
+            EasingFunction = new CubicEase
+            {
+                EasingMode = EasingMode.EaseOut
+            },
+            FillBehavior = FillBehavior.HoldEnd
+        };
+        animation.Completed += (_, _) =>
+        {
+            if (version != _smoothWheelAnimationVersion)
+                return;
+            _smoothWheelAnimationActive = false;
+            _smoothWheelTargetOffset = target;
+            WheelScroller.ScrollToVerticalOffset(target);
+        };
+        BeginAnimation(
+            SmoothWheelScrollOffsetProperty,
+            animation,
+            HandoffBehavior.SnapshotAndReplace);
+    }
+
+    private void ResetSmoothWheelScroll()
+    {
+        _smoothWheelAnimationVersion++;
+        _smoothWheelAnimationActive = false;
+        _smoothWheelTargetOffset = 0;
+        BeginAnimation(SmoothWheelScrollOffsetProperty, null);
+        SetCurrentValue(SmoothWheelScrollOffsetProperty, 0d);
+        WheelScroller.ScrollToVerticalOffset(0);
+    }
+
+    private static void OnSmoothWheelScrollOffsetChanged(
+        DependencyObject dependencyObject,
+        DependencyPropertyChangedEventArgs e)
+    {
+        if (dependencyObject is QuickPanelWindow window)
+        {
+            window.WheelScroller.ScrollToVerticalOffset(
+                (double)e.NewValue);
+        }
+    }
 
     private void OnLauncherMouseWheel(
         object sender,

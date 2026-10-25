@@ -625,6 +625,98 @@ public sealed class QuickPanelWindowLayoutTests
             throw new Xunit.Sdk.XunitException(failure.ToString());
     }
 
+    [Fact(Timeout = 10_000)]
+    public async Task WheelScrollEasesThroughIntermediateFrames()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var scroller = CreateScrollableWheelWindow(out var window);
+                var expectedOffset = Math.Min(
+                    120,
+                    scroller.ScrollableHeight);
+                Assert.True(expectedOffset > 20);
+
+                InvokeSmoothWheelScroll(window, delta: -120);
+                if (!SystemParameters.ClientAreaAnimation)
+                {
+                    Assert.Equal(expectedOffset, scroller.VerticalOffset, 1);
+                    return;
+                }
+
+                Assert.Equal(0, scroller.VerticalOffset, 1);
+                PumpDispatcherFor(TimeSpan.FromMilliseconds(75));
+                scroller.UpdateLayout();
+                Assert.InRange(
+                    scroller.VerticalOffset,
+                    1,
+                    expectedOffset - 1);
+
+                PumpDispatcherFor(TimeSpan.FromMilliseconds(350));
+                scroller.UpdateLayout();
+                Assert.Equal(
+                    expectedOffset,
+                    scroller.VerticalOffset,
+                    1);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task RapidWheelInputsConvergeOnTheLatestCombinedTarget()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var scroller = CreateScrollableWheelWindow(out var window);
+                var expectedOffset = Math.Min(
+                    240,
+                    scroller.ScrollableHeight);
+
+                InvokeSmoothWheelScroll(window, delta: -120);
+                PumpDispatcherFor(TimeSpan.FromMilliseconds(45));
+                InvokeSmoothWheelScroll(window, delta: -120);
+                PumpDispatcherFor(TimeSpan.FromMilliseconds(400));
+                scroller.UpdateLayout();
+
+                Assert.Equal(
+                    expectedOffset,
+                    scroller.VerticalOffset,
+                    1);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
     [Theory(Timeout = 10_000)]
     [InlineData(WheelActionKind.RegionCapture, false)]
     [InlineData(WheelActionKind.WindowCapture, false)]
@@ -852,6 +944,81 @@ public sealed class QuickPanelWindowLayoutTests
             ?? throw new InvalidOperationException(
                 "HideAnimated was not found.");
         method.Invoke(window, null);
+    }
+
+    private static void InvokeSmoothWheelScroll(
+        QuickPanelWindow window,
+        int delta)
+    {
+        var method = typeof(QuickPanelWindow).GetMethod(
+            "BeginSmoothWheelScroll",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(
+                "BeginSmoothWheelScroll was not found.");
+        method.Invoke(window, [delta]);
+    }
+
+    private static ScrollViewer CreateScrollableWheelWindow(
+        out QuickPanelWindow window)
+    {
+        window = new QuickPanelWindow();
+        var wheelApps = Enumerable.Range(0, 16)
+            .Select(index => new LauncherItem(
+                Guid.NewGuid(),
+                $"滚动应用 {index + 1}",
+                LauncherKind.Exe,
+                $@"C:\Apps\scroll{index}.exe",
+                [],
+                null,
+                index,
+                ShowInWheel: true))
+            .ToArray();
+        window.Apply(
+            AppSettings.CreateDefault() with
+            {
+                Launchers = wheelApps
+            },
+            manualLockEnabled: false,
+            inputStatus: "等待前台应用");
+        InvokeArrangeMenu(window, new Point(37, 280), opensLeft: false);
+        window.Show();
+        window.Measure(new Size(660, 560));
+        window.Arrange(new Rect(0, 0, 660, 560));
+        window.UpdateLayout();
+
+        var scroller = Assert.IsType<ScrollViewer>(
+            window.FindName("WheelScroller"));
+        scroller.ApplyTemplate();
+        scroller.Measure(new Size(380, 420));
+        scroller.Arrange(new Rect(0, 0, 380, 420));
+        scroller.UpdateLayout();
+        Assert.True(
+            scroller.ScrollableHeight > 120,
+            "The test wheel must have enough overflow for smooth scrolling.");
+        return scroller;
+    }
+
+    private static void PumpDispatcherFor(TimeSpan duration)
+    {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        while (stopwatch.Elapsed < duration)
+        {
+            var frame = new DispatcherFrame();
+            var timer = new DispatcherTimer(
+                DispatcherPriority.Background,
+                Dispatcher.CurrentDispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(10)
+            };
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                frame.Continue = false;
+            };
+            timer.Start();
+            Dispatcher.PushFrame(frame);
+        }
     }
 
     private static void PumpDispatcherUntil(Func<bool> condition)
