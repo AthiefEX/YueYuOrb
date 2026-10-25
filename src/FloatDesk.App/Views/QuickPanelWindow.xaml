@@ -16,26 +16,58 @@
         PreviewKeyDown="OnPreviewKeyDown"
         Title="FloatDesk 快捷面板">
     <Window.Resources>
-        <SolidColorBrush x:Key="MenuLabelBrush" Color="#F2FFFFFF" />
+        <SolidColorBrush x:Key="MenuLabelBrush" Color="#F5FFFFFF" />
         <SolidColorBrush x:Key="MenuMutedBrush" Color="#667B92B7" />
         <SolidColorBrush x:Key="MenuStrongBrush" Color="#FF18345B" />
-        <SolidColorBrush x:Key="MenuBlueBrush" Color="#FF2E8BFF" />
-        <SolidColorBrush x:Key="MenuGreenBrush" Color="#FF25C89A" />
-        <SolidColorBrush x:Key="MenuVioletBrush" Color="#FF9B59F6" />
-        <SolidColorBrush x:Key="MenuCoralBrush" Color="#FFFF6B70" />
-        <SolidColorBrush x:Key="MenuSlateBrush" Color="#FF758197" />
+        <RadialGradientBrush x:Key="MenuBlueBrush"
+                             GradientOrigin="0.28,0.22">
+            <GradientStop Color="#70B8FF" Offset="0" />
+            <GradientStop Color="#2E8BFF" Offset="0.58" />
+            <GradientStop Color="#1E75E8" Offset="1" />
+        </RadialGradientBrush>
+        <RadialGradientBrush x:Key="MenuGreenBrush"
+                             GradientOrigin="0.28,0.22">
+            <GradientStop Color="#68E1B7" Offset="0" />
+            <GradientStop Color="#25C89A" Offset="0.58" />
+            <GradientStop Color="#13A97E" Offset="1" />
+        </RadialGradientBrush>
+        <RadialGradientBrush x:Key="MenuVioletBrush"
+                             GradientOrigin="0.28,0.22">
+            <GradientStop Color="#B98CFF" Offset="0" />
+            <GradientStop Color="#8C56F0" Offset="0.58" />
+            <GradientStop Color="#7040D7" Offset="1" />
+        </RadialGradientBrush>
+        <RadialGradientBrush x:Key="MenuCoralBrush"
+                             GradientOrigin="0.28,0.22">
+            <GradientStop Color="#FF9B9E" Offset="0" />
+            <GradientStop Color="#FF6B70" Offset="0.58" />
+            <GradientStop Color="#E95058" Offset="1" />
+        </RadialGradientBrush>
+        <RadialGradientBrush x:Key="MenuSlateBrush"
+                             GradientOrigin="0.28,0.22">
+            <GradientStop Color="#9CA8B8" Offset="0" />
+            <GradientStop Color="#758197" Offset="0.58" />
+            <GradientStop Color="#616C80" Offset="1" />
+        </RadialGradientBrush>
 
         <LinearGradientBrush x:Key="MenuFanBrush"
                              StartPoint="0,0"
                              EndPoint="1,1">
-            <GradientStop Color="#DEFFFFFF" Offset="0" />
-            <GradientStop Color="#C8F5FAFF" Offset="0.62" />
-            <GradientStop Color="#B4EAF4FF" Offset="1" />
+            <GradientStop Color="#B8FFFFFF" Offset="0" />
+            <GradientStop Color="#72F3F9FF" Offset="0.62" />
+            <GradientStop Color="#38E6F2FF" Offset="1" />
         </LinearGradientBrush>
+        <SolidColorBrush x:Key="ActionBeamBrush" Color="#34FFFFFF" />
         <RadialGradientBrush x:Key="AnchorHaloBrush">
             <GradientStop Color="#BFFFFFFF" Offset="0" />
             <GradientStop Color="#4D9BD8FF" Offset="0.55" />
             <GradientStop Color="#009BD8FF" Offset="1" />
+        </RadialGradientBrush>
+        <RadialGradientBrush x:Key="AnchorOrbitBrush">
+            <GradientStop Color="#00FFFFFF" Offset="0.58" />
+            <GradientStop Color="#79FFFFFF" Offset="0.68" />
+            <GradientStop Color="#26A9D8FF" Offset="0.76" />
+            <GradientStop Color="#00FFFFFF" Offset="0.84" />
         </RadialGradientBrush>
         <LinearGradientBrush x:Key="DockGlassBrush"
                              StartPoint="0,0"
@@ -154,19 +186,47 @@
             <Path x:Name="FanWash"
                   Fill="{StaticResource MenuFanBrush}"
                   IsHitTestVisible="False"
-                  Opacity="0.88">
+                  Opacity="0.68">
                 <Path.Effect>
-                    <BlurEffect Radius="6" />
+                    <BlurEffect Radius="12" />
+                </Path.Effect>
+            </Path>
+
+            <Path x:Name="ActionBeamsPath"
+                  Fill="{StaticResource ActionBeamBrush}"
+                  IsHitTestVisible="False"
+                  Opacity="1">
+                <Path.Effect>
+                    <BlurEffect Radius="5" />
                 </Path.Effect>
             </Path>
 
             <Ellipse x:Name="AnchorHalo"
-                     Width="146"
-                     Height="146"
+                     Width="188"
+                     Height="188"
                      Fill="{StaticResource AnchorHaloBrush}"
                      IsHitTestVisible="False">
                 <Ellipse.Effect>
-                    <BlurEffect Radius="18" />
+                    <BlurEffect Radius="22" />
+                </Ellipse.Effect>
+            </Ellipse>
+            <Ellipse x:Name="AnchorOrbitOuter"
+                     Width="184"
+                     Height="184"
+                     Fill="{StaticResource AnchorOrbitBrush}"
+                     IsHitTestVisible="False">
+                <Ellipse.Effect>
+                    <BlurEffect Radius="4" />
+                </Ellipse.Effect>
+            </Ellipse>
+            <Ellipse x:Name="AnchorOrbitInner"
+                     Width="146"
+                     Height="146"
+                     Fill="{StaticResource AnchorOrbitBrush}"
+                     IsHitTestVisible="False"
+                     Opacity="0.72">
+                <Ellipse.Effect>
+                    <BlurEffect Radius="2" />
                 </Ellipse.Effect>
             </Ellipse>
             <ScrollViewer x:Name="WheelLauncherScroller"

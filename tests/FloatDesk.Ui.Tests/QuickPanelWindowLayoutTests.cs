@@ -19,6 +19,11 @@ public sealed class QuickPanelWindowLayoutTests
         "InputLockButton",
         "SettingsButton"
     ];
+    private static readonly string[] OrbitNames =
+    [
+        "AnchorOrbitOuter",
+        "AnchorOrbitInner"
+    ];
 
     [Fact(Timeout = 10_000)]
     public async Task ActionsUseUniformGeometryWithoutSelectionBorder()
@@ -380,6 +385,69 @@ public sealed class QuickPanelWindowLayoutTests
                         geometry.FillContains(bounds.BottomRight),
                         $"{name} must remain inside the compact fan.");
                 }
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Theory(Timeout = 10_000)]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WheelUsesRadialBeamsOrbitsAndCurvedActions(
+        bool opensLeft)
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new QuickPanelWindow();
+                window.Apply(
+                    AppSettings.CreateDefault(),
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+                InvokeArrangeMenu(
+                    window,
+                    new Point(opensLeft ? 623 : 37, 280),
+                    opensLeft);
+
+                var beams = Assert.IsType<System.Windows.Shapes.Path>(
+                    window.FindName("ActionBeamsPath"));
+                Assert.Null(beams.Stroke);
+                Assert.IsAssignableFrom<Geometry>(beams.Data);
+
+                var halo = Assert.IsType<System.Windows.Shapes.Ellipse>(
+                    window.FindName("AnchorHalo"));
+                Assert.True(halo.Width >= 180);
+                foreach (var name in OrbitNames)
+                {
+                    var orbit = Assert.IsType<
+                        System.Windows.Shapes.Ellipse>(
+                        window.FindName(name));
+                    Assert.Null(orbit.Stroke);
+                }
+
+                var top = Assert.IsType<Button>(
+                    window.FindName("RegionCaptureButton"));
+                var middle = Assert.IsType<Button>(
+                    window.FindName("AiButton"));
+                Assert.True(
+                    Math.Abs(
+                        Canvas.GetLeft(middle) -
+                        Canvas.GetLeft(top)) >= 40,
+                    "Actions must follow a visibly curved radial arc.");
             }
             catch (Exception exception)
             {

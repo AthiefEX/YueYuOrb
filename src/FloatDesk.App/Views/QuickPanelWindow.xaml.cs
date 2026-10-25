@@ -172,13 +172,13 @@ public partial class QuickPanelWindow : Window
 
         var actions = new (Button Element, double ArcOffset)[]
         {
-            (RegionCaptureButton, 18d),
-            (WindowCaptureButton, 9d),
-            (MonitorCaptureButton, 3d),
+            (RegionCaptureButton, 84d),
+            (WindowCaptureButton, 42d),
+            (MonitorCaptureButton, 12d),
             (AiButton, 0d),
-            (NotesButton, 3d),
-            (InputLockButton, 9d),
-            (SettingsButton, 18d)
+            (NotesButton, 12d),
+            (InputLockButton, 42d),
+            (SettingsButton, 84d)
         };
         const double columnX = 300d;
         const double actionWidth = 196d;
@@ -211,6 +211,18 @@ public partial class QuickPanelWindow : Window
     {
         Canvas.SetLeft(AnchorHalo, anchor.X - AnchorHalo.Width / 2);
         Canvas.SetTop(AnchorHalo, anchor.Y - AnchorHalo.Height / 2);
+        Canvas.SetLeft(
+            AnchorOrbitOuter,
+            anchor.X - AnchorOrbitOuter.Width / 2);
+        Canvas.SetTop(
+            AnchorOrbitOuter,
+            anchor.Y - AnchorOrbitOuter.Height / 2);
+        Canvas.SetLeft(
+            AnchorOrbitInner,
+            anchor.X - AnchorOrbitInner.Width / 2);
+        Canvas.SetTop(
+            AnchorOrbitInner,
+            anchor.Y - AnchorOrbitInner.Height / 2);
     }
 
     private void UpdateFanGeometry(
@@ -226,6 +238,9 @@ public partial class QuickPanelWindow : Window
         var actionNear = direction > 0
             ? actions.Max(element => Canvas.GetLeft(element) + element.Width)
             : actions.Min(element => Canvas.GetLeft(element));
+        var actionCurveEdge = direction > 0
+            ? actions.Min(element => Canvas.GetLeft(element))
+            : actions.Max(element => Canvas.GetLeft(element) + element.Width);
         var top = actionTop;
         var bottom = actionBottom;
         var farX = actionNear;
@@ -254,8 +269,7 @@ public partial class QuickPanelWindow : Window
             ? Math.Clamp(farX + (contentGap * 1.35), edge, PanelWidth - edge)
             : Math.Clamp(farX - (contentGap * 1.35), edge, PanelWidth - edge);
         var distance = Math.Abs(farX - anchor.X);
-        var shoulderX = anchor.X +
-                        (direction * Math.Min(96, Math.Max(64, distance * 0.15)));
+        var shoulderX = actionCurveEdge - (direction * 16);
         var corner = Math.Min(38, Math.Max(22, distance * 0.11));
         var outerTop = top + Math.Min(32, Math.Max(16, distance * 0.05));
         var nearBottom = Math.Min(bottom, actionBottom + 10);
@@ -303,7 +317,39 @@ public partial class QuickPanelWindow : Window
         }
         wash.Freeze();
         FanWash.Data = wash;
+        UpdateActionBeamGeometry(anchor, direction, actions);
         UpdateWheelDrawerClip(wash);
+    }
+
+    private void UpdateActionBeamGeometry(
+        Point anchor,
+        double direction,
+        IReadOnlyList<FrameworkElement> actions)
+    {
+        var beams = new StreamGeometry();
+        using (var context = beams.Open())
+        {
+            foreach (var action in actions)
+            {
+                var left = Canvas.GetLeft(action);
+                var top = Canvas.GetTop(action);
+                var targetX = direction > 0
+                    ? left + action.Width
+                    : left;
+                var targetY = top + (action.Height / 2);
+                context.BeginFigure(anchor, isFilled: true, isClosed: true);
+                context.LineTo(
+                    new Point(targetX, targetY - 18),
+                    isStroked: false,
+                    isSmoothJoin: true);
+                context.LineTo(
+                    new Point(targetX, targetY + 18),
+                    isStroked: false,
+                    isSmoothJoin: true);
+            }
+        }
+        beams.Freeze();
+        ActionBeamsPath.Data = beams;
     }
 
     private void UpdateWheelDrawerClip(Geometry fan)
