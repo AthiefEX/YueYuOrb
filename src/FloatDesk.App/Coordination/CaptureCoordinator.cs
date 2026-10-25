@@ -18,6 +18,7 @@ public sealed class CaptureCoordinator : IDisposable
     private readonly Func<AppSettings> _settings;
     private readonly Func<nint> _lastExternalWindow;
     private readonly Action<bool> _activeChanged;
+    private readonly Action<string, IReadOnlyDictionary<string, object?>?>? _diagnostics;
     private readonly SemaphoreSlim _session = new(1, 1);
 
     public CaptureCoordinator(
@@ -25,13 +26,15 @@ public sealed class CaptureCoordinator : IDisposable
         InputLockEngine input,
         Func<AppSettings> settings,
         Func<nint> lastExternalWindow,
-        Action<bool> activeChanged)
+        Action<bool> activeChanged,
+        Action<string, IReadOnlyDictionary<string, object?>?>? diagnostics = null)
     {
         _windows = windows;
         _input = input;
         _settings = settings;
         _lastExternalWindow = lastExternalWindow;
         _activeChanged = activeChanged;
+        _diagnostics = diagnostics;
         _capture = new GdiScreenCapture();
     }
 
@@ -43,6 +46,9 @@ public sealed class CaptureCoordinator : IDisposable
             return OperationResult.Fail("CaptureBusy", "已有截图会话正在进行。");
         try
         {
+            Log(
+                "capture.start",
+                new Dictionary<string, object?> { ["mode"] = mode.ToString() });
             _activeChanged(true);
             using var pause = _input.PauseForCapture();
             await using var visibility =
@@ -67,10 +73,12 @@ public sealed class CaptureCoordinator : IDisposable
             };
 
             using var captured = await _capture.CaptureAsync(target, cancellationToken);
+            Log("capture.frozen", new Dictionary<string, object?> { ["bounds"] = target.ToString() });
             PixelRect? selectedBounds = mode switch
             {
                 CaptureMode.Region => await SelectRegionAsync(
                     captured,
+                    _diagnostics,
                     cancellationToken),
                 _ => target
             };
@@ -155,9 +163,18 @@ public sealed class CaptureCoordinator : IDisposable
 
     private static async Task<PixelRect?> SelectRegionAsync(
         CaptureFrame frozenDesktop,
+        Action<string, IReadOnlyDictionary<string, object?>?>? diagnostics,
         CancellationToken cancellationToken)
     {
         var bitmap = CaptureExportService.ToBitmap(frozenDesktop);
+        var monitorCount = DisplayTopology.GetMonitors().Count;
+        diagnostics?.Invoke(
+            "capture.region.overlays",
+            new Dictionary<string, object?>
+            {
+                ["count"] = monitorCount,
+                ["frozenBounds"] = frozenDesktop.Bounds.ToString()
+            });
         var overlays = DisplayTopology.GetMonitors()
             .Select(monitor => new CaptureOverlayWindow(
                 monitor,
@@ -191,18 +208,43 @@ public sealed class CaptureCoordinator : IDisposable
 
         foreach (var overlay in overlays)
         {
-            overlay.DragStarted += () =>
+            overlay.DragStarted += point =>
             {
-                anchor = DesktopGeometry.GetCursorPosition();
+                anchor = point;
+                diagnostics?.Invoke(
+                    "capture.region.drag.started",
+                    new Dictionary<string, object?>
+                    {
+                        ["anchor"] = anchor.Value.ToString()
+                    });
                 UpdateSelection(anchor.Value);
             };
-            overlay.DragMoved += () =>
-                UpdateSelection(DesktopGeometry.GetCursorPosition());
-            overlay.DragCompleted += () =>
-                UpdateSelection(DesktopGeometry.GetCursorPosition());
-            overlay.CancelRequested += () => Complete(null);
+            overlay.DragMoved += point =>
+                UpdateSelection(point);
+            overlay.DragCompleted += point =>
+            {
+                UpdateSelection(point);
+                diagnostics?.Invoke(
+                    "capture.region.drag.completed",
+                    new Dictionary<string, object?>
+                    {
+                        ["selection"] = selection.ToString()
+                    });
+            };
+            overlay.CancelRequested += () =>
+            {
+                diagnostics?.Invoke("capture.region.cancelled", null);
+                Complete(null);
+            };
             overlay.ConfirmRequested += () =>
             {
+                diagnostics?.Invoke(
+                    "capture.region.confirmed",
+                    new Dictionary<string, object?>
+                    {
+                        ["selection"] = selection.ToString(),
+                        ["usable"] = SelectionGeometry.IsUsable(selection)
+                    });
                 if (SelectionGeometry.IsUsable(selection))
                     Complete(selection);
             };
@@ -239,6 +281,11 @@ public sealed class CaptureCoordinator : IDisposable
         using var registration = cancellationToken.Register(() => Complete(null));
         return await completion.Task;
     }
+
+    private void Log(
+        string eventName,
+        IReadOnlyDictionary<string, object?>? properties) =>
+        _diagnostics?.Invoke(eventName, properties);
 
     private static CaptureFrame Clone(CaptureFrame source)
     {

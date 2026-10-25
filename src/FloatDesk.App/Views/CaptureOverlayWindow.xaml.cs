@@ -11,9 +11,9 @@ namespace FloatDesk.App.Views;
 
 public partial class CaptureOverlayWindow : Window
 {
-    public event Action? DragStarted;
-    public event Action? DragMoved;
-    public event Action? DragCompleted;
+    public event Action<PixelPoint>? DragStarted;
+    public event Action<PixelPoint>? DragMoved;
+    public event Action<PixelPoint>? DragCompleted;
     public event Action? CancelRequested;
     public event Action? ConfirmRequested;
     public event Action<int, int>? NudgeRequested;
@@ -92,7 +92,7 @@ public partial class CaptureOverlayWindow : Window
         }
         _dragging = true;
         CaptureMouse();
-        DragStarted?.Invoke();
+        DragStarted?.Invoke(GetPointerPosition(e));
         e.Handled = true;
     }
 
@@ -100,7 +100,7 @@ public partial class CaptureOverlayWindow : Window
     {
         if (!_dragging || e.LeftButton != MouseButtonState.Pressed)
             return;
-        DragMoved?.Invoke();
+        DragMoved?.Invoke(GetPointerPosition(e));
     }
 
     private void OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -109,8 +109,16 @@ public partial class CaptureOverlayWindow : Window
             return;
         _dragging = false;
         ReleaseMouseCapture();
-        DragCompleted?.Invoke();
+        DragCompleted?.Invoke(GetPointerPosition(e));
         e.Handled = true;
+    }
+
+    private PixelPoint GetPointerPosition(System.Windows.Input.MouseEventArgs e)
+    {
+        var point = PointToScreen(e.GetPosition(this));
+        return new PixelPoint(
+            (int)Math.Round(point.X),
+            (int)Math.Round(point.Y));
     }
 
     private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)

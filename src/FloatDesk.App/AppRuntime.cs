@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Threading;
 using FloatDesk.App.Coordination;
+using FloatDesk.App.ViewModels;
 using FloatDesk.App.Views;
 using FloatDesk.Core.Contracts;
 using FloatDesk.Core.Geometry;
@@ -94,7 +95,9 @@ internal sealed class AppRuntime : IDisposable
             _input,
             () => _settings.Current,
             () => _lastExternal?.TopLevelHwnd ?? 0,
-            active => _captureActive = active);
+            active => _captureActive = active,
+            (eventName, properties) =>
+                _ = _logger.WriteAsync(eventName, properties));
         _coordinator.WindowCreated += ApplyToolSettings;
         _settings.Changed += OnSettingsChanged;
         _input.StatusChanged += OnInputStatusChanged;
@@ -123,6 +126,33 @@ internal sealed class AppRuntime : IDisposable
 
         _hotkeys = new HotkeyService(_settings.Current.Hotkeys);
         _hotkeys.Pressed += OnHotkeyPressed;
+        if (_hotkeys.EffectiveInitialBindings.TryGetValue(
+                HotkeyAction.RegionCapture,
+                out var captureHotkey))
+        {
+            _panel.SetRegionCaptureHotkey(
+                SettingsViewModel.FormatHotkey(captureHotkey));
+        }
+        foreach (var (action, effective) in _hotkeys.EffectiveInitialBindings)
+        {
+            if (_settings.Current.Hotkeys.TryGetValue(action, out var requested) &&
+                requested != effective)
+            {
+                await _logger.WriteAsync(
+                    "hotkey.initial.fallback",
+                    new Dictionary<string, object?>
+                    {
+                        ["action"] = action.ToString(),
+                        ["requested"] = SettingsViewModel.FormatHotkey(requested),
+                        ["effective"] = SettingsViewModel.FormatHotkey(effective)
+                    });
+                _tray?.ShowWarning(
+                    "FloatDesk 快捷键已自动切换",
+                    $"{SettingsViewModel.FormatHotkey(requested)} 已被其他程序占用，" +
+                    $"现使用 {SettingsViewModel.FormatHotkey(effective)}。" +
+                    "也可从悬浮球快捷面板或托盘菜单启动框选截图。");
+            }
+        }
         foreach (var action in _hotkeys.FailedInitialBindings)
         {
             await _logger.WriteAsync(
@@ -132,6 +162,9 @@ internal sealed class AppRuntime : IDisposable
                     ["action"] = action.ToString(),
                     ["errorCode"] = "HotkeyConflict"
                 });
+            _tray?.ShowWarning(
+                "FloatDesk 快捷键不可用",
+                $"{action} 的快捷键被其他程序占用；仍可从悬浮球快捷面板或托盘菜单使用该功能。");
         }
 
         _foreground.Start();

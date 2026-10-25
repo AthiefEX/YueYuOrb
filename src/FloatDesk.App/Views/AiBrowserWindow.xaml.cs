@@ -386,18 +386,36 @@ public partial class AiBrowserWindow : Window, IDisposable
         if (_allowClose)
             return;
         e.Cancel = true;
-        if (_initialized && _releaseOnClose)
-        {
-            await DisposeBrowserAsync();
-        }
-        else if (_initialized && _browser.CoreWebView2.IsSuspended == false)
-        {
-            var result = await _browser.CoreWebView2.TrySuspendAsync();
-            FooterText.Text = result
-                ? "窗口已隐藏，网页已挂起。"
-                : "窗口已隐藏；网页当前不能被系统挂起。";
-        }
         Hide();
+        try
+        {
+            if (_initialized && _releaseOnClose)
+            {
+                await DisposeBrowserAsync();
+                return;
+            }
+            if (!_initialized)
+                return;
+            var outcome = await BrowserSuspension.TrySuspendAsync(
+                () => _browser.CoreWebView2?.IsSuspended ?? true,
+                async () =>
+                {
+                    var browser = _browser.CoreWebView2;
+                    return browser is not null && await browser.TrySuspendAsync();
+                });
+            FooterText.Text = outcome switch
+            {
+                BrowserSuspendOutcome.Suspended => "窗口已隐藏，网页已挂起。",
+                BrowserSuspendOutcome.AlreadySuspended => "窗口已隐藏，网页保持挂起。",
+                BrowserSuspendOutcome.CannotSuspend => "窗口已隐藏；网页当前不能被系统挂起。",
+                _ => "窗口已隐藏；网页已结束或正在关闭。"
+            };
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or COMException or ObjectDisposedException)
+        {
+            FooterText.Text = "窗口已隐藏；网页已结束或正在关闭。";
+        }
     }
 
     private WebView2 CreateBrowser()

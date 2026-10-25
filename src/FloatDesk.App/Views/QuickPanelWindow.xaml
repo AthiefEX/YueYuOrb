@@ -71,7 +71,8 @@
                     <ColumnDefinition Width="2*" />
                     <ColumnDefinition Width="3*" />
                 </Grid.ColumnDefinitions>
-                <Button Grid.Column="0"
+                <Button x:Name="RegionCaptureButton"
+                        Grid.Column="0"
                         Content="框选截图"
                         Margin="0,0,6,0"
                         Style="{StaticResource PrimaryButtonStyle}"

@@ -5,6 +5,7 @@
     <Application.Resources>
         <Color x:Key="AccentColor">#146C5B</Color>
         <Color x:Key="AccentDarkColor">#0F5144</Color>
+        <SolidColorBrush x:Key="AccentDarkBrush" Color="{StaticResource AccentDarkColor}" />
         <Color x:Key="SurfaceColor">#F7F7F4</Color>
         <Color x:Key="SurfaceRaisedColor">#FFFFFF</Color>
         <Color x:Key="InkColor">#1D2623</Color>
@@ -71,7 +72,7 @@
             <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="{StaticResource AccentDarkColor}" />
+                    <Setter Property="Background" Value="{StaticResource AccentDarkBrush}" />
                 </Trigger>
             </Style.Triggers>
         </Style>

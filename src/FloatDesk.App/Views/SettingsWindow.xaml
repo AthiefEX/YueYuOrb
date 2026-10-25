@@ -66,7 +66,7 @@
                             <TextBlock Grid.Row="2" Text="暂停输入规则" VerticalAlignment="Center" />
                             <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding PauseHotkey}" />
                         </Grid>
-                        <TextBlock Text="快捷键格式示例：Ctrl+Alt+Space、Ctrl+Shift+F8。冲突时保留原绑定。"
+                        <TextBlock Text="快捷键格式示例：Ctrl+Alt+Space、Ctrl+Shift+F8。启动时冲突会自动尝试备用组合并提示；修改时冲突会保留原绑定。"
                                    TextWrapping="Wrap"
                                    Foreground="{DynamicResource MutedInkBrush}"
                                    Margin="0,8,0,0" />

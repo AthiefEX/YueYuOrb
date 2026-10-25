@@ -61,6 +61,11 @@ public partial class QuickPanelWindow : Window
         LauncherPanel.Children.Add(addButton);
     }
 
+    public void SetRegionCaptureHotkey(string hotkey)
+    {
+        RegionCaptureButton.ToolTip = $"框选截图（{hotkey}）";
+    }
+
     public void ShowNear(Window orb, PixelRect orbPixels)
     {
         ApplySizeToContent();

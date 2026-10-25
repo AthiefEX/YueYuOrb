@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
 using FloatDesk.Core.Contracts;
+using FloatDesk.Core.Input;
 using FloatDesk.Core.Models;
 
 namespace FloatDesk.App;
@@ -11,6 +12,7 @@ public sealed class HotkeyService : IHotkeyService
     private readonly HwndSource _source;
     private readonly Dictionary<int, (HotkeyAction Action, HotkeyChord Chord)> _registered = [];
     private readonly Dictionary<HotkeyAction, HotkeyChord> _desired;
+    private readonly Dictionary<HotkeyAction, HotkeyChord> _effectiveInitialBindings = [];
     private readonly List<HotkeyAction> _failedInitialBindings = [];
     private int _nextId = 0x4A00;
 
@@ -25,18 +27,30 @@ public sealed class HotkeyService : IHotkeyService
         _source = new HwndSource(parameters);
         _source.AddHook(WndProc);
         foreach (var (action, chord) in _desired)
-            Register(action, chord);
+            RegisterInitial(action, chord);
     }
 
     public event Action<HotkeyAction>? Pressed;
+
     public IReadOnlyList<HotkeyAction> FailedInitialBindings =>
         _failedInitialBindings;
+
+    public IReadOnlyDictionary<HotkeyAction, HotkeyChord> EffectiveInitialBindings =>
+        _effectiveInitialBindings;
 
     public OperationResult Rebind(HotkeyAction action, HotkeyChord chord)
     {
         var oldEntry = _registered.FirstOrDefault(pair => pair.Value.Action == action);
         if (oldEntry.Key != 0 && oldEntry.Value.Chord == chord)
             return OperationResult.Ok();
+        if (_desired.TryGetValue(action, out var desired) &&
+            desired == chord &&
+            _effectiveInitialBindings.TryGetValue(action, out var effective) &&
+            oldEntry.Key != 0 &&
+            oldEntry.Value.Chord == effective)
+        {
+            return OperationResult.Ok();
+        }
         var candidateId = _nextId++;
         if (!RegisterHotKey(
                 _source.Handle,
@@ -54,24 +68,30 @@ public sealed class HotkeyService : IHotkeyService
         }
         _registered[candidateId] = (action, chord);
         _desired[action] = chord;
+        _effectiveInitialBindings[action] = chord;
         return OperationResult.Ok();
     }
 
-    private void Register(HotkeyAction action, HotkeyChord chord)
+    private void RegisterInitial(HotkeyAction action, HotkeyChord requested)
     {
-        var id = _nextId++;
-        if (RegisterHotKey(
-                _source.Handle,
-                id,
-                (uint)chord.Modifiers | 0x4000,
-                chord.VirtualKey))
+        foreach (var candidate in HotkeyFallbackPolicy.For(action, requested))
         {
-            _registered[id] = (action, chord);
+            var id = _nextId++;
+            if (!RegisterHotKey(
+                    _source.Handle,
+                    id,
+                    (uint)candidate.Modifiers | 0x4000,
+                    candidate.VirtualKey))
+            {
+                continue;
+            }
+
+            _registered[id] = (action, candidate);
+            _effectiveInitialBindings[action] = candidate;
+            return;
         }
-        else
-        {
-            _failedInitialBindings.Add(action);
-        }
+
+        _failedInitialBindings.Add(action);
     }
 
     private nint WndProc(

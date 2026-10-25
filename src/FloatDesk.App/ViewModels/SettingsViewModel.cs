@@ -287,7 +287,7 @@ public partial class SettingsViewModel : ObservableObject
             value.Order);
     }
 
-    private static string FormatHotkey(HotkeyChord chord)
+    internal static string FormatHotkey(HotkeyChord chord)
     {
         if (chord.VirtualKey == 0)
             return "";
