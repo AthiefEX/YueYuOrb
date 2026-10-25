@@ -54,6 +54,19 @@ public sealed record AppSettings(
     IReadOnlyList<WindowPlacement> Windows)
 {
     public const int CurrentSchemaVersion = 1;
+    public static IReadOnlyList<WheelActionKind> DefaultWheelActions { get; } =
+    [
+        WheelActionKind.RegionCapture,
+        WheelActionKind.WindowCapture,
+        WheelActionKind.MonitorCapture,
+        WheelActionKind.AiBrowser,
+        WheelActionKind.Notes,
+        WheelActionKind.InputLock,
+        WheelActionKind.Settings
+    ];
+
+    public IReadOnlyList<WheelActionKind> WheelActions { get; init; } =
+        DefaultWheelActions;
 
     public static AppSettings CreateDefault(string? picturesDirectory = null)
     {

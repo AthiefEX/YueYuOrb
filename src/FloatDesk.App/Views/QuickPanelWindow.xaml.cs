@@ -15,8 +15,18 @@ public partial class QuickPanelWindow : Window
 {
     private const double PanelWidth = 660;
     private const double PanelHeight = 560;
+    private const double WheelViewportWidth = 380;
+    private const double WheelViewportHeight = 420;
+    private const double WheelButtonWidth = 196;
+    private const double WheelButtonHeight = 48;
+    private const double WheelRowStep = 55;
+    private const double MaximumWheelArcOffset = 84;
     private const int WmNcHitTest = 0x0084;
     private const int HtTransparent = -1;
+    private Point _wheelAnchor;
+    private bool _wheelOpensLeft;
+    private bool _wheelLayoutReady;
+    private bool _updatingWheelLayout;
 
     public event Action<LauncherItem>? LaunchRequested;
     public event Action? SettingsRequested;
@@ -37,32 +47,47 @@ public partial class QuickPanelWindow : Window
         InputLockGlyph.Text = manualLockEnabled ? "\uE785" : "\uE72E";
         InputLockGlyphHost.Background = (Brush)FindResource(
             manualLockEnabled ? "MenuGreenBrush" : "MenuBlueBrush");
+
+        var enabledWheelActions = settings.WheelActions.ToHashSet();
+        foreach (var (button, kind) in GetFixedWheelActions())
+        {
+            button.Visibility = enabledWheelActions.Contains(kind)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+
         var launchers = settings.Launchers.OrderBy(item => item.Order).ToArray();
         var wheelLaunchers = launchers.Where(item => item.ShowInWheel).ToArray();
         var dockLaunchers = launchers.Where(item => !item.ShowInWheel).ToArray();
 
-        WheelLauncherPanel.Children.Clear();
-        WheelLauncherScroller.Visibility = wheelLaunchers.Length > 0
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        foreach (var button in WheelCanvas.Children
+                     .OfType<Button>()
+                     .Where(button => button.Tag is LauncherItem)
+                     .ToArray())
+        {
+            WheelCanvas.Children.Remove(button);
+        }
         for (var index = 0; index < wheelLaunchers.Length; index++)
         {
             var item = wheelLaunchers[index];
             var button = new Button
             {
                 Name = $"WheelLauncherButton{index}",
-                Width = 224,
-                Height = 42,
-                Margin = new Thickness(0, 0, 0, 6),
+                Width = WheelButtonWidth,
+                Height = WheelButtonHeight,
                 Content = CreateWheelLauncherContent(item),
-                Style = (Style)FindResource("DockLauncherButtonStyle"),
+                Style = (Style)FindResource("RadialActionButtonStyle"),
                 Tag = item,
                 ToolTip = item.Path
             };
             AutomationProperties.SetName(button, item.Name);
             button.Click += (_, _) => LaunchRequested?.Invoke(item);
-            WheelLauncherPanel.Children.Add(button);
+            WheelCanvas.Children.Add(button);
         }
+        WheelScroller.Visibility = GetVisibleWheelButtons().Length > 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        WheelScroller.ScrollToVerticalOffset(0);
 
         LauncherPanel.Children.Clear();
         LauncherDock.Visibility = dockLaunchers.Length > 0
@@ -94,6 +119,9 @@ public partial class QuickPanelWindow : Window
             addButton.Click += (_, _) => SettingsRequested?.Invoke();
             LauncherPanel.Children.Add(addButton);
         }
+
+        if (_wheelLayoutReady)
+            ArrangeMenu(_wheelAnchor, _wheelOpensLeft);
     }
     public void SetRegionCaptureHotkey(string hotkey)
     {
@@ -163,48 +191,135 @@ public partial class QuickPanelWindow : Window
 
     private void ArrangeMenu(Point anchor, bool opensLeft)
     {
+        _wheelAnchor = anchor;
+        _wheelOpensLeft = opensLeft;
+        _wheelLayoutReady = true;
+
         Canvas.SetLeft(LauncherDock, (PanelWidth - LauncherDock.Width) / 2);
         Canvas.SetTop(LauncherDock, 488);
         Canvas.SetLeft(
-            WheelLauncherScroller,
-            opensLeft ? 22 : PanelWidth - 22 - WheelLauncherScroller.Width);
-        Canvas.SetTop(WheelLauncherScroller, 68);
+            WheelScroller,
+            opensLeft
+                ? PanelWidth - 22 - WheelViewportWidth
+                : 22);
+        Canvas.SetTop(
+            WheelScroller,
+            Math.Clamp(
+                anchor.Y - (WheelViewportHeight / 2),
+                20,
+                68));
 
-        var actions = new (Button Element, double ArcOffset)[]
-        {
-            (RegionCaptureButton, 84d),
-            (WindowCaptureButton, 42d),
-            (MonitorCaptureButton, 12d),
-            (AiButton, 0d),
-            (NotesButton, 12d),
-            (InputLockButton, 42d),
-            (SettingsButton, 84d)
-        };
-        const double columnX = 300d;
-        const double actionWidth = 196d;
-        const double actionHeight = 48d;
-        const double rowStep = 55d;
-        var direction = opensLeft ? -1 : 1;
-        var totalHeight = ((actions.Length - 1) * rowStep) + actionHeight;
-        var startY = Math.Clamp(
-            anchor.Y - (totalHeight / 2),
-            28d,
-            448d - totalHeight);
-        for (var index = 0; index < actions.Length; index++)
-        {
-            var (element, arcOffset) = actions[index];
-            var x = opensLeft
-                ? columnX + arcOffset
-                : PanelWidth - columnX - actionWidth - arcOffset;
-            var y = startY + (index * rowStep);
-            Canvas.SetLeft(element, x);
-            Canvas.SetTop(element, y);
-        }
+        LayoutWheelEntries(resetScroll: true);
         ArrangeAnchor(anchor);
         UpdateFanGeometry(
             anchor,
-            direction,
-            actions.Select(item => item.Element).ToArray());
+            opensLeft ? -1 : 1,
+            GetVisibleWheelButtons());
+    }
+
+    private (Button Element, WheelActionKind Kind)[] GetFixedWheelActions() =>
+    [
+        (RegionCaptureButton, WheelActionKind.RegionCapture),
+        (WindowCaptureButton, WheelActionKind.WindowCapture),
+        (MonitorCaptureButton, WheelActionKind.MonitorCapture),
+        (AiButton, WheelActionKind.AiBrowser),
+        (NotesButton, WheelActionKind.Notes),
+        (InputLockButton, WheelActionKind.InputLock),
+        (SettingsButton, WheelActionKind.Settings)
+    ];
+
+    private Button[] GetVisibleWheelButtons()
+    {
+        var fixedButtons = GetFixedWheelActions()
+            .Select(item => item.Element)
+            .Where(button => button.Visibility == Visibility.Visible);
+        var launcherButtons = WheelCanvas.Children
+            .OfType<Button>()
+            .Where(button =>
+                button.Tag is LauncherItem &&
+                button.Visibility == Visibility.Visible);
+        return [.. fixedButtons, .. launcherButtons];
+    }
+
+    private void LayoutWheelEntries(bool resetScroll)
+    {
+        if (_updatingWheelLayout)
+            return;
+
+        _updatingWheelLayout = true;
+        try
+        {
+            var buttons = GetVisibleWheelButtons();
+            WheelScroller.Visibility = buttons.Length > 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+            if (buttons.Length == 0)
+            {
+                WheelCanvas.Height = WheelViewportHeight;
+                return;
+            }
+
+            var contentHeight =
+                ((buttons.Length - 1) * WheelRowStep) +
+                WheelButtonHeight;
+            var canvasHeight = Math.Max(WheelViewportHeight, contentHeight + 32);
+            var startY = (canvasHeight - contentHeight) / 2;
+            WheelCanvas.Height = canvasHeight;
+            for (var index = 0; index < buttons.Length; index++)
+            {
+                Canvas.SetTop(buttons[index], startY + (index * WheelRowStep));
+                PositionWheelButton(buttons[index]);
+            }
+
+            if (resetScroll)
+                WheelScroller.ScrollToVerticalOffset(0);
+        }
+        finally
+        {
+            _updatingWheelLayout = false;
+        }
+    }
+
+    private void UpdateWheelForScroll()
+    {
+        if (!_wheelLayoutReady || _updatingWheelLayout)
+            return;
+
+        _updatingWheelLayout = true;
+        try
+        {
+            var buttons = GetVisibleWheelButtons();
+            foreach (var button in buttons)
+                PositionWheelButton(button);
+            if (WheelScroller.Visibility == Visibility.Visible)
+            {
+                UpdateActionBeamGeometry(
+                    _wheelAnchor,
+                    _wheelOpensLeft ? -1 : 1,
+                    buttons);
+            }
+        }
+        finally
+        {
+            _updatingWheelLayout = false;
+        }
+    }
+
+    private void PositionWheelButton(Button button)
+    {
+        var viewportCenter =
+            WheelScroller.VerticalOffset + (WheelViewportHeight / 2);
+        var buttonCenter = Canvas.GetTop(button) + (WheelButtonHeight / 2);
+        var distance = Math.Clamp(
+            Math.Abs(buttonCenter - viewportCenter) /
+            (WheelViewportHeight / 2),
+            0,
+            1);
+        var easedDistance = distance * distance * (3 - (2 * distance));
+        var arcOffset = MaximumWheelArcOffset * easedDistance;
+        var farX = _wheelOpensLeft ? 42 : 142;
+        var direction = _wheelOpensLeft ? -1 : 1;
+        Canvas.SetLeft(button, farX - (direction * arcOffset));
     }
 
     private void ArrangeAnchor(Point anchor)
@@ -228,37 +343,29 @@ public partial class QuickPanelWindow : Window
     private void UpdateFanGeometry(
         Point anchor,
         double direction,
-        IReadOnlyList<FrameworkElement> actions)
+        Button[] actions)
     {
         const double edge = 10;
-        const double contentGap = 18;
-        var actionTop = actions.Min(element => Canvas.GetTop(element));
-        var actionBottom = actions.Max(
-            element => Canvas.GetTop(element) + element.Height);
-        var actionNear = direction > 0
-            ? actions.Max(element => Canvas.GetLeft(element) + element.Width)
-            : actions.Min(element => Canvas.GetLeft(element));
-        var actionCurveEdge = direction > 0
-            ? actions.Min(element => Canvas.GetLeft(element))
-            : actions.Max(element => Canvas.GetLeft(element) + element.Width);
-        var top = actionTop;
-        var bottom = actionBottom;
-        var farX = actionNear;
-
-        if (WheelLauncherScroller.Visibility == Visibility.Visible)
+        const double contentGap = 12;
+        if (actions.Length == 0 ||
+            WheelScroller.Visibility != Visibility.Visible)
         {
-            var launcherLeft = Canvas.GetLeft(WheelLauncherScroller);
-            var launcherTop = Canvas.GetTop(WheelLauncherScroller);
-            top = Math.Min(top, launcherTop);
-            bottom = Math.Max(
-                bottom,
-                launcherTop + WheelLauncherScroller.Height);
-            farX = direction > 0
-                ? Math.Max(
-                    farX,
-                    launcherLeft + WheelLauncherScroller.Width)
-                : Math.Min(farX, launcherLeft);
+            FanWash.Data = Geometry.Empty;
+            ActionBeamsPath.Data = Geometry.Empty;
+            WheelScroller.Clip = null;
+            return;
         }
+
+        var wheelLeft = Canvas.GetLeft(WheelScroller);
+        var wheelTop = Canvas.GetTop(WheelScroller);
+        var top = wheelTop;
+        var bottom = wheelTop + WheelViewportHeight;
+        var actionCurveEdge = direction > 0
+            ? wheelLeft
+            : wheelLeft + WheelViewportWidth;
+        var farX = direction > 0
+            ? wheelLeft + WheelViewportWidth
+            : wheelLeft;
 
         top = Math.Clamp(top - contentGap, 8, PanelHeight - 80);
         bottom = Math.Clamp(
@@ -269,10 +376,10 @@ public partial class QuickPanelWindow : Window
             ? Math.Clamp(farX + (contentGap * 1.35), edge, PanelWidth - edge)
             : Math.Clamp(farX - (contentGap * 1.35), edge, PanelWidth - edge);
         var distance = Math.Abs(farX - anchor.X);
-        var shoulderX = actionCurveEdge - (direction * 16);
+        var shoulderX = actionCurveEdge + (direction * 16);
         var corner = Math.Min(38, Math.Max(22, distance * 0.11));
         var outerTop = top + Math.Min(32, Math.Max(16, distance * 0.05));
-        var nearBottom = Math.Min(bottom, actionBottom + 10);
+        var nearBottom = bottom - 10;
 
         var wash = new StreamGeometry();
         using (var context = wash.Open())
@@ -324,19 +431,20 @@ public partial class QuickPanelWindow : Window
     private void UpdateActionBeamGeometry(
         Point anchor,
         double direction,
-        IReadOnlyList<FrameworkElement> actions)
+        Button[] actions)
     {
         var beams = new StreamGeometry();
         using (var context = beams.Open())
         {
             foreach (var action in actions)
             {
-                var left = Canvas.GetLeft(action);
-                var top = Canvas.GetTop(action);
+                var bounds = GetWheelButtonMenuBounds(action);
+                if (!IsInsideWheelViewport(bounds))
+                    continue;
                 var targetX = direction > 0
-                    ? left + action.Width
-                    : left;
-                var targetY = top + (action.Height / 2);
+                    ? bounds.Left
+                    : bounds.Right;
+                var targetY = bounds.Top + (bounds.Height / 2);
                 context.BeginFigure(anchor, isFilled: true, isClosed: true);
                 context.LineTo(
                     new Point(targetX, targetY - 18),
@@ -352,21 +460,40 @@ public partial class QuickPanelWindow : Window
         ActionBeamsPath.Data = beams;
     }
 
+    private Rect GetWheelButtonMenuBounds(FrameworkElement button) =>
+        new(
+            Canvas.GetLeft(WheelScroller) +
+            Canvas.GetLeft(button) -
+            WheelScroller.HorizontalOffset,
+            Canvas.GetTop(WheelScroller) +
+            Canvas.GetTop(button) -
+            WheelScroller.VerticalOffset,
+            button.Width,
+            button.Height);
+
+    private bool IsInsideWheelViewport(Rect bounds)
+    {
+        var viewportTop = Canvas.GetTop(WheelScroller);
+        var viewportBottom = viewportTop + WheelViewportHeight;
+        return bounds.Bottom >= viewportTop + 8 &&
+               bounds.Top <= viewportBottom - 8;
+    }
+
     private void UpdateWheelDrawerClip(Geometry fan)
     {
-        if (WheelLauncherScroller.Visibility != Visibility.Visible)
+        if (WheelScroller.Visibility != Visibility.Visible)
         {
-            WheelLauncherScroller.Clip = null;
+            WheelScroller.Clip = null;
             return;
         }
 
-        var left = Canvas.GetLeft(WheelLauncherScroller);
-        var top = Canvas.GetTop(WheelLauncherScroller);
+        var left = Canvas.GetLeft(WheelScroller);
+        var top = Canvas.GetTop(WheelScroller);
         var viewport = new Rect(
             left,
             top,
-            WheelLauncherScroller.Width,
-            WheelLauncherScroller.Height);
+            WheelViewportWidth,
+            WheelViewportHeight);
         var clipped = new CombinedGeometry(
             GeometryCombineMode.Intersect,
             fan,
@@ -375,7 +502,7 @@ public partial class QuickPanelWindow : Window
             Transform = new TranslateTransform(-left, -top)
         };
         clipped.Freeze();
-        WheelLauncherScroller.Clip = clipped;
+        WheelScroller.Clip = clipped;
     }
 
     private void PlayEntranceAnimation()
@@ -469,18 +596,20 @@ public partial class QuickPanelWindow : Window
     private static Grid CreateWheelLauncherContent(LauncherItem item)
     {
         var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(50) });
         grid.ColumnDefinitions.Add(new ColumnDefinition
         {
             Width = new GridLength(1, GridUnitType.Star)
         });
         var icon = new Border
         {
-            Width = 28,
-            Height = 28,
-            CornerRadius = new CornerRadius(14),
-            Background = new SolidColorBrush(
-                Color.FromRgb(46, 139, 255)),
+            Width = 42,
+            Height = 42,
+            CornerRadius = new CornerRadius(21),
+            Background = new LinearGradientBrush(
+                Color.FromRgb(82, 177, 255),
+                Color.FromRgb(39, 113, 235),
+                45),
             VerticalAlignment = VerticalAlignment.Center,
             Child = new TextBlock
             {
@@ -488,26 +617,35 @@ public partial class QuickPanelWindow : Window
                 FontFamily = new FontFamily(
                     "Segoe Fluent Icons, Segoe MDL2 Assets"),
                 Foreground = Brushes.White,
-                FontSize = 14,
+                FontSize = 20,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
             }
         };
         grid.Children.Add(icon);
+        var label = new Border
+        {
+            Margin = new Thickness(6, 3, 0, 3),
+            Background = new SolidColorBrush(
+                Color.FromArgb(0xF5, 0xFF, 0xFF, 0xFF)),
+            BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(17),
+            Padding = new Thickness(14, 0, 8, 0),
+            Child = null
+        };
         var text = new TextBlock
         {
             Text = item.Name,
-            Margin = new Thickness(8, 0, 0, 0),
             Foreground = new SolidColorBrush(
                 Color.FromRgb(24, 52, 91)),
-            FontSize = 13,
+            FontSize = 14,
             FontWeight = FontWeights.SemiBold,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            VerticalAlignment = VerticalAlignment.Center,
-            MaxWidth = 145
+            VerticalAlignment = VerticalAlignment.Center
         };
-        Grid.SetColumn(text, 1);
-        grid.Children.Add(text);
+        label.Child = text;
+        Grid.SetColumn(label, 1);
+        grid.Children.Add(label);
         return grid;
     }
     private static TextBlock CreateAddContent() =>
@@ -525,16 +663,21 @@ public partial class QuickPanelWindow : Window
         HwndSource.FromHwnd(
             new WindowInteropHelper(this).Handle)?.AddHook(WndProc);
     }
-    private void OnWheelLauncherMouseWheel(
+    private void OnWheelMouseWheel(
         object sender,
         MouseWheelEventArgs e)
     {
-        if (WheelLauncherScroller.ScrollableHeight <= 0)
+        if (WheelScroller.ScrollableHeight <= 0)
             return;
-        WheelLauncherScroller.ScrollToVerticalOffset(
-            WheelLauncherScroller.VerticalOffset - e.Delta);
+        WheelScroller.ScrollToVerticalOffset(
+            WheelScroller.VerticalOffset - e.Delta);
         e.Handled = true;
     }
+
+    private void OnWheelScrollChanged(
+        object sender,
+        ScrollChangedEventArgs e) =>
+        UpdateWheelForScroll();
 
     private void OnLauncherMouseWheel(
         object sender,

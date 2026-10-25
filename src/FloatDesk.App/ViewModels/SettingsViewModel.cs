@@ -18,6 +18,13 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _snapToEdge;
     [ObservableProperty] private bool _positionLocked;
     [ObservableProperty] private int _imageShapeIndex;
+    [ObservableProperty] private bool _showRegionCaptureInWheel = true;
+    [ObservableProperty] private bool _showWindowCaptureInWheel = true;
+    [ObservableProperty] private bool _showMonitorCaptureInWheel = true;
+    [ObservableProperty] private bool _showAiBrowserInWheel = true;
+    [ObservableProperty] private bool _showNotesInWheel = true;
+    [ObservableProperty] private bool _showInputLockInWheel = true;
+    [ObservableProperty] private bool _showSettingsInWheel = true;
     [ObservableProperty] private bool _alwaysOnTop;
     [ObservableProperty] private int _fullscreenPolicyIndex;
     [ObservableProperty] private bool _autoInputEnabled;
@@ -45,6 +52,7 @@ public partial class SettingsViewModel : ObservableObject
 
     public static SettingsViewModel From(AppSettings settings)
     {
+        var wheelActions = settings.WheelActions.ToHashSet();
         var vm = new SettingsViewModel
         {
             StartWithWindows = settings.General.StartWithWindows,
@@ -57,6 +65,20 @@ public partial class SettingsViewModel : ObservableObject
             SnapToEdge = settings.Orb.SnapToEdge,
             PositionLocked = settings.Orb.PositionLocked,
             ImageShapeIndex = (int)settings.Orb.ImageShape,
+            ShowRegionCaptureInWheel =
+                wheelActions.Contains(WheelActionKind.RegionCapture),
+            ShowWindowCaptureInWheel =
+                wheelActions.Contains(WheelActionKind.WindowCapture),
+            ShowMonitorCaptureInWheel =
+                wheelActions.Contains(WheelActionKind.MonitorCapture),
+            ShowAiBrowserInWheel =
+                wheelActions.Contains(WheelActionKind.AiBrowser),
+            ShowNotesInWheel =
+                wheelActions.Contains(WheelActionKind.Notes),
+            ShowInputLockInWheel =
+                wheelActions.Contains(WheelActionKind.InputLock),
+            ShowSettingsInWheel =
+                wheelActions.Contains(WheelActionKind.Settings),
             AlwaysOnTop = settings.Overlay.AlwaysOnTop,
             FullscreenPolicyIndex = (int)settings.Overlay.FullscreenPolicy,
             AutoInputEnabled = settings.InputLock.AutoEnabled,
@@ -138,6 +160,13 @@ public partial class SettingsViewModel : ObservableObject
             launchers = latest.Launchers.ToArray();
         }
 
+        var wheelActions = BuildWheelActions();
+        var effectiveWheelActions = wheelActions
+            .ToHashSet()
+            .SetEquals(_baseline.WheelActions)
+            ? latest.WheelActions
+            : wheelActions;
+
         var browserSites = BrowserSites
             .Select((site, index) => site with { Order = index })
             .ToArray();
@@ -203,7 +232,8 @@ public partial class SettingsViewModel : ObservableObject
             BrowserTopmost = browserTopmost,
             Capture = capture,
             Hotkeys = hotkeys,
-            Windows = latest.Windows
+            Windows = latest.Windows,
+            WheelActions = effectiveWheelActions
         };
 
         void MergeHotkey(HotkeyAction action, string value)
@@ -212,6 +242,25 @@ public partial class SettingsViewModel : ObservableObject
             var edited = ParseHotkey(value, baseline);
             if (edited != baseline)
                 hotkeys[action] = edited;
+        }
+    }
+
+    private WheelActionKind[] BuildWheelActions()
+    {
+        var actions = new List<WheelActionKind>();
+        Add(ShowRegionCaptureInWheel, WheelActionKind.RegionCapture);
+        Add(ShowWindowCaptureInWheel, WheelActionKind.WindowCapture);
+        Add(ShowMonitorCaptureInWheel, WheelActionKind.MonitorCapture);
+        Add(ShowAiBrowserInWheel, WheelActionKind.AiBrowser);
+        Add(ShowNotesInWheel, WheelActionKind.Notes);
+        Add(ShowInputLockInWheel, WheelActionKind.InputLock);
+        Add(ShowSettingsInWheel, WheelActionKind.Settings);
+        return actions.ToArray();
+
+        void Add(bool enabled, WheelActionKind kind)
+        {
+            if (enabled)
+                actions.Add(kind);
         }
     }
 

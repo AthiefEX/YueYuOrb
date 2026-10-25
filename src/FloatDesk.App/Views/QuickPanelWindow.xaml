@@ -229,19 +229,19 @@
                     <BlurEffect Radius="2" />
                 </Ellipse.Effect>
             </Ellipse>
-            <ScrollViewer x:Name="WheelLauncherScroller"
-                          Width="234"
-                          Height="380"
+            <ScrollViewer x:Name="WheelScroller"
+                          Width="380"
+                          Height="420"
                           VerticalScrollBarVisibility="Hidden"
                           HorizontalScrollBarVisibility="Disabled"
                           PanningMode="VerticalOnly"
                           ClipToBounds="True"
                           OpacityMask="{StaticResource WheelDrawerMask}"
-                          PreviewMouseWheel="OnWheelLauncherMouseWheel">
-                <StackPanel x:Name="WheelLauncherPanel"
-                            Orientation="Vertical"
-                            HorizontalAlignment="Stretch" />
-            </ScrollViewer>
+                          PreviewMouseWheel="OnWheelMouseWheel"
+                          ScrollChanged="OnWheelScrollChanged">
+                <Canvas x:Name="WheelCanvas"
+                        Width="380"
+                        Height="420">
 
             <Button x:Name="RegionCaptureButton"
                     Width="196"
@@ -525,6 +525,9 @@
                     </Border>
                 </Grid>
             </Button>
+
+            </Canvas>
+            </ScrollViewer>
 
             <Border x:Name="LauncherDock"
                     Width="480"

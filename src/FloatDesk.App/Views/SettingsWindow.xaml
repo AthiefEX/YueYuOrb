@@ -163,7 +163,7 @@
                         <TextBlock Grid.Column="1"
                                    Margin="16,0,0,0"
                                    VerticalAlignment="Center"
-                                   Text="勾选“轮盘”后应用会进入可滚动轮盘区；未勾选的应用显示在底部应用坞。"
+                                   Text="加入轮盘的应用与功能共用一个可滚动轮盘；未加入的应用显示在底部应用坞。移出轮盘不会删除应用。"
                                    TextWrapping="Wrap"
                                    Foreground="{DynamicResource MutedInkBrush}" />
                     </Grid>
@@ -202,6 +202,81 @@
                                 Click="OnRemoveLauncherFromWheelClick" />
                     </WrapPanel>
                 </Grid>
+            </TabItem>
+
+            <TabItem x:Name="WheelSettingsTab" Header="轮盘">
+                <ScrollViewer Padding="12">
+                    <StackPanel MaxWidth="650" HorizontalAlignment="Left">
+                        <TextBlock Text="内置功能"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Margin="0,0,0,8" />
+                        <TextBlock Text="勾选需要显示的功能。关闭后该功能只会从轮盘移除，其他入口与设置不会改变。"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource MutedInkBrush}"
+                                   Margin="0,0,0,14" />
+                        <Border Background="#0D2E8BFF"
+                                CornerRadius="12"
+                                Padding="18,12"
+                                Margin="0,0,0,16">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="42" />
+                                    <RowDefinition Height="42" />
+                                    <RowDefinition Height="42" />
+                                    <RowDefinition Height="42" />
+                                </Grid.RowDefinitions>
+                                <CheckBox x:Name="ShowRegionCaptureInWheelCheckBox"
+                                          Content="快速截图"
+                                          IsChecked="{Binding ShowRegionCaptureInWheel}"
+                                          VerticalAlignment="Center" />
+                                <CheckBox x:Name="ShowWindowCaptureInWheelCheckBox"
+                                          Grid.Row="1"
+                                          Content="窗口截图"
+                                          IsChecked="{Binding ShowWindowCaptureInWheel}"
+                                          VerticalAlignment="Center" />
+                                <CheckBox x:Name="ShowMonitorCaptureInWheelCheckBox"
+                                          Grid.Row="2"
+                                          Content="屏幕截图"
+                                          IsChecked="{Binding ShowMonitorCaptureInWheel}"
+                                          VerticalAlignment="Center" />
+                                <CheckBox x:Name="ShowAiBrowserInWheelCheckBox"
+                                          Grid.Row="3"
+                                          Content="AI 网页"
+                                          IsChecked="{Binding ShowAiBrowserInWheel}"
+                                          VerticalAlignment="Center" />
+                                <CheckBox x:Name="ShowNotesInWheelCheckBox"
+                                          Grid.Column="1"
+                                          Content="记事本"
+                                          IsChecked="{Binding ShowNotesInWheel}"
+                                          VerticalAlignment="Center" />
+                                <CheckBox x:Name="ShowInputLockInWheelCheckBox"
+                                          Grid.Row="1"
+                                          Grid.Column="1"
+                                          Content="锁定英文"
+                                          IsChecked="{Binding ShowInputLockInWheel}"
+                                          VerticalAlignment="Center" />
+                                <CheckBox x:Name="ShowSettingsInWheelCheckBox"
+                                          Grid.Row="2"
+                                          Grid.Column="1"
+                                          Content="设置"
+                                          IsChecked="{Binding ShowSettingsInWheel}"
+                                          VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                        <TextBlock Text="快捷应用"
+                                   FontSize="18"
+                                   FontWeight="SemiBold"
+                                   Margin="0,4,0,8" />
+                        <TextBlock Text="前往“快捷应用”页面选择应用，再点击“加入轮盘”或“移出轮盘”。应用数量不设上限，超出可视区域的内容可使用鼠标滚轮浏览，轮盘曲线会随着滚动保持整齐。"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource MutedInkBrush}" />
+                    </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
             <TabItem Header="输入法">

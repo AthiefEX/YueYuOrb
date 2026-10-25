@@ -45,6 +45,12 @@ public static partial class SettingsValidator
                 window.WidthDip <= 0 ||
                 window.HeightDip <= 0))
             errors.Add("Window placements contain invalid coordinates.");
+        if (value.WheelActions is null ||
+            value.WheelActions.Distinct().Count() != value.WheelActions.Count ||
+            value.WheelActions.Any(action => !Enum.IsDefined(action)))
+        {
+            errors.Add("WheelActions contain invalid or duplicate actions.");
+        }
         return errors;
     }
 

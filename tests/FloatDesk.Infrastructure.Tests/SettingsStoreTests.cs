@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using FloatDesk.Core.Models;
 using FloatDesk.Core.Contracts;
 using FloatDesk.Infrastructure.Settings;
@@ -24,6 +26,9 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(0, settings.Capture.DelaySeconds);
         Assert.True(settings.Capture.OpenEditor);
         Assert.True(settings.Overlay.AlwaysOnTop);
+        Assert.Equal(
+            Enum.GetValues<WheelActionKind>(),
+            settings.WheelActions);
     }
 
     [Fact]
@@ -119,6 +124,26 @@ public sealed class SettingsStoreTests : IDisposable
 
         Assert.Contains(errors, error => error.Contains("SizeDip", StringComparison.Ordinal));
         Assert.Contains(errors, error => error.Contains("Opacity", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void LegacySettingsWithoutWheelActionsShowAllBuiltIns()
+    {
+        var options = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            Converters = { new JsonStringEnumConverter() }
+        };
+        var json = JsonSerializer.SerializeToNode(
+            AppSettings.CreateDefault(),
+            options)!.AsObject();
+        json.Remove("wheelActions");
+
+        var migrated = SettingsMigrator.Deserialize(json.ToJsonString(), options);
+
+        Assert.Equal(
+            Enum.GetValues<WheelActionKind>(),
+            migrated.WheelActions);
     }
 
     [Fact]

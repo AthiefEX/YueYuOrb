@@ -107,7 +107,7 @@ public sealed class QuickPanelWindowLayoutTests
     }
 
     [Fact(Timeout = 10_000)]
-    public async Task WheelAppsUseScrollableRailAndOnlyDockItemsOpenDock()
+    public async Task WheelAppsUseUnifiedWheelAndOnlyDockItemsOpenDock()
     {
         Exception? failure = null;
         var thread = new Thread(() =>
@@ -141,20 +141,30 @@ public sealed class QuickPanelWindowLayoutTests
                     },
                     manualLockEnabled: false,
                     inputStatus: "等待前台应用");
+                InvokeArrangeMenu(
+                    window,
+                    new Point(37, 280),
+                    opensLeft: false);
+                window.Show();
+                window.UpdateLayout();
 
                 var scroller = Assert.IsType<ScrollViewer>(
-                    window.FindName("WheelLauncherScroller"));
-                var panel = Assert.IsType<StackPanel>(
-                    window.FindName("WheelLauncherPanel"));
+                    window.FindName("WheelScroller"));
+                var canvas = Assert.IsType<Canvas>(
+                    window.FindName("WheelCanvas"));
                 var dock = Assert.IsType<Border>(
                     window.FindName("LauncherDock"));
 
                 Assert.Equal(Visibility.Visible, scroller.Visibility);
-                Assert.Equal(16, panel.Children.Count);
+                Assert.Equal(
+                    23,
+                    canvas.Children
+                        .OfType<Button>()
+                        .Count(button => button.Visibility == Visibility.Visible));
                 Assert.Equal(Visibility.Visible, dock.Visibility);
 
-                scroller.Measure(new Size(234, 380));
-                scroller.Arrange(new Rect(0, 0, 234, 380));
+                scroller.Measure(new Size(380, 420));
+                scroller.Arrange(new Rect(0, 0, 380, 420));
                 scroller.UpdateLayout();
                 Assert.True(
                     scroller.ScrollableHeight > 0,
@@ -170,6 +180,7 @@ public sealed class QuickPanelWindowLayoutTests
                     manualLockEnabled: false,
                     inputStatus: "等待前台应用");
                 Assert.Equal(Visibility.Collapsed, dock.Visibility);
+                window.Hide();
             }
             catch (Exception exception)
             {
@@ -277,7 +288,7 @@ public sealed class QuickPanelWindowLayoutTests
                 var fan = Assert.IsType<System.Windows.Shapes.Path>(
                     window.FindName("FanWash"));
                 var scroller = Assert.IsType<ScrollViewer>(
-                    window.FindName("WheelLauncherScroller"));
+                    window.FindName("WheelScroller"));
                 var geometry = Assert.IsAssignableFrom<Geometry>(fan.Data);
                 Assert.Null(fan.Stroke);
                 Assert.NotNull(scroller.Clip);
@@ -307,7 +318,7 @@ public sealed class QuickPanelWindowLayoutTests
                 {
                     var element = Assert.IsAssignableFrom<FrameworkElement>(
                         window.FindName(name));
-                    var bounds = SurfaceBounds(element, inset: 4);
+                    var bounds = WheelSurfaceBounds(window, element, inset: 4);
                     Assert.True(
                         geometry.FillContains(bounds.TopLeft) &&
                         geometry.FillContains(bounds.TopRight) &&
@@ -377,7 +388,7 @@ public sealed class QuickPanelWindowLayoutTests
                 {
                     var button = Assert.IsAssignableFrom<FrameworkElement>(
                         window.FindName(name));
-                    var bounds = SurfaceBounds(button, inset: 4);
+                    var bounds = WheelSurfaceBounds(window, button, inset: 4);
                     Assert.True(
                         geometry.FillContains(bounds.TopLeft) &&
                         geometry.FillContains(bounds.TopRight) &&
@@ -465,6 +476,212 @@ public sealed class QuickPanelWindowLayoutTests
             throw new Xunit.Sdk.XunitException(failure.ToString());
     }
 
+    [Fact(Timeout = 10_000)]
+    public async Task FunctionsAndApplicationsShareOneScrollableWheel()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new QuickPanelWindow();
+                var wheelApps = Enumerable.Range(0, 16)
+                    .Select(index => new LauncherItem(
+                        Guid.NewGuid(),
+                        $"轮盘应用 {index + 1}",
+                        LauncherKind.Exe,
+                        $@"C:\Apps\wheel{index}.exe",
+                        [],
+                        null,
+                        index,
+                        ShowInWheel: true))
+                    .ToList();
+                var dockApp = new LauncherItem(
+                    Guid.NewGuid(),
+                    "底栏应用",
+                    LauncherKind.Exe,
+                    @"C:\Apps\dock.exe",
+                    [],
+                    null,
+                    wheelApps.Count);
+                window.Apply(
+                    AppSettings.CreateDefault() with
+                    {
+                        Launchers = [.. wheelApps, dockApp]
+                    },
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+                InvokeArrangeMenu(window, new Point(37, 280), opensLeft: false);
+                window.Show();
+                window.UpdateLayout();
+                window.Measure(new Size(660, 560));
+                window.Arrange(new Rect(0, 0, 660, 560));
+                window.UpdateLayout();
+
+                Assert.Null(window.FindName("WheelLauncherScroller"));
+                Assert.Null(window.FindName("WheelLauncherPanel"));
+                var scroller = Assert.IsType<ScrollViewer>(
+                    window.FindName("WheelScroller"));
+                var canvas = Assert.IsType<Canvas>(
+                    window.FindName("WheelCanvas"));
+                scroller.ApplyTemplate();
+                var wheelButtons = canvas.Children
+                    .OfType<Button>()
+                    .Where(button => button.Visibility == Visibility.Visible)
+                    .ToArray();
+
+                Assert.Equal(23, wheelButtons.Length);
+                Assert.Contains(
+                    wheelButtons,
+                    button => ReferenceEquals(
+                        button,
+                        window.FindName("RegionCaptureButton")));
+                Assert.Contains(
+                    wheelButtons,
+                    button => button.Tag is LauncherItem item &&
+                              item.Name == "轮盘应用 16");
+                Assert.DoesNotContain(
+                    wheelButtons,
+                    button => button.Tag is LauncherItem item &&
+                              item.Name == "底栏应用");
+
+                scroller.Measure(new Size(380, 420));
+                scroller.Arrange(new Rect(0, 0, 380, 420));
+                scroller.UpdateLayout();
+                Assert.True(
+                    scroller.ScrollableHeight > 0,
+                    "The unified wheel must scroll when all entries do not fit. " +
+                    $"CanvasHeight={canvas.Height}, " +
+                    $"ExtentHeight={scroller.ExtentHeight}, " +
+                    $"ViewportHeight={scroller.ViewportHeight}, " +
+                    $"ActualHeight={scroller.ActualHeight}, " +
+                    $"ActualWidth={scroller.ActualWidth}, " +
+                    $"Visibility={scroller.Visibility}.");
+                scroller.ScrollToVerticalOffset(140);
+                scroller.UpdateLayout();
+                Assert.True(scroller.VerticalOffset > 0);
+                window.Hide();
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Theory(Timeout = 10_000)]
+    [InlineData(WheelActionKind.RegionCapture, false)]
+    [InlineData(WheelActionKind.WindowCapture, false)]
+    [InlineData(WheelActionKind.MonitorCapture, false)]
+    [InlineData(WheelActionKind.AiBrowser, false)]
+    [InlineData(WheelActionKind.Notes, false)]
+    [InlineData(WheelActionKind.InputLock, false)]
+    [InlineData(WheelActionKind.Settings, false)]
+    public async Task DisabledBuiltInWheelActionIsHidden(
+        WheelActionKind action,
+        bool enabled)
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var settings = AppSettings.CreateDefault();
+                var enabledActions = settings.WheelActions
+                    .Where(item => item != action)
+                    .ToArray();
+                var window = new QuickPanelWindow();
+                window.Apply(
+                    settings with { WheelActions = enabledActions },
+                    manualLockEnabled: enabled,
+                    inputStatus: "等待前台应用");
+                InvokeArrangeMenu(window, new Point(37, 280), opensLeft: false);
+
+                var canvas = Assert.IsType<Canvas>(
+                    window.FindName("WheelCanvas"));
+                var visibleActions = canvas.Children
+                    .OfType<Button>()
+                    .Where(button => button.Visibility == Visibility.Visible)
+                    .ToArray();
+                Assert.Equal(6, visibleActions.Length);
+                Assert.DoesNotContain(
+                    visibleActions,
+                    button => button.Name == action switch
+                    {
+                        WheelActionKind.RegionCapture => "RegionCaptureButton",
+                        WheelActionKind.WindowCapture => "WindowCaptureButton",
+                        WheelActionKind.MonitorCapture => "MonitorCaptureButton",
+                        WheelActionKind.AiBrowser => "AiButton",
+                        WheelActionKind.Notes => "NotesButton",
+                        WheelActionKind.InputLock => "InputLockButton",
+                        WheelActionKind.Settings => "SettingsButton",
+                        _ => throw new ArgumentOutOfRangeException(nameof(action))
+                    });
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task EmptyUnifiedWheelCollapsesWithoutCrashing()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new QuickPanelWindow();
+                window.Apply(
+                    AppSettings.CreateDefault() with { WheelActions = [] },
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+                InvokeArrangeMenu(window, new Point(37, 280), opensLeft: false);
+
+                var scroller = Assert.IsType<ScrollViewer>(
+                    window.FindName("WheelScroller"));
+                var fan = Assert.IsType<System.Windows.Shapes.Path>(
+                    window.FindName("FanWash"));
+                var geometry = Assert.IsAssignableFrom<Geometry>(fan.Data);
+                Assert.Equal(Visibility.Collapsed, scroller.Visibility);
+                Assert.True(geometry.Bounds.IsEmpty);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
     private static void InvokeArrangeMenu(
         QuickPanelWindow window,
         Point anchor,
@@ -498,6 +715,26 @@ public sealed class QuickPanelWindowLayoutTests
             top + inset,
             Math.Max(1, width - (inset * 2)),
             Math.Max(1, height - (inset * 2)));
+    }
+
+    private static Rect WheelSurfaceBounds(
+        QuickPanelWindow window,
+        FrameworkElement element,
+        double inset)
+    {
+        var scroller = Assert.IsType<ScrollViewer>(
+            window.FindName("WheelScroller"));
+        var left = Canvas.GetLeft(scroller) +
+                   Canvas.GetLeft(element) -
+                   scroller.HorizontalOffset;
+        var top = Canvas.GetTop(scroller) +
+                  Canvas.GetTop(element) -
+                  scroller.VerticalOffset;
+        return new Rect(
+            left + inset,
+            top + inset,
+            Math.Max(1, element.Width - (inset * 2)),
+            Math.Max(1, element.Height - (inset * 2)));
     }
 
     private static void AssertNoKeyboardFocusTrigger(
