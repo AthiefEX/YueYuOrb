@@ -1,101 +1,590 @@
 <Window x:Class="FloatDesk.App.Views.QuickPanelWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Width="340"
-        SizeToContent="Height"
-        MaxHeight="480"
+        Width="660"
+        Height="560"
+        SizeToContent="Manual"
         WindowStyle="None"
         ResizeMode="NoResize"
         AllowsTransparency="True"
         Background="Transparent"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
         ShowInTaskbar="False"
         ShowActivated="True"
         Deactivated="OnDeactivated"
         PreviewKeyDown="OnPreviewKeyDown"
         Title="FloatDesk 快捷面板">
-    <Border Style="{StaticResource PanelBorderStyle}" Padding="16">
-        <Border.Effect>
-            <DropShadowEffect BlurRadius="24" ShadowDepth="7" Opacity="0.24" />
-        </Border.Effect>
-        <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
+    <Window.Resources>
+        <SolidColorBrush x:Key="MenuLabelBrush" Color="#F2FFFFFF" />
+        <SolidColorBrush x:Key="MenuLabelBorderBrush" Color="#A8DCEBFF" />
+        <SolidColorBrush x:Key="MenuMutedBrush" Color="#667B92B7" />
+        <SolidColorBrush x:Key="MenuStrongBrush" Color="#FF18345B" />
+        <SolidColorBrush x:Key="MenuBlueBrush" Color="#FF2E8BFF" />
+        <SolidColorBrush x:Key="MenuGreenBrush" Color="#FF25C89A" />
+        <SolidColorBrush x:Key="MenuVioletBrush" Color="#FF9B59F6" />
+        <SolidColorBrush x:Key="MenuCoralBrush" Color="#FFFF6B70" />
+        <SolidColorBrush x:Key="MenuSlateBrush" Color="#FF758197" />
 
-            <Grid Grid.Row="0" Margin="0,0,0,12">
-                <TextBlock Text="FloatDesk"
-                           FontSize="19"
-                           FontWeight="SemiBold"
-                           VerticalAlignment="Center" />
+        <LinearGradientBrush x:Key="MenuFanBrush"
+                             StartPoint="1,0.5"
+                             EndPoint="0,0.5">
+            <GradientStop Color="#F2EAF7FF" Offset="0" />
+            <GradientStop Color="#C9DDEEFF" Offset="0.48" />
+            <GradientStop Color="#72D4ECFF" Offset="1" />
+        </LinearGradientBrush>
+        <RadialGradientBrush x:Key="AnchorHaloBrush">
+            <GradientStop Color="#BFFFFFFF" Offset="0" />
+            <GradientStop Color="#4D9BD8FF" Offset="0.55" />
+            <GradientStop Color="#009BD8FF" Offset="1" />
+        </RadialGradientBrush>
+        <LinearGradientBrush x:Key="DockGlassBrush"
+                             StartPoint="0,0"
+                             EndPoint="1,1">
+            <GradientStop Color="#EFFFFFFF" Offset="0" />
+            <GradientStop Color="#DCEAF5FF" Offset="1" />
+        </LinearGradientBrush>
+
+        <DropShadowEffect x:Key="MenuShadow"
+                          BlurRadius="24"
+                          ShadowDepth="8"
+                          Direction="270"
+                          Opacity="0.18"
+                          Color="#254E91" />
+        <DropShadowEffect x:Key="ActionShadow"
+                          BlurRadius="13"
+                          ShadowDepth="3"
+                          Direction="270"
+                          Opacity="0.20"
+                          Color="#315D8D" />
+
+        <Style x:Key="RadialActionButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid x:Name="ActionRoot"
+                              RenderTransformOrigin="0.5,0.5">
+                            <Border x:Name="FocusRing"
+                                    Background="Transparent"
+                                    BorderBrush="Transparent"
+                                    BorderThickness="2"
+                                    CornerRadius="30"
+                                    Padding="2">
+                                <ContentPresenter />
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ActionRoot"
+                                        Property="Opacity"
+                                        Value="0.94" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ActionRoot"
+                                        Property="Opacity"
+                                        Value="0.82" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="FocusRing"
+                                        Property="BorderBrush"
+                                        Value="{StaticResource MenuBlueBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.55" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SecondaryActionButtonStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource RadialActionButtonStyle}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="SecondarySurface"
+                                Background="#DFFFFFFF"
+                                BorderBrush="#9DCBE7FF"
+                                BorderThickness="1"
+                                CornerRadius="18"
+                                Padding="10,7">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="SecondarySurface"
+                                        Property="Background"
+                                        Value="#FFFFFFFF" />
+                                <Setter TargetName="SecondarySurface"
+                                        Property="BorderBrush"
+                                        Value="{StaticResource MenuBlueBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="SecondarySurface"
+                                        Property="BorderBrush"
+                                        Value="{StaticResource MenuBlueBrush}" />
+                                <Setter TargetName="SecondarySurface"
+                                        Property="BorderThickness"
+                                        Value="2" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="DockLauncherButtonStyle" TargetType="Button">
+            <Setter Property="MinWidth" Value="96" />
+            <Setter Property="Height" Value="42" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Background" Value="#D9FFFFFF" />
+            <Setter Property="BorderBrush" Value="#80CBE4FF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{StaticResource MenuStrongBrush}" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="DockButtonSurface"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="13"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="DockButtonSurface"
+                                        Property="Background"
+                                        Value="#FFFFFFFF" />
+                                <Setter TargetName="DockButtonSurface"
+                                        Property="BorderBrush"
+                                        Value="{StaticResource MenuBlueBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="DockButtonSurface"
+                                        Property="BorderBrush"
+                                        Value="{StaticResource MenuBlueBrush}" />
+                                <Setter TargetName="DockButtonSurface"
+                                        Property="BorderThickness"
+                                        Value="2" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid x:Name="MenuRoot"
+          Width="660"
+          Height="560"
+          Opacity="0"
+          RenderTransformOrigin="0.5,0.5">
+        <Grid.RenderTransform>
+            <ScaleTransform x:Name="MenuScaleTransform"
+                            ScaleX="0.97"
+                            ScaleY="0.97" />
+        </Grid.RenderTransform>
+
+        <Canvas x:Name="MenuCanvas"
+                Width="660"
+                Height="560">
+            <Path x:Name="FanWash"
+                  Fill="{StaticResource MenuFanBrush}"
+                  IsHitTestVisible="False"
+                  Opacity="0.88">
+                <Path.Effect>
+                    <BlurEffect Radius="18" />
+                </Path.Effect>
+            </Path>
+            <Path x:Name="FanHighlight"
+                  Fill="#54FFFFFF"
+                  IsHitTestVisible="False"
+                  Opacity="0.82">
+                <Path.Effect>
+                    <BlurEffect Radius="8" />
+                </Path.Effect>
+            </Path>
+            <Path x:Name="ConnectorPath"
+                  IsHitTestVisible="False"
+                  Stroke="#7E83C8FF"
+                  StrokeThickness="1.5"
+                  StrokeDashArray="5,5" />
+
+            <Ellipse x:Name="AnchorHalo"
+                     Width="146"
+                     Height="146"
+                     Fill="{StaticResource AnchorHaloBrush}"
+                     IsHitTestVisible="False">
+                <Ellipse.Effect>
+                    <BlurEffect Radius="18" />
+                </Ellipse.Effect>
+            </Ellipse>
+            <Ellipse x:Name="AnchorRing"
+                     Width="108"
+                     Height="108"
+                     Stroke="#BFFFFFFF"
+                     StrokeThickness="2"
+                     Fill="#12FFFFFF"
+                     IsHitTestVisible="False" />
+
+            <Border x:Name="BrandChip"
+                    Width="178"
+                    Height="42"
+                    IsHitTestVisible="False"
+                    Background="#EFFFFFFF"
+                    BorderBrush="#94D3E8FF"
+                    BorderThickness="1"
+                    CornerRadius="21"
+                    Padding="14,0">
+                <Border.Effect>
+                    <StaticResource ResourceKey="ActionShadow" />
+                </Border.Effect>
                 <StackPanel Orientation="Horizontal"
-                            HorizontalAlignment="Right">
-                    <TextBlock x:Name="AutoRuleText"
-                               Foreground="{DynamicResource MutedInkBrush}"
-                               VerticalAlignment="Center"
-                               Margin="0,0,10,0" />
-                    <Button Content="设置"
-                            Click="OnSettingsClick"
-                            Padding="10,5"
-                            MinHeight="30" />
+                            VerticalAlignment="Center">
+                    <TextBlock Text="✦"
+                               Foreground="{StaticResource MenuBlueBrush}"
+                               FontSize="18"
+                               Margin="0,-1,8,0" />
+                    <TextBlock Text="FloatDesk 快捷操作"
+                               Foreground="{StaticResource MenuStrongBrush}"
+                               FontSize="14"
+                               FontWeight="SemiBold" />
                 </StackPanel>
-            </Grid>
-
-            <ScrollViewer Grid.Row="1"
-                          MaxHeight="190"
-                          VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled"
-                          Margin="0,0,0,10">
-                <WrapPanel x:Name="LauncherPanel"
-                           MinHeight="72" />
-            </ScrollViewer>
-
-            <UniformGrid Grid.Row="2" Columns="3" Margin="0,0,0,10">
-                <Button x:Name="InputLockButton"
-                        Content="锁定英文"
-                        Margin="0,0,6,0"
-                        Click="OnInputLockClick" />
-                <Button Content="AI 网页"
-                        Margin="3,0"
-                        Click="OnAiClick" />
-                <Button Content="记事本"
-                        Margin="6,0,0,0"
-                        Click="OnNotesClick" />
-            </UniformGrid>
-
-            <Grid Grid.Row="3" Margin="0,0,0,10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="2*" />
-                    <ColumnDefinition Width="3*" />
-                </Grid.ColumnDefinitions>
-                <Button x:Name="RegionCaptureButton"
-                        Grid.Column="0"
-                        Content="框选截图"
-                        Margin="0,0,6,0"
-                        Style="{StaticResource PrimaryButtonStyle}"
-                        Click="OnRegionCaptureClick" />
-                <UniformGrid Grid.Column="1" Columns="2">
-                    <Button Content="窗口"
-                            Margin="3,0"
-                            Click="OnWindowCaptureClick" />
-                    <Button Content="屏幕"
-                            Margin="6,0,0,0"
-                            Click="OnMonitorCaptureClick" />
-                </UniformGrid>
-            </Grid>
-
-            <Border Grid.Row="4"
-                    Background="#0E146C5B"
-                    CornerRadius="8"
-                    Padding="9,7">
-                <TextBlock x:Name="InputStatusText"
-                           Foreground="{DynamicResource MutedInkBrush}"
-                           TextWrapping="Wrap"
-                           Text="输入状态：等待前台应用" />
             </Border>
-        </Grid>
-    </Border>
+
+            <Border x:Name="StatusChip"
+                    Width="248"
+                    Height="54"
+                    IsHitTestVisible="False"
+                    Background="#DFFFFFFF"
+                    BorderBrush="#85CBE5FF"
+                    BorderThickness="1"
+                    CornerRadius="18"
+                    Padding="14,9">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Width="28"
+                            Height="28"
+                            CornerRadius="14"
+                            Background="#1F2E8BFF"
+                            VerticalAlignment="Center">
+                        <TextBlock Text="&#xE765;"
+                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                   Foreground="{StaticResource MenuBlueBrush}"
+                                   FontSize="15"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                    <StackPanel Grid.Column="1"
+                                Margin="10,0,0,0"
+                                VerticalAlignment="Center">
+                        <TextBlock x:Name="AutoRuleText"
+                                   Foreground="{StaticResource MenuStrongBrush}"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Text="自动规则：开" />
+                        <TextBlock x:Name="InputStatusText"
+                                   Foreground="{StaticResource MenuMutedBrush}"
+                                   FontSize="11"
+                                   TextTrimming="CharacterEllipsis"
+                                   Text="输入状态：等待前台应用" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Button x:Name="RegionCaptureButton"
+                    Width="190"
+                    Height="58"
+                    Style="{StaticResource RadialActionButtonStyle}"
+                    Click="OnRegionCaptureClick">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="58" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Width="52"
+                            Height="52"
+                            CornerRadius="26"
+                            Background="{StaticResource MenuGreenBrush}"
+                            BorderBrush="#DFFFFFFF"
+                            BorderThickness="2"
+                            Effect="{StaticResource ActionShadow}">
+                        <TextBlock Text="&#xE722;"
+                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                   Foreground="White"
+                                   FontSize="23"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                    <Border Grid.Column="1"
+                            Margin="7,4,0,4"
+                            Background="{StaticResource MenuLabelBrush}"
+                            BorderBrush="{StaticResource MenuLabelBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="20"
+                            Padding="14,0">
+                        <TextBlock Text="快速截图"
+                                   Foreground="{StaticResource MenuStrongBrush}"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                </Grid>
+            </Button>
+
+            <Button x:Name="WindowCaptureButton"
+                    Width="116"
+                    Height="40"
+                    Style="{StaticResource SecondaryActionButtonStyle}"
+                    Click="OnWindowCaptureClick">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE7C4;"
+                               FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                               Foreground="{StaticResource MenuBlueBrush}"
+                               FontSize="16"
+                               Margin="0,0,7,0" />
+                    <TextBlock Text="窗口"
+                               Foreground="{StaticResource MenuStrongBrush}"
+                               FontSize="13"
+                               FontWeight="SemiBold" />
+                </StackPanel>
+            </Button>
+
+            <Button x:Name="MonitorCaptureButton"
+                    Width="116"
+                    Height="40"
+                    Style="{StaticResource SecondaryActionButtonStyle}"
+                    Click="OnMonitorCaptureClick">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="&#xE7F4;"
+                               FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                               Foreground="{StaticResource MenuBlueBrush}"
+                               FontSize="16"
+                               Margin="0,0,7,0" />
+                    <TextBlock Text="屏幕"
+                               Foreground="{StaticResource MenuStrongBrush}"
+                               FontSize="13"
+                               FontWeight="SemiBold" />
+                </StackPanel>
+            </Button>
+
+            <Button x:Name="AiButton"
+                    Width="178"
+                    Height="58"
+                    Style="{StaticResource RadialActionButtonStyle}"
+                    Click="OnAiClick">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="58" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Width="52"
+                            Height="52"
+                            CornerRadius="26"
+                            Background="{StaticResource MenuVioletBrush}"
+                            BorderBrush="#DFFFFFFF"
+                            BorderThickness="2"
+                            Effect="{StaticResource ActionShadow}">
+                        <TextBlock Text="&#xE8BD;"
+                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                   Foreground="White"
+                                   FontSize="22"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                    <Border Grid.Column="1"
+                            Margin="7,4,0,4"
+                            Background="{StaticResource MenuLabelBrush}"
+                            BorderBrush="{StaticResource MenuLabelBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="20"
+                            Padding="14,0">
+                        <TextBlock Text="AI 网页"
+                                   Foreground="{StaticResource MenuStrongBrush}"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                </Grid>
+            </Button>
+
+            <Button x:Name="NotesButton"
+                    Width="178"
+                    Height="58"
+                    Style="{StaticResource RadialActionButtonStyle}"
+                    Click="OnNotesClick">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="58" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Width="52"
+                            Height="52"
+                            CornerRadius="26"
+                            Background="{StaticResource MenuCoralBrush}"
+                            BorderBrush="#DFFFFFFF"
+                            BorderThickness="2"
+                            Effect="{StaticResource ActionShadow}">
+                        <TextBlock Text="&#xE70B;"
+                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                   Foreground="White"
+                                   FontSize="22"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                    <Border Grid.Column="1"
+                            Margin="7,4,0,4"
+                            Background="{StaticResource MenuLabelBrush}"
+                            BorderBrush="{StaticResource MenuLabelBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="20"
+                            Padding="14,0">
+                        <TextBlock Text="记事本"
+                                   Foreground="{StaticResource MenuStrongBrush}"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                </Grid>
+            </Button>
+
+            <Button x:Name="InputLockButton"
+                    Width="188"
+                    Height="58"
+                    Style="{StaticResource RadialActionButtonStyle}"
+                    Click="OnInputLockClick">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="58" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border x:Name="InputLockGlyphHost"
+                            Width="52"
+                            Height="52"
+                            CornerRadius="26"
+                            Background="{StaticResource MenuBlueBrush}"
+                            BorderBrush="#DFFFFFFF"
+                            BorderThickness="2"
+                            Effect="{StaticResource ActionShadow}">
+                        <TextBlock x:Name="InputLockGlyph"
+                                   Text="&#xE72E;"
+                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                   Foreground="White"
+                                   FontSize="21"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                    <Border Grid.Column="1"
+                            Margin="7,4,0,4"
+                            Background="{StaticResource MenuLabelBrush}"
+                            BorderBrush="{StaticResource MenuLabelBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="20"
+                            Padding="14,0">
+                        <TextBlock x:Name="InputLockTitle"
+                                   Text="锁定英文"
+                                   Foreground="{StaticResource MenuStrongBrush}"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                </Grid>
+            </Button>
+
+            <Button x:Name="SettingsButton"
+                    Width="150"
+                    Height="58"
+                    Style="{StaticResource RadialActionButtonStyle}"
+                    Click="OnSettingsClick">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="58" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Width="52"
+                            Height="52"
+                            CornerRadius="26"
+                            Background="{StaticResource MenuSlateBrush}"
+                            BorderBrush="#DFFFFFFF"
+                            BorderThickness="2"
+                            Effect="{StaticResource ActionShadow}">
+                        <TextBlock Text="&#xE713;"
+                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                   Foreground="White"
+                                   FontSize="22"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                    <Border Grid.Column="1"
+                            Margin="7,4,0,4"
+                            Background="{StaticResource MenuLabelBrush}"
+                            BorderBrush="{StaticResource MenuLabelBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="20"
+                            Padding="14,0">
+                        <TextBlock Text="设置"
+                                   Foreground="{StaticResource MenuStrongBrush}"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                </Grid>
+            </Button>
+
+            <Border x:Name="LauncherDock"
+                    Width="616"
+                    Height="84"
+                    Background="{StaticResource DockGlassBrush}"
+                    BorderBrush="#91CAE4FF"
+                    BorderThickness="1"
+                    CornerRadius="24"
+                    Padding="14,10">
+                <Border.Effect>
+                    <StaticResource ResourceKey="MenuShadow" />
+                </Border.Effect>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="126" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="快捷应用"
+                                   Foreground="{StaticResource MenuStrongBrush}"
+                                   FontSize="14"
+                                   FontWeight="SemiBold" />
+                        <TextBlock x:Name="LauncherCountText"
+                                   Foreground="{StaticResource MenuMutedBrush}"
+                                   FontSize="11"
+                                   Text="0 个项目" />
+                    </StackPanel>
+                    <ScrollViewer x:Name="LauncherScroller"
+                                  Grid.Column="1"
+                                  VerticalScrollBarVisibility="Disabled"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  PanningMode="HorizontalOnly"
+                                  PreviewMouseWheel="OnLauncherMouseWheel">
+                        <StackPanel x:Name="LauncherPanel"
+                                    Orientation="Horizontal"
+                                    VerticalAlignment="Center" />
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Canvas>
+    </Grid>
 </Window>

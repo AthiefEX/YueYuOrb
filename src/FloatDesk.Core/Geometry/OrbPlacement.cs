@@ -3,7 +3,6 @@ namespace FloatDesk.Core.Geometry;
 public static class OrbPlacement
 {
     private const int Margin = 12;
-    private const int Gap = 10;
 
     public static PixelRect Clamp(PixelRect orb, PixelRect workArea)
     {
@@ -21,20 +20,18 @@ public static class OrbPlacement
     {
         var width = Math.Min(desiredSize.Width, workArea.Width);
         var height = Math.Min(desiredSize.Height, workArea.Height);
-        var right = checked(orb.Right + Gap);
-        var left = checked(orb.Left - Gap - width);
-        var x = right + width <= workArea.Right
-            ? right
-            : left >= workArea.Left
-                ? left
-                : Math.Clamp(
-                    orb.Left - ((width - orb.Width) / 2),
-                    workArea.Left,
-                    checked(workArea.Right - width));
-        var y = Math.Clamp(
-            orb.Top - Margin,
-            workArea.Top + Margin,
-            checked(workArea.Bottom - height - Margin));
+        var maximumX = checked(workArea.Right - width);
+        var x = orb.Left + width <= workArea.Right
+            ? Math.Clamp(orb.Left, workArea.Left, maximumX)
+            : Math.Clamp(orb.Right - width, workArea.Left, maximumX);
+        var minimumY = workArea.Top + Margin;
+        var maximumY = checked(workArea.Bottom - height - Margin);
+        var y = maximumY < minimumY
+            ? workArea.Top
+            : Math.Clamp(
+                orb.Top + (orb.Height - height) / 2,
+                minimumY,
+                maximumY);
         return new PixelPoint(x, y);
     }
 }

@@ -51,4 +51,44 @@ public sealed class GeometryTests
         Assert.InRange(point.X, 0, 1400 - 320);
         Assert.InRange(point.Y, 0, 900 - 440);
     }
+
+    [Fact]
+    public void QuickPanelCentersTallerRadialMenuOnOrb()
+    {
+        var point = OrbPlacement.PlaceQuickPanel(
+            orb: new PixelRect(1320, 500, 64, 64),
+            desiredSize: new PixelSize(660, 560),
+            workArea: new PixelRect(0, 0, 1400, 900));
+
+        Assert.Equal(500 + (64 - 560) / 2, point.Y);
+    }
+
+    [Fact]
+    public void QuickPanelKeepsOrbInsideWhenOpeningLeft()
+    {
+        var orb = new PixelRect(1320, 500, 64, 64);
+        var point = OrbPlacement.PlaceQuickPanel(
+            orb,
+            desiredSize: new PixelSize(660, 560),
+            workArea: new PixelRect(0, 0, 1400, 900));
+
+        var orbCenterX = orb.Left + (orb.Width / 2.0);
+        Assert.InRange(orbCenterX, point.X, point.X + 660);
+    }
+
+    [Fact]
+    public void QuickPanelKeepsOrbInsideWhenOpeningRight()
+    {
+        var orb = new PixelRect(400, 500, 64, 64);
+        var point = OrbPlacement.PlaceQuickPanel(
+            orb,
+            desiredSize: new PixelSize(660, 560),
+            workArea: new PixelRect(0, 0, 1400, 900));
+
+        Assert.Equal(orb.Left, point.X);
+        Assert.InRange(
+            orb.Left + (orb.Width / 2.0),
+            point.X,
+            point.X + 660);
+    }
 }
