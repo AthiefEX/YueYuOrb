@@ -22,8 +22,14 @@ Plan: `01-产品与技术规格.md`, `02-Agent开发计划.md`,
   (Core 34, Infrastructure 14, Windows 6, UI 52), 0 build warnings/errors.
 - 月语悬浮球 branding verification: 190/190 Release tests PASS
   (Core 74, Infrastructure 17, Windows 13, UI 86).
-- Inno Setup package: NOT GENERATED because `iscc` is not installed; the
-  complete script remains in `installer/FloatDesk.iss`.
+- Inno Setup 6.7.3 package: complete. The Simplified Chinese messages file
+  is vendored under `installer/Languages`, so release builds do not depend on
+  a separately installed language pack.
+- Installer verification on Windows 10 22H2: silent current-user install,
+  Start Menu shortcut, installed-app startup, single-instance handoff, silent
+  uninstall, and preservation of `%LOCALAPPDATA%\FloatDesk` all PASS.
+- Release artifacts: portable ZIP, unsigned setup EXE, and SHA256SUMS were
+  generated and independently rehashed on 2026-10-26.
 - GPLv3 license, About-page author/repository metadata, YueYuOrb assembly,
   executable and pack URIs: complete.
 - Final self-review: complete by the implementing agent. This is weaker than

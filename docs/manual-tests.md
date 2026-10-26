@@ -2,7 +2,7 @@
 
 日期：2026-10-26
 版本：1.0.0
-当前状态：**待发布验收**
+当前状态：**当前Windows 10 22H2宿主发布包验收完成；跨环境人工验收待完成**
 
 状态只使用 PASS / FAIL / NOT TESTED / BLOCKED / N/A。自动化测试不能代替输入法、网页登录、截图交互、安装器和真实显示器验证。
 
@@ -14,6 +14,10 @@
 | Release 自包含包启动 | 19045，管理员交互会话 | PASS | 最终 `artifacts/publish/win-x64/YueYuOrb.exe` 持续存活，日志出现 `startup.complete` |
 | 单实例交接 | 19045，同一会话 | PASS | 第二进程静默唤起首实例，5 秒内以退出码 0 结束 |
 | Release 单实例交接 | 19045，同一会话 | PASS | 最终发布包第二进程 5 秒内以退出码 0 结束，首实例存活 |
+| Inno Setup 安装包 | 19045，当前用户静默安装 | PASS | `YueYuOrb-1.0.0-win-x64-setup.exe` 编译成功；开始菜单快捷方式指向已安装的 `YueYuOrb.exe` |
+| 安装版启动与单实例 | 19045，同一会话 | PASS | 已安装程序观察到 `startup.complete`；第二进程 5 秒内以退出码 0 结束 |
+| 默认卸载保留用户数据 | 19045，静默卸载 | PASS | 程序目录移除；`%LOCALAPPDATA%\FloatDesk\settings.json` 保留且卸载前后哈希一致 |
+| 发布校验文件 | Windows 10 22H2 x64 | PASS | EXE、ZIP 和 setup 的 SHA256 均与 `SHA256SUMS.txt` 一致 |
 | 前台热键冲突自动备用 | 19045；`Ctrl+Alt+A` 被其他程序占用 | PASS | 实际绑定 `Ctrl+Alt+Shift+A`，日志记录 `hotkey.initial.fallback`，托盘提示与快捷面板 ToolTip 显示备用键 |
 | 设置页悬停与应用 | Windows 10 22H2 x64，管理员交互会话 | PASS | 鼠标悬停并点击“应用”后进程存活，日志无 `hotkey.rebind.failed` |
 | 快捷面板框选与编辑器 | Windows 10 22H2 x64，双屏 2560×1440 + 800×600 | PASS | 两个覆盖层正常显示；拖动生成 500×340 选区，Enter 打开 `月语悬浮球截图标注` |
@@ -77,7 +81,7 @@
 | A53 | 应用/取消/导入导出/未来 schema/并发 | PARTIAL | 字段合并、只读和写失败自动测试 PASS |
 | A54 | 键盘、高对比度、字体回退 | NOT TESTED | 需辅助技术验收 |
 | A55 | 8 小时/100 次长期稳定性 | NOT TESTED | 未执行 |
-| A56 | 安装、升级、卸载 | NOT TESTED | Inno Setup 未安装，安装包未生成 |
+| A56 | 安装、升级、卸载 | PARTIAL | 当前用户静默安装、启动、单实例和默认卸载保留数据 PASS；升级和标准用户干净 VM NOT TESTED |
 | A57 | 无 .NET SDK 的自包含启动 | NOT TESTED | 待干净 VM |
 | A58 | 日志不含敏感正文 | PASS | 代码审计；日志仅事件名和有限错误码 |
 

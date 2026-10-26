@@ -1,7 +1,7 @@
 # 月语悬浮球发布检查表
 
 版本：1.0.0
-声明：本版当前为“**待发布验收**”，不能把自动化测试 PASS 当成全兼容验收。
+声明：本版发布物已完成当前构建机验收；不能把自动化测试 PASS 当成全兼容验收。
 
 ## 开发门禁
 
@@ -35,20 +35,22 @@
 
 ## 安装门禁
 
-- [ ] Inno Setup 6 安装并生成
-  `YueYuOrb-1.0.0-win-x64-setup.exe`。
-- [ ] 标准用户安装、启动、升级与卸载。
-- [ ] 默认卸载保留 `%LOCALAPPDATA%\FloatDesk`；仅用户勾选任务时清理。
+- [x] Inno Setup 6.7.3 生成
+  `YueYuOrb-1.0.0-win-x64-setup.exe`，简体中文语言文件随仓库提供。
+- [x] 当前 Windows 用户静默安装、开始菜单快捷方式、启动、单实例和卸载。
+- [ ] 标准用户干净虚拟机安装、升级与卸载。
+- [x] 默认卸载保留 `%LOCALAPPDATA%\FloatDesk`；`settings.json` 哈希前后一致。
 - [ ] 干净 VM 无 .NET SDK 时启动自包含包。
 - [ ] 干净 VM 无 WebView2 Runtime 时本地功能与修复引导可用。
-- [ ] 安装包与 ZIP 均记录 SHA256。
-- [ ] 未签名测试包在分发说明中明确标注；不得称为已签名正式发行版。
-- [ ] 仓库根目录的 GPLv3 `LICENSE`、作者和 GitHub 链接可访问。
+- [x] 安装包、便携包和发布 EXE 均记录并复核 SHA256。
+- [x] 未签名测试包在发布说明中明确标注 SmartScreen 风险。
+- [x] 仓库根目录包含 GPLv3 `LICENSE`、作者和 GitHub 链接。
+- [x] 便携 ZIP 与安装目录均包含 `LICENSE` 和 `README.md`。
 
 ## 发布命令
 
 ```powershell
-.\scripts\publish.ps1
+.\scripts\publish.ps1 -Version 1.0.0 -Installer
 ```
 
 脚本执行 locked restore、Release build、Release tests、self-contained publish、ZIP 和 SHA256。只有所有命令退出码为 0 才生成最终哈希文件。
@@ -59,3 +61,5 @@
 - 当前无 Windows 11、Windows 10 21H2、无 WebView2 Runtime、混合 DPI/旋转屏和第二会话测试环境。
 - 安装器生成前不得声称安装包已完成。
 - 本机 `Ctrl+Alt+A` 被其他程序占用；月语悬浮球正确记录初始冲突并继续运行，托盘入口仍可用。
+- 安装器验证宿主是管理员账户的当前用户安装模式，不等同于标准用户干净 VM。
+- GDI 截屏测试需要交互桌面；Codex 独立沙箱桌面没有屏幕表面，发布门禁须在真实桌面会话运行。
