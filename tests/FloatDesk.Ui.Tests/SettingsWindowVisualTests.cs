@@ -19,6 +19,7 @@ public sealed class SettingsWindowVisualTests
                      "轮盘",
                      "输入法",
                      "AI 网页",
+                     "实时翻译",
                      "截图",
                      "关于"
                  })
@@ -71,6 +72,7 @@ public sealed class SettingsWindowVisualTests
                      "ActionButtonStyle",
                      "PrimaryActionButtonStyle",
                      "SettingsTextBoxStyle",
+                     "SettingsPasswordBoxStyle",
                      "SettingsComboBoxStyle",
                      "SettingsDataGridStyle"
                  })
@@ -97,7 +99,7 @@ public sealed class SettingsWindowVisualTests
             .Where(element => element.Name.LocalName == "TabItem")
             .ToArray();
 
-        Assert.Equal(8, tabs.Length);
+        Assert.Equal(9, tabs.Length);
         foreach (var tab in tabs)
         {
             var label = tab
@@ -153,7 +155,7 @@ public sealed class SettingsWindowVisualTests
         Assert.Equal(
             "{StaticResource NavigationTabItemStyle}",
             (string?)tabControl.Attribute("ItemContainerStyle"));
-        Assert.Equal(8, tabs.Length);
+        Assert.Equal(9, tabs.Length);
         Assert.All(
             tabs,
             tab => Assert.Equal(

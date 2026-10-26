@@ -11,9 +11,11 @@ using FloatDesk.Core.Models;
 using FloatDesk.Infrastructure.Diagnostics;
 using FloatDesk.Infrastructure.Notes;
 using FloatDesk.Infrastructure.Settings;
+using FloatDesk.Infrastructure.Translation;
 using FloatDesk.Windows.Foreground;
 using FloatDesk.Windows.Input;
 using FloatDesk.Windows.Launcher;
+using FloatDesk.Windows.Translation;
 using FloatDesk.Windows.Windows;
 
 namespace FloatDesk.App;
@@ -28,6 +30,8 @@ internal sealed class AppRuntime : IDisposable
     private readonly ForegroundMonitor _foreground;
     private readonly InputLockEngine _input;
     private readonly WindowsAppLauncher _launcher = new();
+    private readonly DpapiTranslationCredentialStore _translationCredentials;
+    private readonly TranslationProviderFactory _translationProviders = new();
     private readonly DispatcherTimer _inputTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private readonly DispatcherTimer _overlayTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private CancellationTokenSource? _foregroundCts;
@@ -54,6 +58,8 @@ internal sealed class AppRuntime : IDisposable
         _logger = new FileLogger(paths.Logs);
         _settings = new SettingsCoordinator(new JsonSettingsStore(paths.Root));
         _notes = new SqliteNoteRepository(paths.NotesDatabase);
+        _translationCredentials = new DpapiTranslationCredentialStore(
+            Path.Combine(paths.Root, "translation-secrets.dat"));
         _foreground = new ForegroundMonitor();
         _input = new InputLockEngine(
             new WindowsInputBackend(),
@@ -248,6 +254,8 @@ internal sealed class AppRuntime : IDisposable
             _tray = null;
             _input.DisposeAsync().AsTask().GetAwaiter().GetResult();
             _settings.Dispose();
+            _translationProviders.Dispose();
+            _translationCredentials.Dispose();
             _lifetime.Dispose();
             _logger.WriteAsync("shutdown.complete").GetAwaiter().GetResult();
             _logger.Dispose();
@@ -266,7 +274,10 @@ internal sealed class AppRuntime : IDisposable
         new SettingsWindow(
             _settings,
             _paths,
-            () => _current.IsOwnInteractive ? _lastExternal?.ExePath : _current.ExePath);
+            () => _current.IsOwnInteractive ? _lastExternal?.ExePath : _current.ExePath,
+            _translationCredentials,
+            _translationProviders,
+            static () => []);
 
     private AiBrowserWindow CreateAiWindow()
     {

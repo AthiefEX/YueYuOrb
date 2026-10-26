@@ -9,10 +9,12 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using FloatDesk.App.Translation;
 using FloatDesk.App.ViewModels;
 using FloatDesk.Core;
 using FloatDesk.Core.Contracts;
 using FloatDesk.Core.Models;
+using FloatDesk.Core.Translation;
 using FloatDesk.Infrastructure.Settings;
 
 namespace FloatDesk.App.Views;
@@ -29,26 +31,59 @@ public partial class SettingsWindow : Window
     private readonly ISettingsCoordinator _settings;
     private readonly AppDataPaths _paths;
     private readonly Func<string?>? _currentAppPath;
+    private readonly ITranslationCredentialStore _translationCredentials;
+    private readonly TranslationSettingsApplier _translationApplier;
+    private readonly TranslationConnectionTester _translationConnectionTester;
+    private readonly Func<IReadOnlyList<OcrLanguageOption>> _getOcrLanguages;
     private SettingsViewModel _viewModel;
+    private CancellationTokenSource? _translationTestCancellation;
+    private bool _applyInProgress;
 
     public event Action<AppSettings>? Applied;
 
     public SettingsWindow(
         ISettingsCoordinator settings,
         AppDataPaths paths,
-        Func<string?>? currentAppPath = null)
+        Func<string?>? currentAppPath,
+        ITranslationCredentialStore translationCredentials,
+        ITranslationProviderFactory translationProviders,
+        Func<IReadOnlyList<OcrLanguageOption>> getOcrLanguages)
     {
         InitializeComponent();
         _settings = settings;
         _paths = paths;
         _currentAppPath = currentAppPath;
-        _viewModel = SettingsViewModel.From(settings.Current);
+        _translationCredentials = translationCredentials ??
+            throw new ArgumentNullException(nameof(translationCredentials));
+        _getOcrLanguages = getOcrLanguages ??
+            throw new ArgumentNullException(nameof(getOcrLanguages));
+        _translationApplier = new TranslationSettingsApplier(
+            settings,
+            translationCredentials);
+        _translationConnectionTester = new TranslationConnectionTester(
+            translationCredentials,
+            translationProviders ??
+                throw new ArgumentNullException(nameof(translationProviders)));
+        _viewModel = SettingsViewModel.From(
+            settings.Current,
+            ocrLanguages: getOcrLanguages());
         DataContext = _viewModel;
+        ApplyTranslationProviderLayout();
+        Loaded += OnSettingsWindowLoaded;
         Closing += (_, args) =>
         {
+            CancelTranslationTest();
+            TranslationApiKeyBox.Clear();
             args.Cancel = true;
             Hide();
         };
+    }
+
+    private async void OnSettingsWindowLoaded(
+        object sender,
+        RoutedEventArgs e)
+    {
+        await RefreshTranslationKeyStatusAsync();
     }
 
     private void OnSettingsWindowSourceInitialized(object? sender, EventArgs e)
@@ -171,6 +206,8 @@ public partial class SettingsWindow : Window
 
     private async void OnApplyClick(object sender, RoutedEventArgs e)
     {
+        if (_applyInProgress)
+            return;
         try
         {
             if (!_viewModel.TryBuildCandidate(
@@ -181,36 +218,284 @@ public partial class SettingsWindow : Window
                 SaveStatusText.Text = validationError;
                 return;
             }
-            var result = await _settings.UpdateAsync(
+            _applyInProgress = true;
+            var stagedApiKey = TranslationApiKeyBox.Password;
+            var result = await _translationApplier.ApplyAsync(
                 current => _viewModel.TryBuildCandidate(
                     current,
                     out var candidate,
                     out _)
                     ? candidate
                     : current,
+                stagedApiKey,
+                _viewModel.ClearSavedTranslationKey,
                 CancellationToken.None);
             SaveStatusText.Text = result.Success
-                ? "已保存。"
+                ? result.Message ?? "已保存。"
                 : result.Message ?? "保存失败。";
-            if (!result.Success)
+            var settingsSaved = result.Success ||
+                result.ErrorCode is
+                    "TranslationKeySaveFailed" or
+                    "TranslationKeyDeleteFailed";
+            if (!settingsSaved)
                 return;
             var candidate = _settings.Current;
             StartupService.SetEnabled(candidate.General.StartWithWindows);
             Applied?.Invoke(candidate);
-            _viewModel = SettingsViewModel.From(candidate);
-            DataContext = _viewModel;
+            if (result.Success)
+                TranslationApiKeyBox.Clear();
+            await ReloadViewModelAsync();
+        }
+        catch (OperationCanceledException)
+        {
         }
         catch (Exception exception)
         {
-            SaveStatusText.Text = exception.Message;
+            SaveStatusText.Text = $"保存失败：{exception.GetType().Name}";
+        }
+        finally
+        {
+            _applyInProgress = false;
         }
     }
 
     private void OnCancelClick(object sender, RoutedEventArgs e)
     {
-        _viewModel = SettingsViewModel.From(_settings.Current);
+        CancelTranslationTest();
+        TranslationApiKeyBox.Clear();
+        _viewModel = SettingsViewModel.From(
+            _settings.Current,
+            ocrLanguages: _getOcrLanguages());
         DataContext = _viewModel;
+        ApplyTranslationProviderLayout();
         Hide();
+        _ = RefreshTranslationKeyStatusAsync();
+    }
+
+    private void OnTranslationProviderSelectionChanged(
+        object sender,
+        SelectionChangedEventArgs e)
+    {
+        ApplyTranslationProviderLayout();
+        if (IsLoaded)
+            _ = RefreshTranslationKeyStatusAsync();
+    }
+
+    private void OnTranslationEndpointLostKeyboardFocus(
+        object sender,
+        KeyboardFocusChangedEventArgs e)
+    {
+        if (IsLoaded)
+            _ = RefreshTranslationKeyStatusAsync();
+    }
+
+    private void OnTranslationApiKeyPasswordChanged(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (!IsLoaded)
+            return;
+        TranslationKeyStatusText.Text =
+            TranslationApiKeyBox.Password.Length > 0
+                ? "已输入新密钥，点击“应用”后加密保存。"
+                : _viewModel.HasSavedTranslationKey
+                    ? "已保存（Windows DPAPI 加密）。"
+                    : "未保存 API 密钥。";
+    }
+
+    private void OnClearSavedTranslationKeyChanged(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (!IsLoaded)
+            return;
+        if (_viewModel.ClearSavedTranslationKey &&
+            TranslationApiKeyBox.Password.Length == 0)
+        {
+            TranslationKeyStatusText.Text =
+                "已保存密钥将在点击“应用”后清除。";
+            return;
+        }
+        _ = RefreshTranslationKeyStatusAsync();
+    }
+
+    private async void OnTestTranslationConnectionClick(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (!_viewModel.TryBuildCandidate(
+                _settings.Current,
+                out var candidate,
+                out var validationError))
+        {
+            TranslationTestStatusText.Text = validationError;
+            return;
+        }
+        var validation = SettingsValidator.Validate(candidate);
+        if (validation.Count > 0)
+        {
+            TranslationTestStatusText.Text = string.Join(" ", validation);
+            return;
+        }
+
+        CancelTranslationTest();
+        var cancellation = new CancellationTokenSource();
+        _translationTestCancellation = cancellation;
+        TestTranslationConnectionButton.IsEnabled = false;
+        TranslationTestStatusText.Text = "正在测试连接…";
+        try
+        {
+            var result = await _translationConnectionTester.TestAsync(
+                candidate.Translation,
+                TranslationApiKeyBox.Password,
+                cancellation.Token);
+            TranslationTestStatusText.Text =
+                result.Message ?? (result.Success ? "连接成功。" : "连接失败。");
+        }
+        catch (OperationCanceledException) when (
+            cancellation.IsCancellationRequested)
+        {
+            TranslationTestStatusText.Text = "连接测试已取消。";
+        }
+        catch (Exception exception)
+        {
+            TranslationTestStatusText.Text =
+                $"连接测试失败：{exception.GetType().Name}";
+        }
+        finally
+        {
+            if (ReferenceEquals(
+                    _translationTestCancellation,
+                    cancellation))
+            {
+                _translationTestCancellation = null;
+            }
+            TestTranslationConnectionButton.IsEnabled = true;
+            cancellation.Dispose();
+        }
+    }
+
+    private async Task ReloadViewModelAsync()
+    {
+        var settings = _settings.Current;
+        var hasSavedKey = await HasSavedTranslationKeyAsync(settings.Translation);
+        _viewModel = SettingsViewModel.From(
+            settings,
+            hasSavedKey,
+            _getOcrLanguages());
+        DataContext = _viewModel;
+        ApplyTranslationProviderLayout();
+        await RefreshTranslationKeyStatusAsync();
+    }
+
+    private async Task RefreshTranslationKeyStatusAsync()
+    {
+        if (TranslationKeyStatusText is null ||
+            TranslationEndpointTextBox is null ||
+            TranslationProviderComboBox is null)
+        {
+            return;
+        }
+        var translation = _viewModel.BuildCandidate(
+            _settings.Current).Translation;
+        if (translation.Provider == TranslationProviderKind.MyMemory)
+        {
+            _viewModel.HasSavedTranslationKey = false;
+            TranslationKeyStatusText.Text = "MyMemory 免费服务无需 API 密钥。";
+            return;
+        }
+
+        try
+        {
+            var hasSavedKey = await _translationCredentials.HasAsync(
+                translation.Provider,
+                translation.Endpoint,
+                CancellationToken.None);
+            _viewModel.HasSavedTranslationKey = hasSavedKey;
+            TranslationKeyStatusText.Text =
+                TranslationApiKeyBox.Password.Length > 0
+                    ? "已输入新密钥，点击“应用”后加密保存。"
+                    : hasSavedKey
+                        ? "已保存（Windows DPAPI 加密）。"
+                        : "未保存 API 密钥。";
+        }
+        catch (Exception exception)
+        {
+            _viewModel.HasSavedTranslationKey = false;
+            TranslationKeyStatusText.Text =
+                $"无法读取密钥状态：{exception.GetType().Name}";
+        }
+    }
+
+    private async Task<bool> HasSavedTranslationKeyAsync(
+        TranslationSettings settings)
+    {
+        if (settings.Provider == TranslationProviderKind.MyMemory)
+            return false;
+        try
+        {
+            return await _translationCredentials.HasAsync(
+                settings.Provider,
+                settings.Endpoint,
+                CancellationToken.None);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void ApplyTranslationProviderLayout()
+    {
+        if (TranslationProviderComboBox is null ||
+            TranslationEndpointField is null ||
+            TranslationApiKeyField is null ||
+            TranslationModelField is null ||
+            TranslationAzureRegionField is null ||
+            TranslationProviderHintText is null)
+        {
+            return;
+        }
+        var provider = TranslationProviderComboBox.SelectedIndex switch
+        {
+            1 => TranslationProviderKind.AzureTranslator,
+            2 => TranslationProviderKind.DeepL,
+            3 => TranslationProviderKind.LibreTranslate,
+            4 => TranslationProviderKind.OpenAiCompatible,
+            _ => TranslationProviderKind.MyMemory
+        };
+        var custom = provider != TranslationProviderKind.MyMemory;
+        TranslationEndpointField.Visibility = Visible(custom);
+        TranslationApiKeyField.Visibility = Visible(custom);
+        TranslationModelField.Visibility = Visible(
+            provider == TranslationProviderKind.OpenAiCompatible);
+        TranslationAzureRegionField.Visibility = Visible(
+            provider == TranslationProviderKind.AzureTranslator);
+        TranslationProviderHintText.Text = provider switch
+        {
+            TranslationProviderKind.MyMemory =>
+                "MyMemory 是无需密钥的公共免费服务，受每日与单次请求额度限制。",
+            TranslationProviderKind.AzureTranslator =>
+                "Azure Translator 需要 API 密钥；区域可留空以使用单区域资源。",
+            TranslationProviderKind.DeepL =>
+                "DeepL 需要 API 密钥；可填写 Free 或 Pro 兼容接口地址。",
+            TranslationProviderKind.LibreTranslate =>
+                "LibreTranslate 需要接口地址；自托管服务可按需填写 API 密钥。",
+            TranslationProviderKind.OpenAiCompatible =>
+                "OpenAI 兼容接口需要 HTTPS Chat Completions 地址、API 密钥与模型名称。",
+            _ => string.Empty
+        };
+    }
+
+    private static Visibility Visible(bool visible) =>
+        visible ? Visibility.Visible : Visibility.Collapsed;
+
+    private void CancelTranslationTest()
+    {
+        _translationTestCancellation?.Cancel();
+        _translationTestCancellation = null;
+        if (TestTranslationConnectionButton is not null)
+            TestTranslationConnectionButton.IsEnabled = true;
     }
 
     private void OnChooseOrbImageClick(object sender, RoutedEventArgs e)

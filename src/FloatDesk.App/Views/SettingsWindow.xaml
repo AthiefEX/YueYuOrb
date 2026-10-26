@@ -254,6 +254,9 @@
                                                     <RowDefinition Height="58" />
                                                     <RowDefinition Height="58" />
                                                     <RowDefinition Height="58" />
+                                                    <RowDefinition Height="58" />
+                                                    <RowDefinition Height="58" />
+                                                    <RowDefinition Height="58" />
                                                 </Grid.RowDefinitions>
                                                 <StackPanel VerticalAlignment="Center">
                                                     <TextBlock Text="快捷面板" Style="{StaticResource SettingsLabelStyle}" />
@@ -272,6 +275,24 @@
                                                     <TextBlock Text="临时暂停输入法相关规则" Style="{StaticResource SettingsDescriptionStyle}" />
                                                 </StackPanel>
                                                 <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding PauseHotkey}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" />
+                                                <Border Grid.Row="3" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <StackPanel Grid.Row="3" VerticalAlignment="Center">
+                                                    <TextBlock Text="翻译选中" Style="{StaticResource SettingsLabelStyle}" />
+                                                    <TextBlock Text="翻译当前应用中的选中文字" Style="{StaticResource SettingsDescriptionStyle}" />
+                                                </StackPanel>
+                                                <TextBox x:Name="TranslationSelectionHotkeyTextBox" Grid.Row="3" Grid.Column="1" Text="{Binding TranslationSelectionHotkey}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" />
+                                                <Border Grid.Row="4" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <StackPanel Grid.Row="4" VerticalAlignment="Center">
+                                                    <TextBlock Text="框选翻译" Style="{StaticResource SettingsLabelStyle}" />
+                                                    <TextBlock Text="框选屏幕区域并翻译识别文字" Style="{StaticResource SettingsDescriptionStyle}" />
+                                                </StackPanel>
+                                                <TextBox x:Name="TranslationRegionHotkeyTextBox" Grid.Row="4" Grid.Column="1" Text="{Binding TranslationRegionHotkey}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" />
+                                                <Border Grid.Row="5" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <StackPanel Grid.Row="5" VerticalAlignment="Center">
+                                                    <TextBlock Text="字幕翻译" Style="{StaticResource SettingsLabelStyle}" />
+                                                    <TextBlock Text="开始或停止固定区域字幕翻译" Style="{StaticResource SettingsDescriptionStyle}" />
+                                                </StackPanel>
+                                                <TextBox x:Name="SubtitlesHotkeyTextBox" Grid.Row="5" Grid.Column="1" Text="{Binding SubtitlesHotkey}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" />
                                             </Grid>
                                         </Border>
                                         <Border Style="{StaticResource SettingsToolbarStyle}" Margin="0,12,0,0">
@@ -717,6 +738,293 @@
                                 <Button Content="移除选中网页" Click="OnRemoveSiteClick" Style="{StaticResource ActionButtonStyle}" />
                             </WrapPanel>
                         </Grid>
+                    </TabItem>
+
+                    <TabItem x:Name="TranslationSettingsTab"
+                             Style="{StaticResource NavigationTabItemStyle}"
+                             AutomationProperties.Name="实时翻译">
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock FontFamily="{StaticResource SettingsIconFont}" FontSize="15" Text="&#xE8C1;" Margin="0,0,7,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                                <TextBlock Text="实时翻译" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                            </StackPanel>
+                        </TabItem.Header>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel Margin="28,16,28,24" MaxWidth="1080" HorizontalAlignment="Stretch">
+                                <Border Style="{StaticResource SettingsCardStyle}">
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border Style="{StaticResource SettingsIconTileStyle}">
+                                                <TextBlock Style="{StaticResource SettingsIconGlyphStyle}" Text="&#xE8C1;" />
+                                            </Border>
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock Text="翻译服务" Style="{StaticResource SettingsSectionTitleStyle}" />
+                                                <TextBlock Text="选择翻译服务与语言。MyMemory 无需配置即可使用。"
+                                                           Style="{StaticResource SettingsDescriptionStyle}"
+                                                           Margin="0,2,0,0" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <Border Style="{StaticResource SettingsSubtleCardStyle}" Margin="0,16,0,0" Padding="16,8">
+                                            <StackPanel>
+                                                <Grid Height="58">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="180" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="翻译服务" Style="{StaticResource SettingsLabelStyle}" />
+                                                    <ComboBox x:Name="TranslationProviderComboBox"
+                                                              Grid.Column="1"
+                                                              SelectedIndex="{Binding TranslationProviderIndex}"
+                                                              SelectionChanged="OnTranslationProviderSelectionChanged"
+                                                              Style="{StaticResource SettingsComboBoxStyle}"
+                                                              VerticalAlignment="Center">
+                                                        <ComboBoxItem Content="MyMemory（免费）" />
+                                                        <ComboBoxItem Content="Azure Translator" />
+                                                        <ComboBoxItem Content="DeepL" />
+                                                        <ComboBoxItem Content="LibreTranslate" />
+                                                        <ComboBoxItem Content="OpenAI 兼容接口" />
+                                                    </ComboBox>
+                                                </Grid>
+                                                <Border BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <Grid Height="58">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="180" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="原文语言" Style="{StaticResource SettingsLabelStyle}" />
+                                                    <ComboBox x:Name="TranslationSourceLanguageComboBox"
+                                                              Grid.Column="1"
+                                                              SelectedIndex="{Binding TranslationSourceLanguageIndex}"
+                                                              Style="{StaticResource SettingsComboBoxStyle}"
+                                                              VerticalAlignment="Center">
+                                                        <ComboBoxItem Content="自动检测" />
+                                                        <ComboBoxItem Content="简体中文" />
+                                                        <ComboBoxItem Content="繁体中文" />
+                                                        <ComboBoxItem Content="英语" />
+                                                        <ComboBoxItem Content="日语" />
+                                                        <ComboBoxItem Content="韩语" />
+                                                        <ComboBoxItem Content="法语" />
+                                                        <ComboBoxItem Content="德语" />
+                                                        <ComboBoxItem Content="西班牙语" />
+                                                        <ComboBoxItem Content="俄语" />
+                                                        <ComboBoxItem Content="阿拉伯语" />
+                                                        <ComboBoxItem Content="葡萄牙语" />
+                                                        <ComboBoxItem Content="意大利语" />
+                                                    </ComboBox>
+                                                </Grid>
+                                                <Border BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <Grid Height="58">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="180" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="目标语言" Style="{StaticResource SettingsLabelStyle}" />
+                                                    <ComboBox x:Name="TranslationTargetLanguageComboBox"
+                                                              Grid.Column="1"
+                                                              SelectedIndex="{Binding TranslationTargetLanguageIndex}"
+                                                              Style="{StaticResource SettingsComboBoxStyle}"
+                                                              VerticalAlignment="Center">
+                                                        <ComboBoxItem Content="简体中文" />
+                                                        <ComboBoxItem Content="繁体中文" />
+                                                        <ComboBoxItem Content="英语" />
+                                                        <ComboBoxItem Content="日语" />
+                                                        <ComboBoxItem Content="韩语" />
+                                                        <ComboBoxItem Content="法语" />
+                                                        <ComboBoxItem Content="德语" />
+                                                        <ComboBoxItem Content="西班牙语" />
+                                                        <ComboBoxItem Content="俄语" />
+                                                        <ComboBoxItem Content="阿拉伯语" />
+                                                        <ComboBoxItem Content="葡萄牙语" />
+                                                        <ComboBoxItem Content="意大利语" />
+                                                    </ComboBox>
+                                                </Grid>
+                                                <Border x:Name="TranslationEndpointField" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0">
+                                                    <Grid Height="58">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="180" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="接口地址" Style="{StaticResource SettingsLabelStyle}" />
+                                                        <TextBox x:Name="TranslationEndpointTextBox"
+                                                                 Grid.Column="1"
+                                                                 Text="{Binding TranslationEndpoint}"
+                                                                 LostKeyboardFocus="OnTranslationEndpointLostKeyboardFocus"
+                                                                 Style="{StaticResource SettingsTextBoxStyle}"
+                                                                 VerticalAlignment="Center" />
+                                                    </Grid>
+                                                </Border>
+                                                <Border x:Name="TranslationApiKeyField" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0">
+                                                    <StackPanel Margin="0,8">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="180" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="API 密钥" Style="{StaticResource SettingsLabelStyle}" />
+                                                            <PasswordBox x:Name="TranslationApiKeyBox"
+                                                                         Grid.Column="1"
+                                                                         PasswordChanged="OnTranslationApiKeyPasswordChanged"
+                                                                         Style="{StaticResource SettingsPasswordBoxStyle}"
+                                                                         VerticalAlignment="Center" />
+                                                        </Grid>
+                                                        <Grid Margin="180,7,0,0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock x:Name="TranslationKeyStatusText"
+                                                                       Text="正在读取密钥状态…"
+                                                                       Style="{StaticResource SettingsCaptionStyle}" />
+                                                            <CheckBox x:Name="ClearSavedTranslationKeyCheckBox"
+                                                                      Grid.Column="1"
+                                                                      Content="清除已保存密钥"
+                                                                      IsChecked="{Binding ClearSavedTranslationKey}"
+                                                                      IsEnabled="{Binding HasSavedTranslationKey}"
+                                                                      Checked="OnClearSavedTranslationKeyChanged"
+                                                                      Unchecked="OnClearSavedTranslationKeyChanged"
+                                                                      Style="{StaticResource SettingsCheckBoxStyle}"
+                                                                      Margin="12,0,0,0" />
+                                                        </Grid>
+                                                        <TextBlock Text="密码框只保留本次编辑的临时值；留空不会覆盖已保存密钥，输入新密钥后点击“应用”才会加密保存。"
+                                                                   Style="{StaticResource SettingsCaptionStyle}"
+                                                                   Margin="180,4,0,0" />
+                                                    </StackPanel>
+                                                </Border>
+                                                <Border x:Name="TranslationModelField" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0">
+                                                    <Grid Height="58">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="180" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="模型" Style="{StaticResource SettingsLabelStyle}" />
+                                                        <TextBox x:Name="TranslationModelTextBox"
+                                                                 Grid.Column="1"
+                                                                 Text="{Binding TranslationModel}"
+                                                                 Style="{StaticResource SettingsTextBoxStyle}"
+                                                                 VerticalAlignment="Center" />
+                                                    </Grid>
+                                                </Border>
+                                                <Border x:Name="TranslationAzureRegionField" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0">
+                                                    <Grid Height="58">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="180" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="Azure 区域" Style="{StaticResource SettingsLabelStyle}" />
+                                                        <TextBox x:Name="TranslationAzureRegionTextBox"
+                                                                 Grid.Column="1"
+                                                                 Text="{Binding TranslationAzureRegion}"
+                                                                 Style="{StaticResource SettingsTextBoxStyle}"
+                                                                 VerticalAlignment="Center" />
+                                                    </Grid>
+                                                </Border>
+                                                <Border BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <Grid Height="58">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="180" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="OCR 语言" Style="{StaticResource SettingsLabelStyle}" />
+                                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                        <ComboBox x:Name="TranslationOcrLanguageComboBox"
+                                                                  ItemsSource="{Binding OcrLanguages}"
+                                                                  DisplayMemberPath="DisplayName"
+                                                                  SelectedIndex="{Binding TranslationOcrLanguageIndex}"
+                                                                  Style="{StaticResource SettingsComboBoxStyle}" />
+                                                        <TextBlock Text="仅列出 Windows 已安装的 OCR 语言，可在系统语言设置中安装语言包。"
+                                                                   Style="{StaticResource SettingsCaptionStyle}"
+                                                                   Margin="0,4,0,0" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
+                                        <TextBlock x:Name="TranslationProviderHintText"
+                                                   Text="MyMemory 是无需密钥的公共免费服务。"
+                                                   Style="{StaticResource SettingsCaptionStyle}"
+                                                   Margin="0,12,0,0" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Style="{StaticResource SettingsCardStyle}" Margin="0,14,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="字幕翻译" Style="{StaticResource SettingsSectionTitleStyle}" />
+                                        <TextBlock Text="固定区域只在本地采样与识别；未变化的画面不会重复发送翻译请求。"
+                                                   Style="{StaticResource SettingsDescriptionStyle}"
+                                                   Margin="0,3,0,12" />
+                                        <Border Style="{StaticResource SettingsSubtleCardStyle}" Padding="16,8">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="190" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="58" />
+                                                    <RowDefinition Height="58" />
+                                                    <RowDefinition Height="58" />
+                                                </Grid.RowDefinitions>
+                                                <TextBlock Text="采样间隔（300–1500ms）" Style="{StaticResource SettingsLabelStyle}" />
+                                                <TextBox x:Name="SubtitleRefreshIntervalTextBox"
+                                                         Grid.Column="1"
+                                                         Text="{Binding SubtitleRefreshIntervalMs}"
+                                                         Style="{StaticResource SettingsTextBoxStyle}"
+                                                         VerticalAlignment="Center" />
+                                                <Border Grid.Row="1" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <TextBlock Grid.Row="1" Text="浮层透明度（60–100%）" Style="{StaticResource SettingsLabelStyle}" />
+                                                <TextBox x:Name="SubtitleOverlayOpacityTextBox"
+                                                         Grid.Row="1"
+                                                         Grid.Column="1"
+                                                         Text="{Binding SubtitleOverlayOpacityPercent}"
+                                                         Style="{StaticResource SettingsTextBoxStyle}"
+                                                         VerticalAlignment="Center" />
+                                                <Border Grid.Row="2" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <TextBlock Grid.Row="2" Text="字号（14–36 DIP）" Style="{StaticResource SettingsLabelStyle}" />
+                                                <TextBox x:Name="SubtitleFontSizeTextBox"
+                                                         Grid.Row="2"
+                                                         Grid.Column="1"
+                                                         Text="{Binding SubtitleFontSizeDip}"
+                                                         Style="{StaticResource SettingsTextBoxStyle}"
+                                                         VerticalAlignment="Center" />
+                                            </Grid>
+                                        </Border>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Style="{StaticResource SettingsCardStyle}" Margin="0,14,0,0">
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Margin="0,0,16,0">
+                                                <TextBlock Text="连接检查" Style="{StaticResource SettingsSectionTitleStyle}" />
+                                                <TextBlock Text="使用当前编辑值发送一段固定测试文字，不保存设置或密钥。"
+                                                           Style="{StaticResource SettingsDescriptionStyle}"
+                                                           Margin="0,3,0,0" />
+                                            </StackPanel>
+                                            <Button x:Name="TestTranslationConnectionButton"
+                                                    Grid.Column="1"
+                                                    Content="测试连接"
+                                                    Click="OnTestTranslationConnectionClick"
+                                                    Style="{StaticResource ActionButtonStyle}"
+                                                    VerticalAlignment="Center" />
+                                        </Grid>
+                                        <TextBlock x:Name="TranslationTestStatusText"
+                                                   Style="{StaticResource SettingsCaptionStyle}"
+                                                   Margin="0,10,0,0" />
+                                        <Border Style="{StaticResource SettingsToolbarStyle}" Margin="0,14,0,0">
+                                            <StackPanel>
+                                                <TextBlock Text="免费服务：MyMemory 无需 API 密钥，但受每日与单次请求额度限制；额度用尽或网络繁忙时可能失败。"
+                                                           Style="{StaticResource SettingsDescriptionStyle}" />
+                                                <TextBlock Text="隐私：截图不会上传，只有选中或 OCR 识别出的文字会发送给所选翻译服务。API 密钥使用 Windows DPAPI 当前用户范围加密，不会写入设置文件。"
+                                                           Style="{StaticResource SettingsDescriptionStyle}"
+                                                           Margin="0,6,0,0" />
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
                     </TabItem>
 
                     <TabItem Style="{StaticResource NavigationTabItemStyle}" AutomationProperties.Name="截图">
