@@ -161,6 +161,42 @@ public sealed class SettingsWindowVisualTests
                 (string?)tab.Attribute("Style")));
     }
 
+    [Fact]
+    public void InputLockHelpExplainsKlidInterceptionAndRestore()
+    {
+        var document = XDocument.Load(FindRepoFile(
+            "src/FloatDesk.App/Views/SettingsWindow.xaml"));
+        var xaml = document.ToString(SaveOptions.DisableFormatting);
+
+        Assert.Contains("英文非 IME", xaml, StringComparison.Ordinal);
+        Assert.Contains("可加载", xaml, StringComparison.Ordinal);
+        Assert.Contains("拦截切换快捷键", xaml, StringComparison.Ordinal);
+        Assert.Contains("恢复原布局", xaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AiPageExposesBrowserThemeSelector()
+    {
+        var document = XDocument.Load(FindRepoFile(
+            "src/FloatDesk.App/Views/SettingsWindow.xaml"));
+        var xaml = document.ToString(SaveOptions.DisableFormatting);
+
+        Assert.Contains(
+            "x:Name=\"BrowserThemeComboBox\"",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains("Text=\"网页外观\"", xaml, StringComparison.Ordinal);
+        foreach (var option in new[]
+                 {
+                     "跟随 月语悬浮球",
+                     "浅色",
+                     "深色"
+                 })
+        {
+            Assert.Contains(option, xaml, StringComparison.Ordinal);
+        }
+    }
+
     private static string FindRepoFile(string relativePath)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

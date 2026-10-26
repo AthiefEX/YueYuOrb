@@ -1,5 +1,6 @@
 using System.IO.Pipes;
 using System.IO;
+using FloatDesk.Core;
 using FloatDesk.Core.Models;
 
 namespace FloatDesk.App;
@@ -16,7 +17,9 @@ public sealed class SingleInstanceService : IDisposable
     {
         _mutex = new Mutex(initiallyOwned: true, MutexName, out var createdNew);
         if (!createdNew)
-            return OperationResult.Fail("AlreadyRunning", "FloatDesk 已在当前会话运行。");
+            return OperationResult.Fail(
+                "AlreadyRunning",
+                $"{ProductInfo.Name}已在当前会话运行。");
 
         var paths = new AppDataPaths();
         paths.EnsureCreated();
@@ -36,7 +39,7 @@ public sealed class SingleInstanceService : IDisposable
         {
             return OperationResult.Fail(
                 "DataLockedOtherSession",
-                "FloatDesk 已在另一个 Windows 会话运行；请回到原会话使用。");
+                $"{ProductInfo.Name}已在另一个 Windows 会话运行；请回到原会话使用。");
         }
 
         _listenerCts = new CancellationTokenSource();

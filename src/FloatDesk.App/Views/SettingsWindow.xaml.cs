@@ -476,8 +476,8 @@ public partial class SettingsWindow : Window
     {
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
-            Filter = "FloatDesk 设置|*.json",
-            FileName = "FloatDesk-settings.json",
+            Filter = "月语悬浮球设置|*.json",
+            FileName = "YueYuOrb-settings.json",
             OverwritePrompt = true
         };
         if (dialog.ShowDialog(this) != true)
@@ -499,7 +499,7 @@ public partial class SettingsWindow : Window
     {
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
-            Filter = "FloatDesk 设置|*.json",
+            Filter = "月语悬浮球设置|*.json",
             CheckFileExists = true
         };
         if (dialog.ShowDialog(this) != true)
@@ -513,7 +513,7 @@ public partial class SettingsWindow : Window
             var preview = MessageBox.Show(
                 this,
                 $"将导入 {imported.Launchers.Count} 个快捷项、{imported.BrowserSites.Count} 个网页和 {imported.InputLock.Rules.Count} 条输入规则。导入不会运行任何目标。继续吗？",
-                "导入 FloatDesk 设置",
+                "导入月语悬浮球设置",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question);
             if (preview != MessageBoxResult.Yes)

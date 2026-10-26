@@ -10,7 +10,7 @@
         Background="{DynamicResource SettingsWindowBackgroundBrush}"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
-        Title="FloatDesk 记事本">
+        Title="月语悬浮球记事本">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="48"
                             ResizeBorderThickness="7"
@@ -22,7 +22,7 @@
     <Window.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="/FloatDesk;component/Resources/SettingsWindowResources.xaml" />
+                <ResourceDictionary Source="/YueYuOrb;component/Resources/SettingsWindowResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Window.Resources>
@@ -48,14 +48,14 @@
                             CornerRadius="8"
                             Margin="0,0,9,0"
                             Background="{DynamicResource SettingsAccentBrush}">
-                        <TextBlock Text="FD"
+                        <TextBlock Text="月"
                                    Foreground="White"
                                    FontSize="10"
                                    FontWeight="Bold"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center" />
                     </Border>
-                    <TextBlock Text="FloatDesk 记事本"
+                    <TextBlock Text="月语悬浮球记事本"
                                FontSize="13"
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource SettingsInkBrush}"
@@ -99,7 +99,7 @@
                     Padding="26,13">
                 <Grid>
                     <StackPanel>
-                        <TextBlock Text="FloatDesk 记事本"
+                        <TextBlock Text="月语悬浮球记事本"
                                    FontSize="27"
                                    FontWeight="SemiBold"
                                    Foreground="{DynamicResource SettingsInkBrush}" />

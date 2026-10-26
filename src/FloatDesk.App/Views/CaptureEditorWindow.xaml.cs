@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using FloatDesk.App.Capture;
+using FloatDesk.Core;
 using FloatDesk.Core.Capture;
 using FloatDesk.Core.Geometry;
 using FloatDesk.Core.Models;
@@ -309,7 +310,7 @@ public partial class CaptureEditorWindow : Window
                                 System.IO.Path.Combine(
                                     Environment.GetFolderPath(
                                         Environment.SpecialFolder.MyPictures),
-                                    "FloatDesk");
+                                    ProductInfo.EnglishName);
                 if (saveAs)
                 {
                     var extension = _settings.Format == ImageFormat.Jpeg ? ".jpg" : ".png";

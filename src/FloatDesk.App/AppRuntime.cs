@@ -3,6 +3,7 @@ using System.Windows.Threading;
 using FloatDesk.App.Coordination;
 using FloatDesk.App.ViewModels;
 using FloatDesk.App.Views;
+using FloatDesk.Core;
 using FloatDesk.Core.Contracts;
 using FloatDesk.Core.Geometry;
 using FloatDesk.Core.Input;
@@ -43,6 +44,7 @@ internal sealed class AppRuntime : IDisposable
     private bool _sessionLocked;
     private bool _userVisible = true;
     private bool _captureActive;
+    private bool _inputPollInProgress;
     private bool _disposed;
 
     public AppRuntime(AppDataPaths paths)
@@ -53,7 +55,9 @@ internal sealed class AppRuntime : IDisposable
         _settings = new SettingsCoordinator(new JsonSettingsStore(paths.Root));
         _notes = new SqliteNoteRepository(paths.NotesDatabase);
         _foreground = new ForegroundMonitor();
-        _input = new InputLockEngine(new WindowsInputBackend());
+        _input = new InputLockEngine(
+            new WindowsInputBackend(),
+            new WindowsKeyboardSwitchGuard());
     }
 
     public async Task InitializeAsync()
@@ -80,7 +84,9 @@ internal sealed class AppRuntime : IDisposable
             OpenNotes,
             () => _ = StartCaptureAsync(CaptureMode.Region),
             ToggleOrbVisibility,
-            RequestExit);
+            RequestExit,
+            panelToggle: ToggleQuickPanel,
+            panelOpenState: () => _panel?.IsPanelOpen == true);
         _panel = new QuickPanelWindow();
         _panel.LaunchRequested += OnLaunchRequested;
         _panel.SettingsRequested += ShowSettings;
@@ -95,7 +101,11 @@ internal sealed class AppRuntime : IDisposable
             _input,
             () => _settings.Current,
             () => _lastExternal?.TopLevelHwnd ?? 0,
-            active => _captureActive = active,
+            active =>
+            {
+                _captureActive = active;
+                UpdateInputPollingCadence();
+            },
             (eventName, properties) =>
                 _ = _logger.WriteAsync(eventName, properties));
         _coordinator.WindowCreated += ApplyToolSettings;
@@ -117,7 +127,7 @@ internal sealed class AppRuntime : IDisposable
         {
             ApplySettings(_settings.Current);
             _orb.Show();
-            ApplyOrbPlacement(_settings.Current);
+            ApplyOrbPlacement(_settings.Current, usePrimaryMonitor: true);
             _panel.Apply(
                 _settings.Current,
                 _manualEnglish,
@@ -147,7 +157,7 @@ internal sealed class AppRuntime : IDisposable
                         ["effective"] = SettingsViewModel.FormatHotkey(effective)
                     });
                 _tray?.ShowWarning(
-                    "FloatDesk 快捷键已自动切换",
+                    $"{ProductInfo.Name}快捷键已自动切换",
                     $"{SettingsViewModel.FormatHotkey(requested)} 已被其他程序占用，" +
                     $"现使用 {SettingsViewModel.FormatHotkey(effective)}。" +
                     "也可从悬浮球快捷面板或托盘菜单启动框选截图。");
@@ -163,7 +173,7 @@ internal sealed class AppRuntime : IDisposable
                     ["errorCode"] = "HotkeyConflict"
                 });
             _tray?.ShowWarning(
-                "FloatDesk 快捷键不可用",
+                $"{ProductInfo.Name}快捷键不可用",
                 $"{action} 的快捷键被其他程序占用；仍可从悬浮球快捷面板或托盘菜单使用该功能。");
         }
 
@@ -179,6 +189,8 @@ internal sealed class AppRuntime : IDisposable
         Microsoft.Win32.SystemEvents.SessionSwitch += OnSessionSwitch;
         Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged;
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged +=
+            OnUserPreferenceChanged;
         await _logger.WriteAsync("startup.complete");
     }
 
@@ -209,6 +221,8 @@ internal sealed class AppRuntime : IDisposable
             Microsoft.Win32.SystemEvents.SessionSwitch -= OnSessionSwitch;
             Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
             Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+            Microsoft.Win32.SystemEvents.UserPreferenceChanged -=
+                OnUserPreferenceChanged;
             _settings.Changed -= OnSettingsChanged;
             _input.StatusChanged -= OnInputStatusChanged;
             _foreground.Changed -= OnForegroundChanged;
@@ -243,6 +257,8 @@ internal sealed class AppRuntime : IDisposable
             Microsoft.Win32.SystemEvents.SessionSwitch -= OnSessionSwitch;
             Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
             Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+            Microsoft.Win32.SystemEvents.UserPreferenceChanged -=
+                OnUserPreferenceChanged;
         }
     }
 
@@ -298,6 +314,18 @@ internal sealed class AppRuntime : IDisposable
         _panel.ShowNear(_orb, GetPhysicalBounds(_orb));
     }
 
+    private void ToggleQuickPanel(bool panelWasOpenAtPress)
+    {
+        if (_panel is null || _orb is null || !_userVisible)
+            return;
+        if (!panelWasOpenAtPress && !_panel.IsPanelOpen)
+            _panel.Apply(_settings.Current, _manualEnglish, _input.Status.Reason);
+        _panel.ToggleNear(
+            _orb,
+            GetPhysicalBounds(_orb),
+            panelWasOpenAtPress);
+    }
+
     private void ShowSettings() => ShowTool(ToolWindow.Settings);
 
     private void OpenAi() => ShowTool(ToolWindow.AiBrowser);
@@ -312,7 +340,7 @@ internal sealed class AppRuntime : IDisposable
         {
             MessageBox.Show(
                 result.Message ?? "无法启动应用。",
-                "FloatDesk 快捷应用",
+                $"{ProductInfo.Name}快捷应用",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
         }
@@ -349,6 +377,19 @@ internal sealed class AppRuntime : IDisposable
     private void ToggleManualEnglish()
     {
         _manualEnglish = !_manualEnglish;
+        _ = _logger.WriteAsync(
+            "input.manual.toggle",
+            new Dictionary<string, object?>
+            {
+                ["enabled"] = _manualEnglish,
+                ["foregroundHwnd"] = _current.TopLevelHwnd.ToInt64(),
+                ["foregroundPid"] = _current.ProcessId,
+                ["foregroundPath"] = _current.ExePath,
+                ["foregroundOwn"] = _current.IsOwnInteractive,
+                ["lastExternalHwnd"] = _lastExternal?.TopLevelHwnd.ToInt64(),
+                ["lastExternalPid"] = _lastExternal?.ProcessId,
+                ["lastExternalPath"] = _lastExternal?.ExePath
+            });
         _ = ReEvaluateCurrentAsync();
     }
 
@@ -422,43 +463,79 @@ internal sealed class AppRuntime : IDisposable
     {
         if (debounce)
             await Task.Delay(50, cancellationToken);
+        var foregroundChanged =
+            !ForegroundMonitor.HasSameIdentity(_current, snapshot);
         _current = snapshot;
         if (snapshot.TopLevelHwnd != 0 && !snapshot.IsOwnInteractive)
             _lastExternal = snapshot;
 
         var rules = _settings.Current.InputLock.Rules;
+        var context = new InputContext(
+            _sessionLocked,
+            _emergencyPaused,
+            _captureActive,
+            _manualEnglish,
+            _settings.Current.InputLock.AutoEnabled);
+        if (foregroundChanged)
+        {
+            var decision = InputPolicy.Decide(snapshot, context, rules);
+            _ = _logger.WriteAsync(
+                "input.foreground.decision",
+                new Dictionary<string, object?>
+                {
+                    ["epoch"] = snapshot.Epoch,
+                    ["foregroundHwnd"] = snapshot.TopLevelHwnd.ToInt64(),
+                    ["focusHwnd"] = snapshot.FocusHwnd.ToInt64(),
+                    ["foregroundPid"] = snapshot.ProcessId,
+                    ["threadId"] = snapshot.ThreadId,
+                    ["foregroundPath"] = snapshot.ExePath,
+                    ["foregroundOwn"] = snapshot.IsOwnInteractive,
+                    ["manualEnabled"] = _manualEnglish,
+                    ["autoEnabled"] = _settings.Current.InputLock.AutoEnabled,
+                    ["action"] = decision.Action.ToString(),
+                    ["reason"] = decision.Reason
+                });
+        }
         await _input.UpdateAsync(
             snapshot,
-            new InputContext(
-                _sessionLocked,
-                _emergencyPaused,
-                _captureActive,
-                _manualEnglish,
-                _settings.Current.InputLock.AutoEnabled),
+            context,
             rules,
+            new InputLockOptions(_settings.Current.InputLock.TargetKlid),
             cancellationToken);
         await System.Windows.Application.Current.Dispatcher.InvokeAsync(
-            () => ApplyOverlay(snapshot));
+            () =>
+            {
+                if (foregroundChanged)
+                    ApplyOverlay(snapshot);
+                UpdateInputPollingCadence();
+            });
     }
 
     private async Task PollInputAsync()
     {
-        if (_disposed || _captureActive || _sessionLocked)
+        if (_inputPollInProgress)
             return;
-        var rules = _settings.Current.InputLock.Rules;
-        var decision = InputPolicy.Decide(
-            _current,
-            new InputContext(
-                _sessionLocked,
-                _emergencyPaused,
-                _captureActive,
-                _manualEnglish,
-                _settings.Current.InputLock.AutoEnabled),
-            rules);
-        if (decision.Action != InputAction.LockEnglish)
-            return;
+        _inputPollInProgress = true;
         try
         {
+            if (_disposed || _captureActive || _sessionLocked)
+            {
+                UpdateInputPollingCadence();
+                return;
+            }
+            var rules = _settings.Current.InputLock.Rules;
+            var decision = InputPolicy.Decide(
+                _current,
+                new InputContext(
+                    _sessionLocked,
+                    _emergencyPaused,
+                    _captureActive,
+                    _manualEnglish,
+                    _settings.Current.InputLock.AutoEnabled),
+                rules);
+            if (decision.Action != InputAction.LockEnglish &&
+                !_input.HasPendingRestore)
+                return;
             var refreshed = await _foreground.RefreshAsync(_lifetime.Token);
             await ProcessForegroundAsync(refreshed, _lifetime.Token, debounce: false);
         }
@@ -474,10 +551,24 @@ internal sealed class AppRuntime : IDisposable
                     ["type"] = exception.GetType().Name
                 });
         }
+        finally
+        {
+            _inputPollInProgress = false;
+        }
     }
 
     private void OnInputStatusChanged(InputStatus status)
     {
+        _ = _logger.WriteAsync(
+            "input.status",
+            new Dictionary<string, object?>
+            {
+                ["state"] = status.State.ToString(),
+                ["epoch"] = status.Epoch,
+                ["reason"] = status.Reason,
+                ["active"] = _input.IsActive,
+                ["pendingRestore"] = _input.HasPendingRestore
+            });
         _ = System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
         {
             if (_panel is null)
@@ -486,7 +577,17 @@ internal sealed class AppRuntime : IDisposable
                 _settings.Current,
                 _manualEnglish,
                 _emergencyPaused ? "紧急暂停已开启" : status.Reason);
+            UpdateInputPollingCadence();
         });
+    }
+
+    private void UpdateInputPollingCadence()
+    {
+        var interval = _input.IsActive && !_captureActive && !_sessionLocked
+            ? TimeSpan.FromMilliseconds(50)
+            : TimeSpan.FromMilliseconds(250);
+        if (_inputTimer.Interval != interval)
+            _inputTimer.Interval = interval;
     }
 
     private void ApplyOverlay(ForegroundSnapshot snapshot)
@@ -518,7 +619,7 @@ internal sealed class AppRuntime : IDisposable
     {
         ThemeService.Apply(settings.General.Theme);
         _orb?.ApplySettings(settings);
-        ApplyOrbPlacement(settings);
+        KeepOrbOnCurrentMonitor();
         _panel?.Apply(
             settings,
             _manualEnglish,
@@ -534,7 +635,7 @@ internal sealed class AppRuntime : IDisposable
                 {
                     MessageBox.Show(
                         $"{action} 快捷键未更新：{result.Message}。原绑定已保留。",
-                        "FloatDesk 快捷键",
+                        $"{ProductInfo.Name}快捷键",
                         MessageBoxButton.OK,
                         MessageBoxImage.Warning);
                     _ = _logger.WriteAsync(
@@ -577,15 +678,19 @@ internal sealed class AppRuntime : IDisposable
             _lifetime.Token);
     }
 
-    private void ApplyOrbPlacement(AppSettings settings)
+    private void ApplyOrbPlacement(
+        AppSettings settings,
+        bool usePrimaryMonitor = false)
     {
         if (_orb is null)
             return;
         var placement = settings.Windows.FirstOrDefault(item => item.Id == "orb");
         var monitors = DisplayTopology.GetMonitors();
-        var monitor = monitors.FirstOrDefault(item => item.DeviceName == placement?.MonitorId)
-            ?? monitors.FirstOrDefault(item => item.IsPrimary)
-            ?? (monitors.Count > 0 ? monitors[0] : null);
+        var monitor = usePrimaryMonitor
+            ? DisplayTopology.SelectPrimaryMonitor(monitors)
+            : monitors.FirstOrDefault(
+                item => item.DeviceName == placement?.MonitorId)
+                ?? DisplayTopology.SelectPrimaryMonitor(monitors);
         if (monitor is null)
             return;
         var bounds = GetPhysicalBounds(_orb);
@@ -610,6 +715,22 @@ internal sealed class AppRuntime : IDisposable
         _orb.SetPosition(clamped);
     }
 
+    private void KeepOrbOnCurrentMonitor()
+    {
+        if (_orb is null || !_orb.IsVisible)
+            return;
+        var bounds = GetPhysicalBounds(_orb);
+        var monitor = DisplayTopology.FromPoint(
+            new PixelPoint(
+                bounds.Left + (bounds.Width / 2),
+                bounds.Top + (bounds.Height / 2)));
+        if (monitor is null)
+            return;
+        var clamped = OrbPlacement.Clamp(bounds, monitor.WorkArea);
+        if (clamped != bounds)
+            _orb.SetPosition(clamped);
+    }
+
     private void OnSessionSwitch(
         object sender,
         Microsoft.Win32.SessionSwitchEventArgs e)
@@ -617,6 +738,7 @@ internal sealed class AppRuntime : IDisposable
         _sessionLocked = e.Reason is
             Microsoft.Win32.SessionSwitchReason.SessionLock or
             Microsoft.Win32.SessionSwitchReason.ConsoleDisconnect;
+        UpdateInputPollingCadence();
         if (!_sessionLocked)
             _ = ReEvaluateCurrentAsync();
     }
@@ -645,6 +767,22 @@ internal sealed class AppRuntime : IDisposable
             _orb.ApplySettings(_settings.Current);
             ApplyOrbPlacement(_settings.Current);
             ApplyOverlay(_foreground.Current);
+        });
+    }
+
+    private void OnUserPreferenceChanged(
+        object sender,
+        Microsoft.Win32.UserPreferenceChangedEventArgs e)
+    {
+        if (_disposed)
+            return;
+        _ = System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+        {
+            if (_disposed)
+                return;
+            ThemeService.Apply(_settings.Current.General.Theme);
+            if (GetTool<AiBrowserWindow>() is { } browser)
+                browser.ApplySettings(_settings.Current);
         });
     }
 
@@ -694,14 +832,14 @@ internal sealed class AppRuntime : IDisposable
     {
         if (_captureCoordinator is null)
             return;
-        _panel?.Hide();
+        _panel?.PrepareForScreenCapture();
         var result = await _captureCoordinator.StartAsync(mode, _lifetime.Token);
         if (!result.Success &&
             result.ErrorCode is not ("CaptureCancelled" or "CaptureBusy"))
         {
             MessageBox.Show(
                 result.Message ?? "截图失败。",
-                "FloatDesk 截图",
+                $"{ProductInfo.Name}截图",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
         }

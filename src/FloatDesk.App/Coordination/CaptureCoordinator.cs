@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Media.Imaging;
 using FloatDesk.App.Capture;
 using FloatDesk.App.Views;
+using FloatDesk.Core;
 using FloatDesk.Core.Geometry;
 using FloatDesk.Core.Input;
 using FloatDesk.Core.Models;
@@ -104,7 +105,7 @@ public sealed class CaptureCoordinator : IDisposable
                                 Path.Combine(
                                     Environment.GetFolderPath(
                                         Environment.SpecialFolder.MyPictures),
-                                    "FloatDesk");
+                                    ProductInfo.EnglishName);
                 var path = CaptureExportService.CreateAutomaticPath(
                     directory,
                     settings.Capture.Format);

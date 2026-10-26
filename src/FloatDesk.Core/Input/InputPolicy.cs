@@ -9,17 +9,22 @@ public static class InputPolicy
         InputContext context,
         IReadOnlyList<AppRule> rules)
     {
-        if (context.SessionLocked) return new(InputAction.None, "锁屏期间暂停");
-        if (context.EmergencyPaused) return new(InputAction.None, "紧急暂停");
-        if (context.CapturePaused) return new(InputAction.None, "截图期间暂停");
-        if (target.IsOwnInteractive) return new(InputAction.None, "FloatDesk 自身窗口允许中文输入");
-        if (string.IsNullOrWhiteSpace(target.ExePath)) return new(InputAction.None, "无法识别目标应用路径");
+        if (context.SessionLocked)
+            return new(InputAction.None, "锁屏期间暂停", true);
+        if (context.EmergencyPaused)
+            return new(InputAction.None, "紧急暂停", true);
+        if (context.CapturePaused)
+            return new(InputAction.None, "截图期间暂停", true);
+        if (target.IsOwnInteractive)
+            return new(InputAction.None, $"{ProductInfo.Name}自身窗口允许中文输入", true);
+        if (string.IsNullOrWhiteSpace(target.ExePath))
+            return new(InputAction.None, "无法识别目标应用路径", true);
 
         var matchingRules = rules
             .Where(rule => rule.Enabled && PathEquals(rule.ExePath, target.ExePath))
             .ToArray();
         if (matchingRules.Any(rule => rule.Action == InputAction.Exclude))
-            return new(InputAction.Exclude, "应用排除规则");
+            return new(InputAction.Exclude, "应用排除规则", true);
         if (context.ManualEnabled)
             return new(InputAction.LockEnglish, "手动英文锁定");
         if (context.AutoEnabled && matchingRules.Any(rule => rule.Action == InputAction.LockEnglish))

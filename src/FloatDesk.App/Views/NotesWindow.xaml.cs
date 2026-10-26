@@ -342,7 +342,7 @@ public partial class NotesWindow : Window, IDisposable
         if (MessageBox.Show(
                 this,
                 message,
-                "FloatDesk 记事本",
+                "月语悬浮球记事本",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question) != MessageBoxResult.Yes)
         {
@@ -379,7 +379,7 @@ public partial class NotesWindow : Window, IDisposable
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
             FileName = SanitizeFileName(
-                string.IsNullOrWhiteSpace(TitleBox.Text) ? "FloatDesk 笔记" : TitleBox.Text) +
+                string.IsNullOrWhiteSpace(TitleBox.Text) ? "月语悬浮球笔记" : TitleBox.Text) +
                 ".txt",
             Filter = "文本文件|*.txt",
             AddExtension = true,
@@ -430,7 +430,7 @@ public partial class NotesWindow : Window, IDisposable
         var chars = value.Select(character =>
             invalid.Contains(character) ? '_' : character).ToArray();
         var result = new string(chars).Trim();
-        return result.Length == 0 ? "FloatDesk 笔记" : result;
+        return result.Length == 0 ? "月语悬浮球笔记" : result;
     }
 
     public void Dispose()

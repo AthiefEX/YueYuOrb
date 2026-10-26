@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using FloatDesk.Core;
 using FloatDesk.Core.Contracts;
 using FloatDesk.Core.Models;
 
@@ -40,7 +41,7 @@ public sealed class JsonSettingsStore : ISettingsStore, IDisposable
             catch (NewerSettingsVersionException)
             {
                 _readOnlyReason =
-                    "设置由更新版本的 FloatDesk 创建，当前版本只会只读运行，不会覆盖该文件。";
+                    $"设置由更新版本的{ProductInfo.Name}创建，当前版本只会只读运行，不会覆盖该文件。";
                 break;
             }
             catch (Exception exception) when (

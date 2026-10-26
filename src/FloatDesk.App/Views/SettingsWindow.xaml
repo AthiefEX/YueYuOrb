@@ -7,7 +7,7 @@
         MinWidth="960"
         MinHeight="620"
         WindowStartupLocation="CenterScreen"
-        Title="FloatDesk 设置"
+        Title="月语悬浮球设置"
         Background="{DynamicResource SettingsWindowBackgroundBrush}"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True">
@@ -22,7 +22,7 @@
     <Window.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="/FloatDesk;component/Resources/SettingsWindowResources.xaml" />
+                <ResourceDictionary Source="/YueYuOrb;component/Resources/SettingsWindowResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <Style x:Key="SettingsShellStyle" TargetType="{x:Type Border}">
                 <Setter Property="Margin" Value="7" />
@@ -65,14 +65,14 @@
                             CornerRadius="8"
                             Background="{DynamicResource SettingsAccentBrush}"
                             Margin="0,0,9,0">
-                        <TextBlock Text="FD"
+                        <TextBlock Text="月"
                                    Foreground="White"
                                    FontSize="10"
                                    FontWeight="Bold"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center" />
                     </Border>
-                    <TextBlock Text="FloatDesk 设置"
+                    <TextBlock Text="月语悬浮球设置"
                                FontSize="13"
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource SettingsInkBrush}"
@@ -148,7 +148,7 @@
 
             <Grid Grid.Row="1" Margin="34,15,34,8" Panel.ZIndex="2">
                 <StackPanel>
-                    <TextBlock Text="FloatDesk 设置"
+                    <TextBlock Text="月语悬浮球设置"
                                FontSize="32"
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource SettingsInkBrush}" />
@@ -217,7 +217,7 @@
                                                     </Grid.ColumnDefinitions>
                                                     <StackPanel VerticalAlignment="Center">
                                                         <TextBlock Text="应用主题" Style="{StaticResource SettingsLabelStyle}" />
-                                                        <TextBlock Text="选择 FloatDesk 的整体外观" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,2,0,0" />
+                                                        <TextBlock Text="选择月语悬浮球的整体外观" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,2,0,0" />
                                                     </StackPanel>
                                                     <ComboBox Grid.Column="1"
                                                               SelectedIndex="{Binding ThemeIndex}"
@@ -257,7 +257,7 @@
                                                 </Grid.RowDefinitions>
                                                 <StackPanel VerticalAlignment="Center">
                                                     <TextBlock Text="快捷面板" Style="{StaticResource SettingsLabelStyle}" />
-                                                    <TextBlock Text="打开 FloatDesk 快捷面板" Style="{StaticResource SettingsDescriptionStyle}" />
+                                                    <TextBlock Text="打开月语悬浮球快捷面板" Style="{StaticResource SettingsDescriptionStyle}" />
                                                 </StackPanel>
                                                 <TextBox Grid.Column="1" Text="{Binding PanelHotkey}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" />
                                                 <Border Grid.Row="1" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
@@ -298,7 +298,7 @@
                                         </Grid.ColumnDefinitions>
                                         <StackPanel VerticalAlignment="Center" Margin="0,0,20,0">
                                             <TextBlock Text="配置文件" Style="{StaticResource SettingsSectionTitleStyle}" />
-                                            <TextBlock Text="导出用于备份，或从 FloatDesk JSON 配置文件恢复设置。导入不会运行任何应用。"
+                                            <TextBlock Text="导出用于备份，或从月语悬浮球 JSON 配置文件恢复设置。导入不会运行任何应用。"
                                                        Style="{StaticResource SettingsDescriptionStyle}"
                                                        Margin="0,3,0,0" />
                                         </StackPanel>
@@ -595,7 +595,7 @@
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Text="目标键盘布局" Style="{StaticResource SettingsLabelStyle}" />
                                             <TextBox Grid.Column="1" Text="{Binding TargetKlid}" Style="{StaticResource SettingsTextBoxStyle}" />
-                                            <TextBlock Grid.Column="2" Text="默认 00000409（英语美国，非 IME）" Style="{StaticResource SettingsCaptionStyle}" Margin="12,0,0,0" />
+                                            <TextBlock Grid.Column="2" Text="KLID 须为可加载的英文非 IME 键盘；锁定期间拦截切换快捷键，解除后恢复原布局。" Style="{StaticResource SettingsCaptionStyle}" Margin="12,0,0,0" TextWrapping="Wrap" />
                                         </Grid>
                                     </Border>
                                     <DataGrid Grid.Row="1"
@@ -656,7 +656,25 @@
                                             <TextBlock Text="悬浮球内打开 AI 网页时使用的窗口与缩放设置。" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,2,0,0" />
                                         </StackPanel>
                                     </StackPanel>
-                                    <StackPanel Grid.Column="1">
+                                    <StackPanel Grid.Column="1" Width="250">
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="80" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="网页外观"
+                                                       Style="{StaticResource SettingsLabelStyle}"
+                                                       VerticalAlignment="Center" />
+                                            <ComboBox x:Name="BrowserThemeComboBox"
+                                                      Grid.Column="1"
+                                                      SelectedIndex="{Binding BrowserThemeIndex}"
+                                                      Style="{StaticResource SettingsComboBoxStyle}"
+                                                      AutomationProperties.Name="AI 网页外观">
+                                                <ComboBoxItem Content="跟随 月语悬浮球" />
+                                                <ComboBoxItem Content="浅色" />
+                                                <ComboBoxItem Content="深色" />
+                                            </ComboBox>
+                                        </Grid>
                                         <CheckBox Content="关闭窗口即释放网页" IsChecked="{Binding BrowserReleaseOnClose}" Style="{StaticResource ToggleSwitchStyle}" Margin="0,0,0,8" />
                                         <CheckBox Content="AI 窗口独立置顶" IsChecked="{Binding BrowserTopmost}" Style="{StaticResource ToggleSwitchStyle}" />
                                     </StackPanel>
@@ -811,15 +829,15 @@
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <Border Width="74" Height="74" CornerRadius="22" Background="{DynamicResource SettingsAccentBrush}" Margin="0,0,20,0">
-                                            <TextBlock Text="FD"
+                                            <TextBlock Text="月"
                                                        Foreground="White"
-                                                       FontSize="25"
+                                                       FontSize="28"
                                                        FontWeight="Bold"
                                                        HorizontalAlignment="Center"
                                                        VerticalAlignment="Center" />
                                         </Border>
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                            <TextBlock Text="FloatDesk 1.0.0" FontSize="26" FontWeight="SemiBold" Foreground="{DynamicResource SettingsInkBrush}" />
+                                            <TextBlock Text="月语悬浮球 1.0.0" FontSize="26" FontWeight="SemiBold" Foreground="{DynamicResource SettingsInkBrush}" />
                                             <TextBlock Text="Windows 10/11 x64 桌面悬浮助手" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,4,0,0" />
                                             <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                                                 <Border Style="{StaticResource SettingsPillStyle}" Margin="0,0,8,0">

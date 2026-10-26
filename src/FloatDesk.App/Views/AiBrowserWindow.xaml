@@ -12,7 +12,7 @@
         Background="{DynamicResource SettingsWindowBackgroundBrush}"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
-        Title="FloatDesk AI 网页">
+        Title="月语悬浮球 AI 网页">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="48"
                             ResizeBorderThickness="7"
@@ -24,7 +24,7 @@
     <Window.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="/FloatDesk;component/Resources/SettingsWindowResources.xaml" />
+                <ResourceDictionary Source="/YueYuOrb;component/Resources/SettingsWindowResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Window.Resources>
@@ -51,14 +51,14 @@
                             CornerRadius="8"
                             Margin="0,0,9,0"
                             Background="{DynamicResource SettingsAccentBrush}">
-                        <TextBlock Text="FD"
+                        <TextBlock Text="月"
                                    Foreground="White"
                                    FontSize="10"
                                    FontWeight="Bold"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center" />
                     </Border>
-                    <TextBlock Text="FloatDesk AI 网页"
+                    <TextBlock Text="月语悬浮球 AI 网页"
                                FontSize="13"
                                FontWeight="SemiBold"
                                Foreground="{DynamicResource SettingsInkBrush}"
@@ -106,7 +106,7 @@
                         <ColumnDefinition Width="260" />
                     </Grid.ColumnDefinitions>
                     <StackPanel>
-                        <TextBlock Text="FloatDesk AI 网页"
+                        <TextBlock Text="月语悬浮球 AI 网页"
                                    FontSize="27"
                                    FontWeight="SemiBold"
                                    Foreground="{DynamicResource SettingsInkBrush}" />
@@ -288,7 +288,7 @@
                                VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis"
                                Foreground="{DynamicResource SettingsMutedBrush}"
-                               Text="网页运行在独立浏览器进程中；FloatDesk 不向网页暴露本机命令接口。" />
+                               Text="网页运行在独立浏览器进程中；月语悬浮球不向网页暴露本机命令接口。" />
                     <Border HorizontalAlignment="Right"
                             VerticalAlignment="Center"
                             Background="{DynamicResource SettingsAccentSoftBrush}"

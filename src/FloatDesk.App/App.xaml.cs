@@ -1,3 +1,4 @@
+using FloatDesk.Core;
 using FloatDesk.Core.Contracts;
 using System.Windows;
 
@@ -24,8 +25,8 @@ public partial class App : System.Windows.Application, IDisposable
                 return;
             }
             System.Windows.MessageBox.Show(
-                lockResult.Message ?? "FloatDesk 已在运行。",
-                "FloatDesk",
+                lockResult.Message ?? $"{ProductInfo.Name}已在运行。",
+                ProductInfo.Name,
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
             Shutdown();
@@ -42,8 +43,8 @@ public partial class App : System.Windows.Application, IDisposable
             _runtime?.Dispose();
             _runtime = null;
             System.Windows.MessageBox.Show(
-                $"FloatDesk 启动失败：{exception.Message}",
-                "FloatDesk",
+                $"{ProductInfo.Name}启动失败：{exception.Message}",
+                ProductInfo.Name,
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
             Shutdown();

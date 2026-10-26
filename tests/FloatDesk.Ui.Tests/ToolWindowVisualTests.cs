@@ -5,6 +5,73 @@ namespace FloatDesk.Ui.Tests;
 public sealed class ToolWindowVisualTests
 {
     [Fact]
+    public void AllWindowsUsePublicBrandAndAssemblyPackUris()
+    {
+        var viewsDirectory = Path.GetDirectoryName(FindRepoFile(
+            "src/FloatDesk.App/Views/OrbWindow.xaml"));
+        Assert.NotNull(viewsDirectory);
+        var xamlFiles = Directory.GetFiles(
+            viewsDirectory,
+            "*.xaml",
+            SearchOption.TopDirectoryOnly);
+
+        Assert.NotEmpty(xamlFiles);
+        foreach (var path in xamlFiles)
+        {
+            var xaml = File.ReadAllText(path);
+            Assert.DoesNotContain(
+                "Title=\"FloatDesk",
+                xaml,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "Source=\"/FloatDesk;component/",
+                xaml,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "Text=\"FD\"",
+                xaml,
+                StringComparison.Ordinal);
+
+            if (xaml.Contains(
+                    "SettingsWindowResources.xaml",
+                    StringComparison.Ordinal))
+            {
+                Assert.Contains(
+                    "Source=\"/YueYuOrb;component/Resources/" +
+                    "SettingsWindowResources.xaml\"",
+                    xaml,
+                    StringComparison.Ordinal);
+            }
+        }
+
+        Assert.Contains(
+            "Text=\"月\"",
+            File.ReadAllText(FindRepoFile(
+                "src/FloatDesk.App/Views/OrbWindow.xaml")),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TrayIconUsesCrescentAndOrbInsteadOfTextMark()
+    {
+        var source = File.ReadAllText(FindRepoFile(
+            "src/FloatDesk.App/Bootstrap/TrayService.cs"));
+
+        Assert.DoesNotContain(
+            "DrawString(\"FD\"",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "FillEllipse",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "GraphicsPath",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SharedResourcesDefineRoundedToolWindowAndScrollBarStyles()
     {
         var document = XDocument.Load(FindRepoFile(

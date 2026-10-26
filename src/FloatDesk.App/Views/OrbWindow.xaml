@@ -10,7 +10,7 @@
         SizeToContent="Height"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
-        Title="FloatDesk">
+        Title="月语悬浮球">
     <StackPanel x:Name="OrbLayout" Margin="20">
         <Grid x:Name="OrbRoot"
               Width="56"
@@ -41,26 +41,31 @@
                    Stretch="UniformToFill"
                    Visibility="Collapsed" />
             <TextBlock x:Name="FallbackText"
-                       Text="FD"
+                       Text="月"
                        Foreground="White"
-                       FontSize="18"
+                       FontSize="20"
                        FontWeight="SemiBold"
                        HorizontalAlignment="Center"
                        VerticalAlignment="Center" />
+            <Border x:Name="ClockBorder"
+                    Visibility="Collapsed"
+                    Margin="3"
+                    Padding="5,3"
+                    Background="#B20B1725"
+                    BorderBrush="#55FFFFFF"
+                    BorderThickness="1"
+                    CornerRadius="999"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch">
+                <Viewbox Stretch="Uniform"
+                         StretchDirection="DownOnly">
+                    <TextBlock x:Name="ClockText"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="White"
+                               TextAlignment="Center" />
+                </Viewbox>
+            </Border>
         </Grid>
-        <Border x:Name="ClockBorder"
-                Visibility="Collapsed"
-                Background="{DynamicResource ToolWindowEditorBrush}"
-                BorderBrush="{DynamicResource ControlBorderBrush}"
-                BorderThickness="1"
-                CornerRadius="9"
-                Padding="7,3"
-                Margin="0,4,0,0"
-                HorizontalAlignment="Center">
-            <TextBlock x:Name="ClockText"
-                       FontSize="12"
-                       FontWeight="SemiBold"
-                       Foreground="{DynamicResource InkBrush}" />
-        </Border>
     </StackPanel>
 </Window>

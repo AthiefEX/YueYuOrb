@@ -68,6 +68,9 @@ public sealed record AppSettings(
     public IReadOnlyList<WheelActionKind> WheelActions { get; init; } =
         DefaultWheelActions;
 
+    public BrowserThemeMode BrowserTheme { get; init; } =
+        BrowserThemeMode.FollowApp;
+
     public static AppSettings CreateDefault(string? picturesDirectory = null)
     {
         var deepSeek = new BrowserSite(
@@ -91,7 +94,9 @@ public sealed record AppSettings(
                 0,
                 ImageFormat.Png,
                 false,
-                picturesDirectory is null ? null : Path.Combine(picturesDirectory, "FloatDesk"),
+                picturesDirectory is null
+                    ? null
+                    : Path.Combine(picturesDirectory, ProductInfo.EnglishName),
                 true,
                 "#FF3B30",
                 3,

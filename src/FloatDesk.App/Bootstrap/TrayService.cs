@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Windows.Forms;
+using FloatDesk.Core;
 
 namespace FloatDesk.App;
 
@@ -32,7 +33,7 @@ public sealed class TrayService : IDisposable
         _icon = new NotifyIcon
         {
             Icon = AppIcon.Create(),
-            Text = "FloatDesk 悬浮助手",
+            Text = $"{ProductInfo.Name}悬浮助手",
             Visible = true,
             ContextMenuStrip = menu
         };
@@ -63,11 +64,21 @@ internal static class AppIcon
         using (var graphics = Graphics.FromImage(bitmap))
         {
             graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            using var brush = new SolidBrush(System.Drawing.Color.FromArgb(20, 108, 91));
-            graphics.FillEllipse(brush, 2, 2, 28, 28);
-            using var font = new Font("Segoe UI", 11, FontStyle.Bold, GraphicsUnit.Pixel);
-            using var textBrush = new SolidBrush(System.Drawing.Color.White);
-            graphics.DrawString("FD", font, textBrush, 5.5f, 8f);
+            using var background = new SolidBrush(
+                System.Drawing.Color.FromArgb(15, 81, 68));
+            graphics.FillEllipse(background, 1, 1, 30, 30);
+
+            using var crescent = new System.Drawing.Drawing2D.GraphicsPath(
+                System.Drawing.Drawing2D.FillMode.Alternate);
+            crescent.AddEllipse(5, 4, 20, 20);
+            crescent.AddEllipse(11, 1, 19, 19);
+            using var moon = new SolidBrush(
+                System.Drawing.Color.FromArgb(246, 241, 224));
+            graphics.FillPath(moon, crescent);
+
+            using var accent = new SolidBrush(
+                System.Drawing.Color.FromArgb(225, 178, 96));
+            graphics.FillEllipse(accent, 21, 20, 7, 7);
         }
         return Icon.FromHandle(bitmap.GetHicon());
     }

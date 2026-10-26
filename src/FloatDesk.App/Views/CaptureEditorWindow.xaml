@@ -1,7 +1,7 @@
 <Window x:Class="FloatDesk.App.Views.CaptureEditorWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="FloatDesk 截图标注"
+        Title="月语悬浮球截图标注"
         Width="980"
         Height="720"
         MinWidth="520"
@@ -13,7 +13,7 @@
     <Window.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="/FloatDesk;component/Resources/SettingsWindowResources.xaml" />
+                <ResourceDictionary Source="/YueYuOrb;component/Resources/SettingsWindowResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </Window.Resources>
