@@ -252,6 +252,7 @@ internal sealed class AppRuntime : IDisposable
             }
 
             _captureCoordinator?.Dispose();
+            _regionSelection.Dispose();
             _captureSessionGate.Dispose();
             _ocr.Dispose();
             _foreground.Dispose();

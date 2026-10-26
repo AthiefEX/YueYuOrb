@@ -1,4 +1,5 @@
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using FloatDesk.App.Capture;
 using FloatDesk.App.Views;
 using FloatDesk.Core.Geometry;
@@ -7,7 +8,7 @@ using FloatDesk.Windows.Windows;
 
 namespace FloatDesk.App.Coordination;
 
-public sealed class RegionSelectionCoordinator
+public sealed class RegionSelectionCoordinator : IDisposable
 {
     private readonly Func<IReadOnlyList<DisplayMonitor>> _getMonitors;
     private readonly Func<CaptureFrame, BitmapSource> _bitmapFactory;
@@ -17,6 +18,9 @@ public sealed class RegionSelectionCoordinator
         BitmapSource,
         IRegionSelectionSurface> _surfaceFactory;
     private readonly Action<Action> _dispatch;
+    private readonly Func<Action, bool> _tryScheduleCleanup;
+    private readonly object _pendingCleanupSync = new();
+    private readonly List<Action> _pendingCleanups = [];
 
     public RegionSelectionCoordinator()
         : this(
@@ -27,7 +31,8 @@ public sealed class RegionSelectionCoordinator
                     monitor,
                     frozenBounds,
                     bitmap)),
-            DispatchToWpf)
+            DispatchToWpf,
+            TryScheduleWpfCleanup)
     {
     }
 
@@ -35,12 +40,23 @@ public sealed class RegionSelectionCoordinator
         Func<IReadOnlyList<DisplayMonitor>> getMonitors,
         Func<CaptureFrame, BitmapSource> bitmapFactory,
         Func<DisplayMonitor, PixelRect, BitmapSource, IRegionSelectionSurface> surfaceFactory,
-        Action<Action>? dispatch = null)
+        Action<Action>? dispatch = null,
+        Func<Action, bool>? tryScheduleCleanup = null)
     {
         _getMonitors = getMonitors;
         _bitmapFactory = bitmapFactory;
         _surfaceFactory = surfaceFactory;
         _dispatch = dispatch ?? DispatchToWpf;
+        _tryScheduleCleanup = tryScheduleCleanup ?? TryScheduleWpfCleanup;
+    }
+
+    internal int PendingCleanupCount
+    {
+        get
+        {
+            lock (_pendingCleanupSync)
+                return _pendingCleanups.Count;
+        }
     }
 
     public async Task<PixelRect?> SelectAsync(
@@ -54,6 +70,7 @@ public sealed class RegionSelectionCoordinator
         var surfaces = new List<IRegionSelectionSurface>();
         var shown = new HashSet<IRegionSelectionSurface>();
         var closed = new HashSet<IRegionSelectionSurface>();
+        var completionClaimed = 0;
         var closeStarted = false;
         PixelPoint? anchor = null;
         var selection = new PixelRect(0, 0, 0, 0);
@@ -84,20 +101,37 @@ public sealed class RegionSelectionCoordinator
             }
         }
 
+        bool TryClaimCompletion() =>
+            Interlocked.Exchange(ref completionClaimed, 1) == 0;
+
         void Complete(PixelRect? result)
         {
-            if (!completion.TrySetResult(result))
+            if (!TryClaimCompletion())
                 return;
             closeStarted = true;
-            CloseAll();
+            try
+            {
+                CloseAll();
+            }
+            finally
+            {
+                completion.TrySetResult(result);
+            }
         }
 
         void Fail(Exception exception)
         {
-            if (!completion.TrySetException(exception))
+            if (!TryClaimCompletion())
                 return;
             closeStarted = true;
-            CloseAll();
+            try
+            {
+                CloseAll();
+            }
+            finally
+            {
+                completion.TrySetException(exception);
+            }
         }
 
         void FailOrCancel(Exception exception)
@@ -110,23 +144,40 @@ public sealed class RegionSelectionCoordinator
 
         void HandleDispatchFailure(Exception exception)
         {
-            var completed = cancellationToken.IsCancellationRequested
-                ? completion.TrySetResult(null)
-                : completion.TrySetException(exception);
-            if (!completed)
+            if (!TryClaimCompletion())
                 return;
 
             closeStarted = true;
             try
             {
-                _dispatch(CloseAll);
+                if (!TryScheduleCleanup(CloseAll))
+                    TransferCleanupOwnership(CloseAll);
+            }
+            finally
+            {
+                if (cancellationToken.IsCancellationRequested)
+                    completion.TrySetResult(null);
+                else
+                    completion.TrySetException(exception);
+            }
+        }
+
+        bool TryScheduleCleanup(Action cleanup)
+        {
+            try
+            {
+                return _tryScheduleCleanup(cleanup);
             }
             catch (Exception)
             {
-                // The dispatcher may already be shutting down. This direct
-                // pass is the last opportunity to remove topmost overlays.
-                CloseAll();
+                return false;
             }
+        }
+
+        void TransferCleanupOwnership(Action cleanup)
+        {
+            lock (_pendingCleanupSync)
+                _pendingCleanups.Add(cleanup);
         }
 
         void HandleSurfaceEvent(Action action)
@@ -290,9 +341,7 @@ public sealed class RegionSelectionCoordinator
                     cancellationToken.IsCancellationRequested ||
                     surfaces.Count == 0)
                 {
-                    closeStarted = true;
-                    CloseAll();
-                    completion.TrySetResult(null);
+                    Complete(null);
                     return;
                 }
 
@@ -351,6 +400,36 @@ public sealed class RegionSelectionCoordinator
         return await completion.Task.ConfigureAwait(true);
     }
 
+    public void Dispose()
+    {
+        Action[] pending;
+        lock (_pendingCleanupSync)
+        {
+            pending = _pendingCleanups.ToArray();
+            _pendingCleanups.Clear();
+        }
+
+        foreach (var cleanup in pending)
+        {
+            if (TryScheduleCleanup(cleanup))
+                continue;
+            lock (_pendingCleanupSync)
+                _pendingCleanups.Add(cleanup);
+        }
+    }
+
+    private bool TryScheduleCleanup(Action cleanup)
+    {
+        try
+        {
+            return _tryScheduleCleanup(cleanup);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
     internal static PixelRect ApplyNudge(
         PixelRect selection,
         PixelRect frozenBounds,
@@ -377,6 +456,32 @@ public sealed class RegionSelectionCoordinator
             return;
         }
         dispatcher.Invoke(action);
+    }
+
+    private static bool TryScheduleWpfCleanup(Action action)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is null ||
+            dispatcher.HasShutdownStarted ||
+            dispatcher.HasShutdownFinished)
+        {
+            return false;
+        }
+
+        try
+        {
+            if (dispatcher.CheckAccess())
+            {
+                action();
+                return true;
+            }
+            dispatcher.BeginInvoke(DispatcherPriority.Send, action);
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 }
 

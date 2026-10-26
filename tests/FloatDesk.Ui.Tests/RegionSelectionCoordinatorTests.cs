@@ -191,7 +191,7 @@ public sealed class RegionSelectionCoordinatorTests
     }
 
     [Fact(Timeout = 10_000)]
-    public async Task DispatchFailureStillClosesEverySurfaceOnDispatcher()
+    public async Task DispatchFailureQueuesCleanupToUiOwnerBeforeFaulting()
     {
         using var dispatcher = new SingleThreadDispatcher();
         var first = new FakeRegionSelectionSurface();
@@ -200,6 +200,10 @@ public sealed class RegionSelectionCoordinatorTests
             [first, second]);
         using var desktop = DesktopFrame();
         var dispatchCount = 0;
+        var cleanupScheduler = new FakeCleanupScheduler(dispatcher)
+        {
+            Accept = true
+        };
         var coordinator = CreateCoordinator(
             [Monitor(@"\\.\DISPLAY1"), Monitor(@"\\.\DISPLAY2", 100)],
             surfaces,
@@ -208,7 +212,8 @@ public sealed class RegionSelectionCoordinatorTests
                 if (Interlocked.Increment(ref dispatchCount) == 2)
                     throw new InvalidOperationException("dispatch failed");
                 dispatcher.Dispatch(action);
-            });
+            },
+            cleanupScheduler.TrySchedule);
 
         var selectionTask = coordinator.SelectAsync(
             desktop,
@@ -231,6 +236,127 @@ public sealed class RegionSelectionCoordinatorTests
             threadId => Assert.Equal(dispatcher.ThreadId, threadId));
     }
 
+    [Fact(Timeout = 10_000)]
+    public async Task PermanentDispatchFailureTransfersCleanupWithoutCrossThreadCalls()
+    {
+        using var dispatcher = new SingleThreadDispatcher();
+        var first = new FakeRegionSelectionSurface();
+        var second = new FakeRegionSelectionSurface();
+        var surfaces = new Queue<FakeRegionSelectionSurface>(
+            [first, second]);
+        using var desktop = DesktopFrame();
+        var dispatchCount = 0;
+        var cleanupScheduler = new FakeCleanupScheduler(dispatcher)
+        {
+            Accept = false
+        };
+        using var coordinator = CreateCoordinator(
+            [Monitor(@"\\.\DISPLAY1"), Monitor(@"\\.\DISPLAY2", 100)],
+            surfaces,
+            action =>
+            {
+                if (Interlocked.Increment(ref dispatchCount) == 1)
+                {
+                    dispatcher.Dispatch(action);
+                    return;
+                }
+                throw new InvalidOperationException("permanent dispatch failure");
+            },
+            cleanupScheduler.TrySchedule);
+
+        var selectionTask = coordinator.SelectAsync(
+            desktop,
+            null,
+            CancellationToken.None);
+        await Task.WhenAll(first.Shown.Task, second.Shown.Task)
+            .WaitAsync(TimeSpan.FromSeconds(2));
+
+        await Task.Run(() =>
+            first.RaiseDragStarted(new PixelPoint(10, 10)));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => selectionTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal("permanent dispatch failure", exception.Message);
+        Assert.Equal(1, coordinator.PendingCleanupCount);
+        Assert.False(first.Hidden);
+        Assert.False(second.Hidden);
+        Assert.Equal(0, first.CloseCount);
+        Assert.Equal(0, second.CloseCount);
+        Assert.All(
+            first.SurfaceThreadIds.Concat(second.SurfaceThreadIds),
+            threadId => Assert.Equal(dispatcher.ThreadId, threadId));
+
+        cleanupScheduler.Accept = true;
+        coordinator.Dispose();
+
+        Assert.Equal(0, coordinator.PendingCleanupCount);
+        Assert.True(first.Hidden);
+        Assert.True(second.Hidden);
+        Assert.Equal(1, first.CloseCount);
+        Assert.Equal(1, second.CloseCount);
+        Assert.All(
+            first.SurfaceThreadIds.Concat(second.SurfaceThreadIds),
+            threadId => Assert.Equal(dispatcher.ThreadId, threadId));
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task DispatchFailurePublishesOnlyAfterCleanupOwnershipTransfer()
+    {
+        using var dispatcher = new SingleThreadDispatcher();
+        var first = new FakeRegionSelectionSurface();
+        var second = new FakeRegionSelectionSurface();
+        var surfaces = new Queue<FakeRegionSelectionSurface>(
+            [first, second]);
+        using var desktop = DesktopFrame();
+        var dispatchCount = 0;
+        var cleanupScheduler = new BlockingCleanupScheduler();
+        using var coordinator = CreateCoordinator(
+            [Monitor(@"\\.\DISPLAY1"), Monitor(@"\\.\DISPLAY2", 100)],
+            surfaces,
+            action =>
+            {
+                if (Interlocked.Increment(ref dispatchCount) == 1)
+                {
+                    dispatcher.Dispatch(action);
+                    return;
+                }
+                throw new InvalidOperationException("dispatch failed");
+            },
+            cleanupScheduler.TrySchedule);
+
+        var selectionTask = coordinator.SelectAsync(
+            desktop,
+            null,
+            CancellationToken.None);
+        await Task.WhenAll(first.Shown.Task, second.Shown.Task)
+            .WaitAsync(TimeSpan.FromSeconds(2));
+
+        var eventTask = Task.Run(() =>
+            first.RaiseDragStarted(new PixelPoint(10, 10)));
+        await cleanupScheduler.Entered.Task
+            .WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.False(selectionTask.IsCompleted);
+        Assert.Equal(0, first.CloseCount);
+        Assert.Equal(0, second.CloseCount);
+
+        cleanupScheduler.Release.TrySetResult();
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => selectionTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal("dispatch failed", exception.Message);
+        await eventTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.NotNull(cleanupScheduler.Cleanup);
+        dispatcher.Dispatch(cleanupScheduler.Cleanup!);
+        Assert.True(first.Hidden);
+        Assert.True(second.Hidden);
+        Assert.Equal(1, first.CloseCount);
+        Assert.Equal(1, second.CloseCount);
+        Assert.All(
+            first.SurfaceThreadIds.Concat(second.SurfaceThreadIds),
+            threadId => Assert.Equal(dispatcher.ThreadId, threadId));
+    }
+
     private static RegionSelectionCoordinator CreateCoordinator(
         FakeRegionSelectionSurface surface)
     {
@@ -244,13 +370,15 @@ public sealed class RegionSelectionCoordinatorTests
     private static RegionSelectionCoordinator CreateCoordinator(
         IReadOnlyList<DisplayMonitor> monitors,
         Queue<FakeRegionSelectionSurface> surfaces,
-        Action<Action>? dispatch = null)
+        Action<Action>? dispatch = null,
+        Func<Action, bool>? tryScheduleCleanup = null)
     {
         return new RegionSelectionCoordinator(
             () => monitors,
             _ => null!,
             (_, _, _) => surfaces.Dequeue(),
-            dispatch);
+            dispatch,
+            tryScheduleCleanup);
     }
 
     private static DisplayMonitor Monitor() =>
@@ -341,6 +469,37 @@ public sealed class RegionSelectionCoordinatorTests
 
         private void RecordThread() =>
             SurfaceThreadIds.Add(Environment.CurrentManagedThreadId);
+    }
+
+    private sealed class FakeCleanupScheduler(
+        SingleThreadDispatcher dispatcher)
+    {
+        public bool Accept { get; set; }
+
+        public bool TrySchedule(Action cleanup)
+        {
+            if (!Accept)
+                return false;
+            dispatcher.Dispatch(cleanup);
+            return true;
+        }
+    }
+
+    private sealed class BlockingCleanupScheduler
+    {
+        public TaskCompletionSource Entered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Action? Cleanup { get; private set; }
+
+        public bool TrySchedule(Action cleanup)
+        {
+            Cleanup = cleanup;
+            Entered.TrySetResult();
+            Release.Task.GetAwaiter().GetResult();
+            return true;
+        }
     }
 
     private sealed class SingleThreadDispatcher : IDisposable

@@ -38,6 +38,8 @@ public partial class SettingsWindow : Window
     private readonly TranslationCredentialIntentState _translationCredentialIntent = new();
     private readonly TranslationConnectionTestState _translationTestState = new();
     private readonly TranslationConnectionTestStatusState _translationTestStatus;
+    private readonly SettingsReloadCoordinator _reloadCoordinator;
+    private readonly SettingsPreferenceWorkflow _preferenceWorkflow;
     private SettingsViewModel _viewModel;
     private bool _applyInProgress;
 
@@ -68,6 +70,16 @@ public partial class SettingsWindow : Window
                 throw new ArgumentNullException(nameof(translationProviders)));
         _translationTestStatus = new TranslationConnectionTestStatusState(
             _translationTestState);
+        _reloadCoordinator = new SettingsReloadCoordinator(
+            () => _settings.Current,
+            _translationCredentials,
+            _getOcrLanguages,
+            ApplyReloadedViewModel);
+        _preferenceWorkflow = new SettingsPreferenceWorkflow(
+            _settings,
+            _reloadCoordinator,
+            StartupService.SetEnabled,
+            settings => Applied?.Invoke(settings));
         _viewModel = SettingsViewModel.From(
             settings.Current,
             ocrLanguages: getOcrLanguages());
@@ -439,14 +451,15 @@ public partial class SettingsWindow : Window
 
     private async Task ReloadViewModelAsync(AppSettings? savedSnapshot = null)
     {
-        var settings = savedSnapshot ?? _settings.Current;
-        _viewModel = await SettingsReloadFactory.CreateAsync(
-            settings,
-            _translationCredentials,
-            _getOcrLanguages);
+        await _reloadCoordinator.ReloadAsync(savedSnapshot);
+        await RefreshTranslationKeyStatusAsync();
+    }
+
+    private void ApplyReloadedViewModel(SettingsViewModel viewModel)
+    {
+        _viewModel = viewModel;
         DataContext = _viewModel;
         ApplyTranslationProviderLayout();
-        await RefreshTranslationKeyStatusAsync();
     }
 
     private async Task RefreshTranslationKeyStatusAsync()
@@ -928,18 +941,16 @@ public partial class SettingsWindow : Window
                 MessageBoxImage.Question);
             if (preview != MessageBoxResult.Yes)
                 return;
-            var result = await _settings.UpdateAsync(
-                current => imported with { Windows = current.Windows },
+            var result = await _preferenceWorkflow.ImportAsync(
+                imported,
                 CancellationToken.None);
             if (!result.Success)
             {
                 SaveStatusText.Text = result.Message ?? "导入失败。";
                 return;
             }
-            StartupService.SetEnabled(imported.General.StartWithWindows);
-            await ReloadViewModelAsync();
-            Applied?.Invoke(_settings.Current);
-            SaveStatusText.Text = "设置已导入并保存；快捷项未执行。";
+            await RefreshTranslationKeyStatusAsync();
+            SaveStatusText.Text = result.Message ?? "设置已导入并保存。";
         }
         catch (Exception exception)
         {
@@ -960,18 +971,16 @@ public partial class SettingsWindow : Window
         }
         var defaults = AppSettings.CreateDefault(
             Environment.GetFolderPath(Environment.SpecialFolder.MyPictures));
-        var result = await _settings.UpdateAsync(
-            current => defaults with { Windows = current.Windows },
+        var result = await _preferenceWorkflow.ResetAsync(
+            defaults,
             CancellationToken.None);
         if (!result.Success)
         {
             SaveStatusText.Text = result.Message ?? "恢复失败。";
             return;
         }
-        StartupService.SetEnabled(false);
-        await ReloadViewModelAsync();
-        Applied?.Invoke(_settings.Current);
-        SaveStatusText.Text = "已恢复默认偏好。";
+        await RefreshTranslationKeyStatusAsync();
+        SaveStatusText.Text = result.Message ?? "已恢复默认偏好。";
     }
 
     private static T? FindVisualChild<T>(DependencyObject parent, string name)
