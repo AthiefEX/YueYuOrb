@@ -74,6 +74,67 @@ public sealed class InputPolicyTests
         Assert.Equal(InputAction.None, decision.Action);
     }
 
+    [Fact]
+    public void OwnWindowPreservesExistingLockState()
+    {
+        var decision = InputPolicy.Decide(
+            Target(@"C:\FloatDesk\FloatDesk.exe", own: true),
+            new InputContext(false, false, false, true, true),
+            []);
+
+        Assert.True(decision.PreserveLockState);
+    }
+
+    [Fact]
+    public void TemporaryPausesPreserveExistingLockState()
+    {
+        var snapshot = Target(@"C:\Apps\editor.exe");
+
+        var emergency = InputPolicy.Decide(
+            snapshot,
+            new InputContext(false, true, false, true, true),
+            []);
+        var capture = InputPolicy.Decide(
+            snapshot,
+            new InputContext(false, false, true, true, true),
+            []);
+        var session = InputPolicy.Decide(
+            snapshot,
+            new InputContext(true, false, false, true, true),
+            []);
+
+        Assert.True(emergency.PreserveLockState);
+        Assert.True(capture.PreserveLockState);
+        Assert.True(session.PreserveLockState);
+    }
+
+    [Fact]
+    public void ExclusionAndUnknownTargetPreservePendingRestore()
+    {
+        var excluded = InputPolicy.Decide(
+            Target(@"C:\Apps\chat.exe"),
+            new InputContext(false, false, false, true, true),
+            [Exclude(@"C:\Apps\chat.exe")]);
+        var unknown = InputPolicy.Decide(
+            Target(""),
+            new InputContext(false, false, false, true, true),
+            []);
+
+        Assert.True(excluded.PreserveLockState);
+        Assert.True(unknown.PreserveLockState);
+    }
+
+    [Fact]
+    public void OrdinaryNonMatchingApplicationAllowsFullRestore()
+    {
+        var decision = InputPolicy.Decide(
+            Target(@"C:\Apps\other.exe"),
+            new InputContext(false, false, false, false, true),
+            [Lock(@"C:\Apps\editor.exe")]);
+
+        Assert.False(decision.PreserveLockState);
+    }
+
     private static AppRule Lock(string path) =>
         new(Guid.NewGuid(), path, InputAction.LockEnglish, true);
 

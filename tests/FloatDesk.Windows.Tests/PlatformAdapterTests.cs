@@ -11,6 +11,25 @@ namespace FloatDesk.Windows.Tests;
 public sealed class PlatformAdapterTests
 {
     [Fact]
+    public void StartupPlacementPrefersPrimaryMonitor()
+    {
+        var secondary = new DisplayMonitor(
+            @"\\.\DISPLAY2",
+            new PixelRect(1920, 0, 800, 600),
+            new PixelRect(1920, 0, 800, 560),
+            IsPrimary: false);
+        var primary = new DisplayMonitor(
+            @"\\.\DISPLAY1",
+            new PixelRect(0, 0, 1920, 1080),
+            new PixelRect(0, 0, 1920, 1040),
+            IsPrimary: true);
+        var selected = DisplayTopology.SelectPrimaryMonitor(
+            [secondary, primary]);
+
+        Assert.Same(primary, selected);
+    }
+
+    [Fact]
     public void FullscreenCaptureStateForcesOrbHidden()
     {
         var decision = OverlayPolicy.Evaluate(
@@ -71,6 +90,95 @@ public sealed class PlatformAdapterTests
         var layouts = KeyboardLayoutCatalog.GetLoadedLayouts();
 
         Assert.NotEmpty(layouts);
+    }
+
+    [Fact]
+    public void ConfiguredUsKlidResolvesAsNonImeEnglishLayout()
+    {
+        var result = KeyboardLayoutCatalog.Resolve("00000409");
+
+        Assert.True(result.Success, result.Message);
+        Assert.NotNull(result.Target);
+        Assert.Equal("00000409", result.Target.Klid);
+        Assert.Equal(0x0409u, result.Target.LanguageId);
+        Assert.False(
+            KeyboardLayoutCatalog.Describe(result.Target.Hkl).IsIme);
+    }
+
+    [Fact]
+    public void NonEnglishKlidIsRejectedBeforeLoading()
+    {
+        var result = KeyboardLayoutCatalog.Resolve("00000804");
+
+        Assert.False(result.Success);
+        Assert.Equal("LayoutNotEnglish", result.ErrorCode);
+        Assert.Contains("英文", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MalformedKlidIsRejected()
+    {
+        var result = KeyboardLayoutCatalog.Resolve("english");
+
+        Assert.False(result.Success);
+        Assert.Equal("LayoutInvalid", result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task LayoutRequestRejectsMissingTargetWindow()
+    {
+        var backend = new WindowsInputBackend();
+        var target = new ForegroundSnapshot(
+            1,
+            0,
+            0,
+            42,
+            43,
+            DateTimeOffset.UtcNow,
+            @"C:\Apps\editor.exe",
+            false);
+        var layout = new InputLayoutTarget(
+            0x04090409,
+            "00000409",
+            0x0409);
+
+        var result = await backend.ActivateAsync(
+            target,
+            layout,
+            CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Equal("TargetGone", result.ErrorCode);
+    }
+
+    [Fact]
+    public void LayoutDescriptionReportsLanguageAndImeState()
+    {
+        var loaded = KeyboardLayoutCatalog.GetLoadedLayouts()[0];
+
+        var description = KeyboardLayoutCatalog.Describe(loaded.Hkl);
+
+        Assert.Equal(loaded.Hkl, description.Hkl);
+        Assert.Equal(loaded.LanguageId, description.LanguageId);
+        Assert.Equal(loaded.IsIme, description.IsIme);
+    }
+
+    [Fact]
+    public void KeyboardSwitchGuardInstallsAndUninstallsHook()
+    {
+        var loaded = KeyboardLayoutCatalog.GetLoadedLayouts()[0];
+        using var guard = new WindowsKeyboardSwitchGuard();
+
+        var enabled = guard.Enable(
+            new InputLayoutTarget(
+                loaded.Hkl,
+                loaded.Klid,
+                loaded.LanguageId));
+        Assert.True(enabled.Success, enabled.Message);
+        Assert.True(guard.IsActive);
+
+        guard.Disable();
+        Assert.False(guard.IsActive);
     }
 
     [Fact]

@@ -9,6 +9,13 @@ internal static class NativeMethods
     internal const uint WineventOutOfContext = 0x0000;
     internal const uint EventSkipOwnProcess = 0x0002;
     internal const uint WmInputLangChangeRequest = 0x0050;
+    internal const uint WmKeyDown = 0x0100;
+    internal const uint WmKeyUp = 0x0101;
+    internal const uint WmSysKeyDown = 0x0104;
+    internal const uint WmSysKeyUp = 0x0105;
+    internal const uint WmQuit = 0x0012;
+    internal const uint PmNoRemove = 0x0000;
+    internal const int WhKeyboardLl = 13;
     internal const int SwpNoSize = 0x0001;
     internal const int SwpNoMove = 0x0002;
     internal const int SwpNoActivate = 0x0010;
@@ -18,6 +25,7 @@ internal static class NativeMethods
     internal const int WsExAppWindow = 0x00040000;
     internal const int WdaExcludeFromCapture = 0x00000011;
     internal const int DwmExtendedFrameBounds = 9;
+    internal const uint IgpConversion = 0x0008;
     internal static readonly nint HwndTopmost = new(-1);
     internal static readonly nint HwndNotTopmost = new(-2);
 
@@ -29,6 +37,11 @@ internal static class NativeMethods
         int childId,
         uint eventThread,
         uint eventTime);
+
+    internal delegate nint LowLevelKeyboardProc(
+        int code,
+        nint wordParameter,
+        nint longParameter);
 
     [DllImport("user32.dll")]
     internal static extern nint SetWinEventHook(
@@ -85,16 +98,77 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     internal static extern nint GetKeyboardLayout(uint threadId);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern nint SetWindowsHookEx(
+        int hookId,
+        LowLevelKeyboardProc callback,
+        nint module,
+        uint threadId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool UnhookWindowsHookEx(nint hook);
+
+    [DllImport("user32.dll")]
+    internal static extern nint CallNextHookEx(
+        nint hook,
+        int code,
+        nint wordParameter,
+        nint longParameter);
+
+    [DllImport("user32.dll")]
+    internal static extern int GetMessage(
+        out Message message,
+        nint window,
+        uint messageFilterMin,
+        uint messageFilterMax);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool PeekMessage(
+        out Message message,
+        nint window,
+        uint messageFilterMin,
+        uint messageFilterMax,
+        uint removeMessage);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool TranslateMessage(ref Message message);
+
+    [DllImport("user32.dll")]
+    internal static extern nint DispatchMessage(ref Message message);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool PostThreadMessage(
+        uint threadId,
+        uint message,
+        nint wordParameter,
+        nint longParameter);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    internal static extern nint GetModuleHandle(string? moduleName);
+
+    [DllImport("kernel32.dll")]
+    internal static extern uint GetCurrentThreadId();
+
     [DllImport("user32.dll")]
     internal static extern int GetKeyboardLayoutList(int bufferSize, [Out] nint[]? layouts);
+
+    [DllImport(
+        "user32.dll",
+        EntryPoint = "LoadKeyboardLayoutW",
+        CharSet = CharSet.Unicode,
+        SetLastError = true)]
+    internal static extern nint LoadKeyboardLayout(string klid, uint flags);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool GetGUIThreadInfo(uint threadId, ref GuiThreadInfo info);
 
     [DllImport("imm32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool ImmIsIME(nint hkl);
+    internal static extern uint ImmGetProperty(nint hkl, uint flags);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -180,6 +254,28 @@ internal static class NativeMethods
         internal nint MoveSizeWindow;
         internal nint CaretWindow;
         internal Rect CaretRect;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Message
+    {
+        internal nint Window;
+        internal uint Value;
+        internal nint WordParameter;
+        internal nint LongParameter;
+        internal uint Time;
+        internal Point Cursor;
+        internal uint Private;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct KeyboardHookData
+    {
+        internal uint VirtualKey;
+        internal uint ScanCode;
+        internal uint Flags;
+        internal uint Time;
+        internal nint ExtraInfo;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
