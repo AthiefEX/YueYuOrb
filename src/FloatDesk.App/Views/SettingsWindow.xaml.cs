@@ -36,9 +36,8 @@ public partial class SettingsWindow : Window
     private readonly TranslationConnectionTester _translationConnectionTester;
     private readonly Func<IReadOnlyList<OcrLanguageOption>> _getOcrLanguages;
     private readonly TranslationCredentialIntentState _translationCredentialIntent = new();
-    private readonly TranslationOperationGate _translationTestOperations = new();
+    private readonly TranslationConnectionTestState _translationTestState = new();
     private SettingsViewModel _viewModel;
-    private CancellationTokenSource? _translationTestCancellation;
     private bool _applyInProgress;
 
     public event Action<AppSettings>? Applied;
@@ -387,9 +386,7 @@ public partial class SettingsWindow : Window
 
         var testTarget = TranslationCredentialTarget.From(
             candidate.Translation);
-        var operation = _translationTestOperations.Begin(testTarget);
-        var cancellation = new CancellationTokenSource();
-        _translationTestCancellation = cancellation;
+        var operation = _translationTestState.Start(testTarget);
         TestTranslationConnectionButton.IsEnabled = false;
         SetTranslationTestStatus(operation, "正在测试连接…");
         try
@@ -397,13 +394,13 @@ public partial class SettingsWindow : Window
             var result = await _translationConnectionTester.TestAsync(
                 candidate.Translation,
                 TranslationApiKeyBox.Password,
-                cancellation.Token);
+                operation.Token);
             SetTranslationTestStatus(
                 operation,
                 result.Message ?? (result.Success ? "连接成功。" : "连接失败。"));
         }
         catch (OperationCanceledException) when (
-            cancellation.IsCancellationRequested)
+            operation.Token.IsCancellationRequested)
         {
             SetTranslationTestStatus(operation, "连接测试已取消。");
         }
@@ -415,28 +412,19 @@ public partial class SettingsWindow : Window
         }
         finally
         {
-            var wasActive = _translationTestOperations.TryComplete(
+            var completion = _translationTestState.Complete(
                 operation,
                 CurrentTranslationCredentialTarget());
-            if (wasActive &&
-                ReferenceEquals(
-                    _translationTestCancellation,
-                    cancellation))
-            {
-                _translationTestCancellation = null;
-            }
-            if (wasActive &&
-                TestTranslationConnectionButton is not null)
-            {
-                TestTranslationConnectionButton.IsEnabled = true;
-            }
-            cancellation.Dispose();
+            if (completion.ShouldReenableControls)
+                EnableTranslationTestButton();
         }
     }
 
-    private void SetTranslationTestStatus(object operation, string status)
+    private void SetTranslationTestStatus(
+        TranslationConnectionTestOperation operation,
+        string status)
     {
-        if (_translationTestOperations.IsActive(
+        if (_translationTestState.IsCurrent(
                 operation,
                 CurrentTranslationCredentialTarget()) &&
             TranslationTestStatusText is not null)
@@ -600,10 +588,9 @@ public partial class SettingsWindow : Window
             return;
         }
         var currentTarget = CurrentTranslationCredentialTarget();
-        if (_translationTestOperations.HasActiveIdentityDifferentFrom(
-                currentTarget))
+        if (_translationTestState.InvalidateIfIdentityChanged(currentTarget))
         {
-            CancelTranslationTest();
+            EnableTranslationTestButton();
         }
         if (_translationCredentialIntent.ResetIfIdentityChanged(
                 currentTarget))
@@ -622,9 +609,12 @@ public partial class SettingsWindow : Window
 
     private void CancelTranslationTest()
     {
-        _translationTestCancellation?.Cancel();
-        _translationTestCancellation = null;
-        _translationTestOperations.Clear();
+        _translationTestState.Cancel();
+        EnableTranslationTestButton();
+    }
+
+    private void EnableTranslationTestButton()
+    {
         if (TestTranslationConnectionButton is not null)
             TestTranslationConnectionButton.IsEnabled = true;
     }

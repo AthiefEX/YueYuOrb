@@ -185,3 +185,131 @@ public sealed class TranslationOperationGate
 
     public void Clear() => Interlocked.Exchange(ref _active, null);
 }
+
+public sealed class TranslationConnectionTestOperation
+{
+    private readonly CancellationTokenSource _cancellation;
+
+    internal TranslationConnectionTestOperation(
+        object gateToken,
+        CancellationTokenSource cancellation)
+    {
+        GateToken = gateToken;
+        _cancellation = cancellation;
+        Token = cancellation.Token;
+    }
+
+    internal object GateToken { get; }
+    public CancellationToken Token { get; }
+    internal CancellationTokenSource Cancellation => _cancellation;
+}
+
+public readonly record struct TranslationConnectionTestCompletion(
+    bool WasActive,
+    bool IdentityMatches)
+{
+    public bool ShouldReenableControls => WasActive;
+}
+
+public sealed class TranslationConnectionTestState
+{
+    private readonly object _sync = new();
+    private readonly TranslationOperationGate _gate = new();
+    private CancellationTokenSource? _cancellation;
+
+    public TranslationConnectionTestOperation Start(
+        TranslationCredentialTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        Cancel();
+
+        var cancellation = new CancellationTokenSource();
+        var gateToken = _gate.Begin(target);
+        lock (_sync)
+        {
+            _cancellation = cancellation;
+        }
+        return new TranslationConnectionTestOperation(
+            gateToken,
+            cancellation);
+    }
+
+    public bool IsCurrent(
+        TranslationConnectionTestOperation operation,
+        TranslationCredentialTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        ArgumentNullException.ThrowIfNull(target);
+        return _gate.IsActive(operation.GateToken, target);
+    }
+
+    public bool HasActiveIdentityDifferentFrom(
+        TranslationCredentialTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        return _gate.HasActiveIdentityDifferentFrom(target);
+    }
+
+    public bool InvalidateIfIdentityChanged(
+        TranslationCredentialTarget target)
+    {
+        if (!HasActiveIdentityDifferentFrom(target))
+            return false;
+        Cancel();
+        return true;
+    }
+
+    public TranslationConnectionTestCompletion Complete(
+        TranslationConnectionTestOperation operation,
+        TranslationCredentialTarget currentTarget)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        ArgumentNullException.ThrowIfNull(currentTarget);
+        var identityMatches = _gate.IsActive(
+            operation.GateToken,
+            currentTarget);
+        var wasActive = _gate.TryComplete(operation.GateToken);
+
+        CancellationTokenSource? cancellation = null;
+        if (wasActive)
+        {
+            lock (_sync)
+            {
+                if (ReferenceEquals(
+                        _cancellation,
+                        operation.Cancellation))
+                {
+                    cancellation = _cancellation;
+                    _cancellation = null;
+                }
+            }
+        }
+
+        cancellation?.Dispose();
+        return new TranslationConnectionTestCompletion(
+            wasActive,
+            identityMatches);
+    }
+
+    public void Cancel()
+    {
+        CancellationTokenSource? cancellation;
+        lock (_sync)
+        {
+            cancellation = _cancellation;
+            _cancellation = null;
+            _gate.Clear();
+        }
+
+        if (cancellation is null)
+            return;
+        try
+        {
+            cancellation.Cancel();
+        }
+        finally
+        {
+            cancellation.Dispose();
+        }
+    }
+}

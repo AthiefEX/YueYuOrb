@@ -577,6 +577,94 @@ public sealed class TranslationSettingsApplierTests
     }
 
     [Fact]
+    public void StaleCompletionAfterIdentityChangeReleasesCancellationAndAllowsNextTest()
+    {
+        var state = new TranslationConnectionTestState();
+        var deepLTarget = TranslationCredentialTarget.From(
+            TranslationProviderKind.DeepL,
+            "https://api-free.deepl.com");
+        var azureTarget = TranslationCredentialTarget.From(
+            TranslationProviderKind.AzureTranslator,
+            "https://api.cognitive.microsofttranslator.com");
+        var staleOperation = state.Start(deepLTarget);
+
+        Assert.True(state.IsCurrent(staleOperation, deepLTarget));
+        Assert.False(state.IsCurrent(staleOperation, azureTarget));
+
+        var staleCompletion = state.Complete(
+            staleOperation,
+            azureTarget);
+
+        Assert.True(staleCompletion.WasActive);
+        Assert.False(staleCompletion.IdentityMatches);
+        Assert.True(staleCompletion.ShouldReenableControls);
+        Assert.Null(Record.Exception(state.Cancel));
+
+        var nextOperation = state.Start(azureTarget);
+        Assert.True(state.IsCurrent(nextOperation, azureTarget));
+        var nextCompletion = state.Complete(
+            nextOperation,
+            azureTarget);
+        Assert.True(nextCompletion.WasActive);
+        Assert.True(nextCompletion.IdentityMatches);
+    }
+
+    [Fact]
+    public void IdentityChangeCancelsActiveTestAndRejectsLateCompletion()
+    {
+        var state = new TranslationConnectionTestState();
+        var deepLTarget = TranslationCredentialTarget.From(
+            TranslationProviderKind.DeepL,
+            "https://api-free.deepl.com");
+        var azureTarget = TranslationCredentialTarget.From(
+            TranslationProviderKind.AzureTranslator,
+            "https://api.cognitive.microsofttranslator.com");
+        var staleOperation = state.Start(deepLTarget);
+
+        Assert.True(state.InvalidateIfIdentityChanged(azureTarget));
+        Assert.True(staleOperation.Token.IsCancellationRequested);
+        Assert.False(state.IsCurrent(staleOperation, azureTarget));
+
+        var staleCompletion = state.Complete(
+            staleOperation,
+            azureTarget);
+        Assert.False(staleCompletion.WasActive);
+        Assert.False(staleCompletion.ShouldReenableControls);
+        Assert.Null(Record.Exception(state.Cancel));
+
+        var nextOperation = state.Start(azureTarget);
+        Assert.True(state.IsCurrent(nextOperation, azureTarget));
+        Assert.True(state.Complete(nextOperation, azureTarget).WasActive);
+    }
+
+    [Fact]
+    public void StaleCompletionCannotReleaseNewerConnectionTest()
+    {
+        var state = new TranslationConnectionTestState();
+        var deepLTarget = TranslationCredentialTarget.From(
+            TranslationProviderKind.DeepL,
+            "https://api-free.deepl.com");
+        var azureTarget = TranslationCredentialTarget.From(
+            TranslationProviderKind.AzureTranslator,
+            "https://api.cognitive.microsofttranslator.com");
+        var staleOperation = state.Start(deepLTarget);
+        var currentOperation = state.Start(azureTarget);
+
+        Assert.True(staleOperation.Token.IsCancellationRequested);
+        Assert.False(currentOperation.Token.IsCancellationRequested);
+        Assert.True(state.IsCurrent(currentOperation, azureTarget));
+
+        var staleCompletion = state.Complete(
+            staleOperation,
+            azureTarget);
+        Assert.False(staleCompletion.WasActive);
+        Assert.True(state.IsCurrent(currentOperation, azureTarget));
+        Assert.False(currentOperation.Token.IsCancellationRequested);
+        Assert.True(state.Complete(currentOperation, azureTarget).WasActive);
+        Assert.Null(Record.Exception(state.Cancel));
+    }
+
+    [Fact]
     public void TranslationPageExposesProviderLanguageSecretOcrAndSubtitleFields()
     {
         var document = XDocument.Load(FindRepoFile(
