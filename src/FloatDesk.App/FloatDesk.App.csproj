@@ -6,8 +6,15 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>disable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <AssemblyName>FloatDesk</AssemblyName>
+    <AssemblyName>YueYuOrb</AssemblyName>
     <RootNamespace>FloatDesk.App</RootNamespace>
+    <AssemblyTitle>月语悬浮球</AssemblyTitle>
+    <Product>月语悬浮球</Product>
+    <Company>七月风语</Company>
+    <Authors>七月风语</Authors>
+    <Copyright>Copyright © 2026 七月风语</Copyright>
+    <RepositoryUrl>https://github.com/AthiefEX/YueYuOrb</RepositoryUrl>
+    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <NoWarn>$(NoWarn);WFO0003</NoWarn>
   </PropertyGroup>
   <ItemGroup>

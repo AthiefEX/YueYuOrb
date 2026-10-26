@@ -7,7 +7,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $artifactRoot = Join-Path $root 'artifacts'
 $publishDirectory = Join-Path $artifactRoot 'publish/win-x64'
 $testResults = Join-Path $artifactRoot 'test-results'
-$zipPath = Join-Path $artifactRoot "FloatDesk-$Version-win-x64.zip"
+$zipPath = Join-Path $artifactRoot "YueYuOrb-$Version-win-x64-portable.zip"
 $hashPath = Join-Path $artifactRoot 'SHA256SUMS.txt'
 
 $resolvedRoot = [System.IO.Path]::GetFullPath($root)
@@ -46,10 +46,10 @@ try {
     Compress-Archive -Path (Join-Path $publishDirectory '*') `
         -DestinationPath $zipPath -CompressionLevel Optimal
     $exeHash = Get-FileHash -Algorithm SHA256 `
-        -LiteralPath (Join-Path $publishDirectory 'FloatDesk.exe')
+        -LiteralPath (Join-Path $publishDirectory 'YueYuOrb.exe')
     $zipHash = Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath
     @(
-        "$($exeHash.Hash.ToLowerInvariant())  publish/win-x64/FloatDesk.exe"
+        "$($exeHash.Hash.ToLowerInvariant())  publish/win-x64/YueYuOrb.exe"
         "$($zipHash.Hash.ToLowerInvariant())  $([System.IO.Path]::GetFileName($zipPath))"
     ) | Set-Content -LiteralPath $hashPath -Encoding ascii
 
