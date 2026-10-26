@@ -132,6 +132,23 @@ public sealed class CustomTranslationProviderTests
         Assert.Equal(TranslationFailureKind.ProviderError, result.FailureKind);
     }
 
+    [Theory]
+    [InlineData("<think>Need to translate this.</think>", null)]
+    [InlineData(" <THINK>Need to translate this.</THINK> \n", null)]
+    [InlineData("<think>Need to translate this.</think>你好", "你好")]
+    [InlineData("<think>first</think> <think>second</think>", null)]
+    [InlineData("你好<think>reasoning</think>", "你好")]
+    public async Task OpenAiSeparatesReasoningBlocksFromTranslation(string content, string? expected)
+    {
+        var payload = JsonSerializer.Serialize(new { choices = new[] { new { message = new { content } } } });
+        var handler = new RecordingHandler(payload);
+        using var http = new HttpClient(handler);
+        var result = await new OpenAiCompatibleTranslationProvider(http, new Uri("https://example.com/v1/chat/completions"), "test", Secret)
+            .TranslateAsync(Auto, CancellationToken.None);
+        Assert.Equal(expected is null ? TranslationFailureKind.ProviderError : TranslationFailureKind.None, result.FailureKind);
+        Assert.Equal(expected, result.TranslatedText);
+    }
+
     [Fact]
     public async Task AzureMalformedArrayItemBecomesProviderFailure()
     {
@@ -167,6 +184,21 @@ public sealed class CustomTranslationProviderTests
         var body = JsonDocument.Parse(deepL.Body!).RootElement;
         Assert.Equal("EN", body.GetProperty("source_lang").GetString());
         Assert.Equal("ZH-HANT", body.GetProperty("target_lang").GetString());
+    }
+
+    [Theory]
+    [InlineData("zh-Hans")]
+    [InlineData("zh-Hant")]
+    public async Task DeepLMapsExplicitChineseSourceToZh(string source)
+    {
+        var handler = new RecordingHandler("""{"translations":[{"text":"Hello"}]}""");
+        using var http = new HttpClient(handler);
+        var result = await new DeepLTranslationProvider(http, new Uri("https://example.com"), Secret).TranslateAsync(
+            new TranslationRequest(Input, source, "en", TranslationPurpose.Interactive), CancellationToken.None);
+        Assert.True(result.Success);
+        var body = JsonDocument.Parse(handler.Body!).RootElement;
+        Assert.Equal("ZH", body.GetProperty("source_lang").GetString());
+        Assert.Equal("EN", body.GetProperty("target_lang").GetString());
     }
 
     [Fact]

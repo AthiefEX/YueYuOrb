@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using FloatDesk.Core.Translation;
 
@@ -43,11 +44,40 @@ public sealed class OpenAiCompatibleTranslationProvider : ITranslationProvider
         return CustomProviderHttp.SendAsync(_http, message, Parse, cancellationToken);
     }
 
+    private static string? RemoveReasoningBlocks(string? content)
+    {
+        if (content is null) return null;
+        const string open = "<think>";
+        const string close = "</think>";
+        var remaining = content.AsSpan();
+        var translated = new StringBuilder(content.Length);
+        while (true)
+        {
+            var start = remaining.IndexOf(open, StringComparison.OrdinalIgnoreCase);
+            if (start < 0)
+            {
+                translated.Append(remaining);
+                break;
+            }
+            translated.Append(remaining[..start]);
+            remaining = remaining[(start + open.Length)..];
+            var end = remaining.IndexOf(close, StringComparison.OrdinalIgnoreCase);
+            if (end < 0)
+            {
+                translated.Append(open);
+                translated.Append(remaining);
+                break;
+            }
+            remaining = remaining[(end + close.Length)..];
+        }
+        return translated.ToString().Trim();
+    }
+
     private static TranslationProviderResult Parse(JsonElement root)
     {
         var first = CustomProviderHttp.First(root, "choices");
         if (first is null || first.Value.ValueKind != JsonValueKind.Object || !first.Value.TryGetProperty("message", out var message))
             return TranslationProviderResult.Fail(TranslationFailureKind.ProviderError);
-        return CustomProviderHttp.Result(CustomProviderHttp.String(message, "content"));
+        return CustomProviderHttp.Result(RemoveReasoningBlocks(CustomProviderHttp.String(message, "content")));
     }
 }

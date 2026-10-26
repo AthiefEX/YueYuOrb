@@ -27,7 +27,7 @@ public sealed class DeepLTranslationProvider : ITranslationProvider
         if (invalid is not null) return Task.FromResult(invalid);
         object body = request.SourceLanguage.Equals("auto", StringComparison.OrdinalIgnoreCase)
             ? new { text = new[] { request.Text }, target_lang = TranslationLanguageMapper.ToDeepL(request.TargetLanguage) }
-            : new { text = new[] { request.Text }, target_lang = TranslationLanguageMapper.ToDeepL(request.TargetLanguage), source_lang = TranslationLanguageMapper.ToDeepL(request.SourceLanguage) };
+            : new { text = new[] { request.Text }, target_lang = TranslationLanguageMapper.ToDeepL(request.TargetLanguage), source_lang = TranslationLanguageMapper.ToDeepLSource(request.SourceLanguage) };
         var message = CustomProviderHttp.JsonPost(CustomProviderHttp.AppendPath(_endpoint, "/v2/translate"), body);
         message.Headers.TryAddWithoutValidation("Authorization", "DeepL-Auth-Key " + _apiKey);
         return CustomProviderHttp.SendAsync(_http, message, Parse, cancellationToken);

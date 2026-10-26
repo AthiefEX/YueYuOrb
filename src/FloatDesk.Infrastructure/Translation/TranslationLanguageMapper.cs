@@ -32,6 +32,12 @@ public static class TranslationLanguageMapper
         var tag => tag.ToUpperInvariant()
     };
 
+    public static string ToDeepLSource(string languageTag) => Validate(languageTag) switch
+    {
+        "zh-hans" or "zh-hant" => "ZH",
+        var tag => tag.ToUpperInvariant()
+    };
+
     public static string ToLibre(string languageTag) => Validate(languageTag) switch
     {
         "zh-hans" or "zh-hant" => "zh",
