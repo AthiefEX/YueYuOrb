@@ -63,14 +63,7 @@ public sealed class OpenAiCompatibleTranslationProvider : ITranslationProvider
             remaining = remaining[(start + open.Length)..];
             var end = remaining.IndexOf(close, StringComparison.OrdinalIgnoreCase);
             if (end < 0)
-            {
-                // An unfinished block is discarded; a blank line can delimit a final paragraph.
-                var unfinished = remaining.ToString().Replace("\r\n", "\n", StringComparison.Ordinal);
-                var separator = unfinished.LastIndexOf("\n\n", StringComparison.Ordinal);
-                if (separator >= 0)
-                    translated.Append(unfinished[(separator + 2)..].Trim());
                 break;
-            }
             remaining = remaining[(end + close.Length)..];
         }
         return translated.ToString().Trim();
