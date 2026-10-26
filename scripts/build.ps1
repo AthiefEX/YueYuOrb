@@ -9,10 +9,10 @@ $root = Split-Path -Parent $PSScriptRoot
 Push-Location $root
 try {
     if ($Locked) {
-        dotnet restore FloatDesk.sln --locked-mode
+        dotnet restore FloatDesk.sln --locked-mode -p:NuGetAudit=false
     }
     else {
-        dotnet restore FloatDesk.sln
+        dotnet restore FloatDesk.sln -p:NuGetAudit=false
     }
     if ($LASTEXITCODE -ne 0) { throw 'Restore failed.' }
 

@@ -5,14 +5,14 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($Executable)) {
-    $Executable = Join-Path $root 'src/FloatDesk.App/bin/Debug/net10.0-windows/FloatDesk.exe'
+    $Executable = Join-Path $root 'src/FloatDesk.App/bin/Debug/net10.0-windows/YueYuOrb.exe'
 }
 $Executable = [System.IO.Path]::GetFullPath($Executable)
 if (-not (Test-Path -LiteralPath $Executable)) {
-    throw "FloatDesk executable was not found: $Executable"
+    throw "YueYuOrb executable was not found: $Executable"
 }
-if (Get-Process FloatDesk -ErrorAction SilentlyContinue) {
-    throw 'Stop any running FloatDesk instance before running this smoke test.'
+if (Get-Process YueYuOrb -ErrorAction SilentlyContinue) {
+    throw 'Stop any running YueYuOrb instance before running this smoke test.'
 }
 
 $logPath = Join-Path $env:LOCALAPPDATA (

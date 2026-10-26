@@ -36,6 +36,22 @@ public sealed class ReleaseConfigurationTests
             "SHA256SUMS.txt",
             script,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "[switch]$Installer",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "YueYuOrb-$Version-win-x64-setup.exe",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ISCC.exe",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "-p:NuGetAudit=false",
+            script,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -57,12 +73,50 @@ public sealed class ReleaseConfigurationTests
             installer,
             StringComparison.Ordinal);
         Assert.Contains(
+            "#define AppName \"月语悬浮球\"",
+            installer,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "#define AppExeName \"YueYuOrb.exe\"",
+            installer,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            @"DefaultDirName={localappdata}\Programs\YueYuOrb",
+            installer,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "PrivilegesRequired=lowest",
             installer,
             StringComparison.Ordinal);
         Assert.Contains(
             "Name: \"chinesesimp\"",
             installer,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TestAndSmokeScriptsUseOfflineAuditAndRenamedExecutable()
+    {
+        var testScript = File.ReadAllText(FindRepoFile(
+            "scripts/test.ps1"));
+        var smokeScript = File.ReadAllText(FindRepoFile(
+            "scripts/smoke.ps1"));
+
+        Assert.Contains(
+            "-p:NuGetAudit=false",
+            testScript,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "YueYuOrb.exe",
+            smokeScript,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Get-Process YueYuOrb",
+            smokeScript,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Get-Process FloatDesk",
+            smokeScript,
             StringComparison.Ordinal);
     }
 

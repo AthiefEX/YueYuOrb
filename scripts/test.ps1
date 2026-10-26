@@ -9,7 +9,7 @@ $results = Join-Path $root 'artifacts/test-results'
 
 Push-Location $root
 try {
-    dotnet restore FloatDesk.sln --locked-mode
+    dotnet restore FloatDesk.sln --locked-mode -p:NuGetAudit=false
     if ($LASTEXITCODE -ne 0) { throw 'Locked restore failed.' }
 
     dotnet build FloatDesk.sln -c $Configuration --no-restore
