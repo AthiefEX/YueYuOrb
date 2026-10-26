@@ -1,4 +1,4 @@
-# FloatDesk 手工验收记录
+# 月语悬浮球手工验收记录
 
 日期：2026-10-26
 版本：1.0.0
@@ -11,12 +11,12 @@
 | 项目 | 环境 | 结果 | 证据 |
 |---|---|---|---|
 | Windows 10 22H2 x64 启动 | 19045，管理员交互会话 | PASS | 进程持续存活，日志出现 `startup.begin` 和 `startup.complete` |
-| Release 自包含包启动 | 19045，管理员交互会话 | PASS | 最终 `artifacts/publish/win-x64/FloatDesk.exe` 持续存活，日志出现 `startup.complete` |
+| Release 自包含包启动 | 19045，管理员交互会话 | PASS | 最终 `artifacts/publish/win-x64/YueYuOrb.exe` 持续存活，日志出现 `startup.complete` |
 | 单实例交接 | 19045，同一会话 | PASS | 第二进程静默唤起首实例，5 秒内以退出码 0 结束 |
 | Release 单实例交接 | 19045，同一会话 | PASS | 最终发布包第二进程 5 秒内以退出码 0 结束，首实例存活 |
 | 前台热键冲突自动备用 | 19045；`Ctrl+Alt+A` 被其他程序占用 | PASS | 实际绑定 `Ctrl+Alt+Shift+A`，日志记录 `hotkey.initial.fallback`，托盘提示与快捷面板 ToolTip 显示备用键 |
 | 设置页悬停与应用 | Windows 10 22H2 x64，管理员交互会话 | PASS | 鼠标悬停并点击“应用”后进程存活，日志无 `hotkey.rebind.failed` |
-| 快捷面板框选与编辑器 | Windows 10 22H2 x64，双屏 2560×1440 + 800×600 | PASS | 两个覆盖层正常显示；拖动生成 500×340 选区，Enter 打开 `FloatDesk 截图标注` |
+| 快捷面板框选与编辑器 | Windows 10 22H2 x64，双屏 2560×1440 + 800×600 | PASS | 两个覆盖层正常显示；拖动生成 500×340 选区，Enter 打开 `月语悬浮球截图标注` |
 | 放射式快捷菜单视觉布局 | Windows 10 22H2 x64；主屏右缘与 800×600 副屏 | PASS | 660×560 玻璃扇形、球心锚点、196×48 统一入口沿弧形等距排列，应用坞完整显示且不重叠；点击按钮不显示键盘焦点框 |
 | 无白色扇面放射条视觉 | Windows 10 22H2 x64，真实悬浮面板 | PASS | 白色渐变扇面已隐藏，桌面可直接透出；7 个内置功能的白色放射条完整保留，滚轮后应用列表保持同一效果 |
 | 内置功能与应用共用轮盘 | Windows 10 22H2 x64，真实悬浮面板 | PASS | 7 个内置功能与 16 个轮盘应用位于同一列；滚轮滚动后应用进入可视区域，背景按抽屉边缘裁切 |
@@ -29,8 +29,8 @@
 | 浅色/深色全局主题 | Windows 10 22H2 x64；真实 WPF 窗口渲染与资源切换测试 | PASS | 设置、记事本、AI 网页、悬浮球时间、截图工具栏和二级轮盘同步切换；动态轮盘应用名称栏由白底深字切换为深底浅字 |
 | 记事本与 AI 网页视觉统一 | Windows 10 22H2 x64；100% DPI 浅色/深色渲染 | PASS | 两窗共用品牌标题栏、冰蓝氛围区、圆角卡片、统一按钮/输入框/下拉框、无箭头槽细滚动条和固定状态栏 |
 | 备用截图快捷键实机触发 | Windows 10 22H2 x64 | PASS | `Ctrl+Alt+Shift+A` 实际打开双屏框选覆盖层，Esc 取消后会话释放 |
-| 崩溃回归事件 | 上述真实 UI 验证时段 | PASS | 测试后 `Application/.NET Runtime` 无新增 FloatDesk 进程终止事件 |
-| 自动化测试 | Windows 10 22H2 x64 | PASS | 106/106，Release；Core 34、Infrastructure 14、Windows 6、UI 52；构建 0 警告、0 错误 |
+| 崩溃回归事件 | 上述真实 UI 验证时段 | PASS | 测试后 `Application/.NET Runtime` 无新增月语悬浮球进程终止事件 |
+| 自动化测试 | Windows 10 22H2 x64 | PASS | 189/189，Release；Core 74、Infrastructure 17、Windows 13、UI 85 |
 | 发布包烟测 | Windows 10 22H2 x64，最新主题修复自包含 `win-x64` | PASS | 2026-10-26 执行：主实例观察到 `startup.complete` 并持续存活；第二实例以退出码 0 结束，烟测进程随后正常清理 |
 | 跨屏负坐标截图裁剪 | 自动化像素夹具 | PASS | `(-100,50)-(300,250)` 输出 400×200 |
 | 自定义图片图层 | WPF 窗口级测试 | PASS | 自定义 PNG 隐藏默认渐变圆与 `FD` 文本 |
@@ -91,7 +91,7 @@
 | Windows Terminal | 同上 | NOT TESTED | |
 | 第三方 IME | 用户实际版本 | NOT TESTED | |
 | 管理员应用 | 提权目标 | NOT TESTED | |
-| FloatDesk 设置/AI/笔记/标注 | 手动锁定期间中文 | NOT TESTED | |
+| 月语悬浮球设置/AI/笔记/标注 | 手动锁定期间中文 | NOT TESTED | |
 
 ## 全屏与游戏记录
 

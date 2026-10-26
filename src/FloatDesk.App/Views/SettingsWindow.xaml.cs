@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -9,6 +10,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using FloatDesk.App.ViewModels;
+using FloatDesk.Core;
 using FloatDesk.Core.Contracts;
 using FloatDesk.Core.Models;
 using FloatDesk.Infrastructure.Settings;
@@ -470,6 +472,21 @@ public partial class SettingsWindow : Window
         var dialog = new Microsoft.Win32.OpenFolderDialog();
         if (dialog.ShowDialog(this) == true)
             _viewModel.CaptureSaveDirectory = dialog.FolderName;
+    }
+
+    private void OnProjectRepositoryClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(ProductInfo.RepositoryUrl)
+            {
+                UseShellExecute = true
+            });
+        }
+        catch (Exception exception)
+        {
+            SaveStatusText.Text = $"无法打开项目主页：{exception.Message}";
+        }
     }
 
     private void OnExportSettingsClick(object sender, RoutedEventArgs e)

@@ -175,6 +175,54 @@ public sealed class SettingsWindowVisualTests
     }
 
     [Fact]
+    public void AboutPageIdentifiesAuthorRepositoryLicenseAndGplText()
+    {
+        var document = XDocument.Load(FindRepoFile(
+            "src/FloatDesk.App/Views/SettingsWindow.xaml"));
+        var xaml = document.ToString(SaveOptions.DisableFormatting);
+        var code = File.ReadAllText(FindRepoFile(
+            "src/FloatDesk.App/Views/SettingsWindow.xaml.cs"));
+        var license = File.ReadAllText(FindRepoFile("LICENSE")).TrimStart();
+
+        Assert.Contains(
+            "月语悬浮球 1.0.0",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "作者：七月风语",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "GPL-3.0-only",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "x:Name=\"ProjectRepositoryLink\"",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "OnProjectRepositoryClick",
+            xaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ProductInfo.RepositoryUrl",
+            code,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "UseShellExecute = true",
+            code,
+            StringComparison.Ordinal);
+        Assert.StartsWith(
+            "GNU GENERAL PUBLIC LICENSE",
+            license,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Version 3, 29 June 2007",
+            license,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AiPageExposesBrowserThemeSelector()
     {
         var document = XDocument.Load(FindRepoFile(

@@ -1,4 +1,4 @@
-# FloatDesk 发布检查表
+# 月语悬浮球发布检查表
 
 版本：1.0.0
 声明：本版当前为“**待发布验收**”，不能把自动化测试 PASS 当成全兼容验收。
@@ -8,7 +8,8 @@
 - [x] SDK 锁定为 .NET `10.0.400`。
 - [x] NuGet 使用中央版本与 lock 文件。
 - [x] Debug 构建 0 errors。
-- [x] Debug 自动化测试 51/51 通过。
+- [x] Release 自动化测试 189/189 通过
+  （Core 74、Infrastructure 17、Windows 13、UI 85）。
 - [x] 单实例交接冒烟通过。
 - [x] `startup.complete` 可在存在热键冲突的环境中到达。
 - [x] 设置并发字段合并、未来 schema 只读、笔记失败回退与删除保护、
@@ -34,13 +35,15 @@
 
 ## 安装门禁
 
-- [ ] Inno Setup 6 安装并生成 `FloatDesk-1.0.0-setup.exe`。
+- [ ] Inno Setup 6 安装并生成
+  `YueYuOrb-1.0.0-win-x64-setup.exe`。
 - [ ] 标准用户安装、启动、升级与卸载。
 - [ ] 默认卸载保留 `%LOCALAPPDATA%\FloatDesk`；仅用户勾选任务时清理。
 - [ ] 干净 VM 无 .NET SDK 时启动自包含包。
 - [ ] 干净 VM 无 WebView2 Runtime 时本地功能与修复引导可用。
 - [ ] 安装包与 ZIP 均记录 SHA256。
 - [ ] 未签名测试包在分发说明中明确标注；不得称为已签名正式发行版。
+- [ ] 仓库根目录的 GPLv3 `LICENSE`、作者和 GitHub 链接可访问。
 
 ## 发布命令
 
@@ -54,5 +57,5 @@
 
 - 当前构建机为 Windows 10 22H2 19045 x64。
 - 当前无 Windows 11、Windows 10 21H2、无 WebView2 Runtime、混合 DPI/旋转屏和第二会话测试环境。
-- 当前未找到 `iscc`，因此不声称安装包已生成。
-- 本机 `Ctrl+Alt+A` 被其他程序占用；FloatDesk 正确记录初始冲突并继续运行，托盘入口仍可用。
+- 安装器生成前不得声称安装包已完成。
+- 本机 `Ctrl+Alt+A` 被其他程序占用；月语悬浮球正确记录初始冲突并继续运行，托盘入口仍可用。

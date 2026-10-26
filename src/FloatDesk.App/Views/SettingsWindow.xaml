@@ -839,6 +839,23 @@
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                             <TextBlock Text="月语悬浮球 1.0.0" FontSize="26" FontWeight="SemiBold" Foreground="{DynamicResource SettingsInkBrush}" />
                                             <TextBlock Text="Windows 10/11 x64 桌面悬浮助手" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,4,0,0" />
+                                            <TextBlock Text="作者：七月风语"
+                                                       Style="{StaticResource SettingsDescriptionStyle}"
+                                                       Margin="0,12,0,0" />
+                                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                                <TextBlock Text="GitHub：AthiefEX/YueYuOrb"
+                                                           Style="{StaticResource SettingsDescriptionStyle}"
+                                                           VerticalAlignment="Center" />
+                                                <Button x:Name="ProjectRepositoryLink"
+                                                        Content="打开项目主页"
+                                                        Click="OnProjectRepositoryClick"
+                                                        Style="{StaticResource ActionButtonStyle}"
+                                                        AutomationProperties.Name="打开月语悬浮球 GitHub 项目主页"
+                                                        Margin="12,0,0,0" />
+                                            </StackPanel>
+                                            <TextBlock Text="许可证：GPL-3.0-only"
+                                                       Style="{StaticResource SettingsDescriptionStyle}"
+                                                       Margin="0,8,0,0" />
                                             <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                                                 <Border Style="{StaticResource SettingsPillStyle}" Margin="0,0,8,0">
                                                     <TextBlock Text="本地保存" FontSize="12" Foreground="{DynamicResource SettingsAccentBrush}" FontWeight="SemiBold" />

@@ -1,4 +1,4 @@
-# FloatDesk Progress Ledger
+# 月语悬浮球 Progress Ledger
 
 Plan: `01-产品与技术规格.md`, `02-Agent开发计划.md`,
 `03-验收与兼容性矩阵.md`.
@@ -20,8 +20,12 @@ Plan: `01-产品与技术规格.md`, `02-Agent开发计划.md`,
   runtime rendering PASS; wheel label bars follow semantic theme brushes.
 - Final automated verification: 106/106 Release tests PASS
   (Core 34, Infrastructure 14, Windows 6, UI 52), 0 build warnings/errors.
+- 月语悬浮球 branding verification: 189/189 Release tests PASS
+  (Core 74, Infrastructure 17, Windows 13, UI 85).
 - Inno Setup package: NOT GENERATED because `iscc` is not installed; the
   complete script remains in `installer/FloatDesk.iss`.
+- GPLv3 license, About-page author/repository metadata, YueYuOrb assembly,
+  executable and pack URIs: complete.
 - Final self-review: complete by the implementing agent. This is weaker than
   an independent fresh-context review; no subagent was used because current
   session instructions prohibit delegation without an explicit request.

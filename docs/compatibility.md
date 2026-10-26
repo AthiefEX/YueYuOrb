@@ -32,6 +32,6 @@ not passed by inference.
   primary instance settings window.
 - The final self-contained Release package reached `startup.complete`, the
   primary process remained alive, and the second instance exited with code 0.
-- `Ctrl+Alt+A` was occupied by another application. FloatDesk logged
+- `Ctrl+Alt+A` was occupied by another application. 月语悬浮球 logged
   `hotkey.initial.failed` for region capture and continued startup; tray
   fallback remains available.

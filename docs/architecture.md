@@ -1,6 +1,6 @@
-# FloatDesk Architecture
+# 月语悬浮球 Architecture
 
-FloatDesk targets Windows 10 21H2/22H2 and Windows 11 from a single x64
+月语悬浮球 targets Windows 10 21H2/22H2 and Windows 11 from a single x64
 desktop binary. The application runs in the user's interactive session and
 is not a Windows service.
 
@@ -10,6 +10,11 @@ The implementation separates four responsibilities:
 - `FloatDesk.Windows` owns all Win32 interop and adapters.
 - `FloatDesk.Infrastructure` owns JSON settings, SQLite notes, and logs.
 - `FloatDesk.App` owns WPF windows, composition, and user interaction.
+
+The `FloatDesk.*` project and namespace names are retained as internal
+identifiers for source and settings compatibility. The shipped product and
+assembly are branded `月语悬浮球` and `YueYuOrb`, while user data remains in
+`%LOCALAPPDATA%\FloatDesk`.
 
 Only `WindowCoordinator` changes visibility caused by capture. One
 `InputLockEngine` consumes foreground snapshots, and settings are serialized
@@ -25,3 +30,5 @@ The application supports the normal, composed Windows desktop. Protected
 content, elevated targets, exclusive-fullscreen games, and IME implementations
 that reject layout changes are reported honestly and never represented as
 successful through simulated state.
+
+The project is licensed under GPL-3.0-only.
