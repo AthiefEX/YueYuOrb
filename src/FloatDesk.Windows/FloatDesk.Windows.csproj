@@ -7,5 +7,6 @@
   <ItemGroup>
     <ProjectReference Include="../FloatDesk.Core/FloatDesk.Core.csproj" />
     <PackageReference Include="System.Drawing.Common" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
   </ItemGroup>
 </Project>
