@@ -8,8 +8,8 @@
 - [x] SDK 锁定为 .NET `10.0.400`。
 - [x] NuGet 使用中央版本与 lock 文件。
 - [x] Debug 构建 0 errors。
-- [x] Release 自动化测试 189/189 通过
-  （Core 74、Infrastructure 17、Windows 13、UI 85）。
+- [x] Release 自动化测试 190/190 通过
+  （Core 74、Infrastructure 17、Windows 13、UI 86）。
 - [x] 单实例交接冒烟通过。
 - [x] `startup.complete` 可在存在热键冲突的环境中到达。
 - [x] 设置并发字段合并、未来 schema 只读、笔记失败回退与删除保护、

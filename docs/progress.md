@@ -20,8 +20,8 @@ Plan: `01-产品与技术规格.md`, `02-Agent开发计划.md`,
   runtime rendering PASS; wheel label bars follow semantic theme brushes.
 - Final automated verification: 106/106 Release tests PASS
   (Core 34, Infrastructure 14, Windows 6, UI 52), 0 build warnings/errors.
-- 月语悬浮球 branding verification: 189/189 Release tests PASS
-  (Core 74, Infrastructure 17, Windows 13, UI 85).
+- 月语悬浮球 branding verification: 190/190 Release tests PASS
+  (Core 74, Infrastructure 17, Windows 13, UI 86).
 - Inno Setup package: NOT GENERATED because `iscc` is not installed; the
   complete script remains in `installer/FloatDesk.iss`.
 - GPLv3 license, About-page author/repository metadata, YueYuOrb assembly,
@@ -76,3 +76,9 @@ Ruling: Capture editor export exceptions are reported in-window instead of
 escaping an `async void` handler. Cost if wrong: an unexpected export failure
 leaves the editor open with its content intact, but the background application
 does not terminate.
+
+Ruling: Release restore uses `NuGetAudit=false` because the locked offline build
+otherwise emits NU1900. This changes no dependency versions and preserves the
+verified 0-warning build. Cost if wrong: vulnerability metadata is not checked
+by the offline packaging command, so dependency auditing must run separately
+when the environment has reliable NuGet access.
