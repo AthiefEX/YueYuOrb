@@ -6,14 +6,20 @@ public static class WindowCaptureExclusion
 {
     private const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
 
-    public static bool TryExclude(nint hwnd)
+    public static bool TryExclude(nint hwnd) =>
+        TryExclude(hwnd, SetWindowDisplayAffinity);
+
+    public static bool TryExclude(
+        nint hwnd,
+        Func<nint, uint, bool> setDisplayAffinity)
     {
+        ArgumentNullException.ThrowIfNull(setDisplayAffinity);
         if (hwnd == 0)
             return false;
 
         try
         {
-            return SetWindowDisplayAffinity(
+            return setDisplayAffinity(
                 hwnd,
                 WDA_EXCLUDEFROMCAPTURE);
         }

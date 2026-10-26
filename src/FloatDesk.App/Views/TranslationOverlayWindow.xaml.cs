@@ -36,6 +36,8 @@ public partial class TranslationOverlayWindow : Window
     private bool _subtitlePaused;
     private bool _canReselect;
     private bool _isDragging;
+    private bool _dismissed;
+    private long _operationGeneration;
     private Point _dragPointerOffset;
 
     public TranslationOverlayWindow()
@@ -60,9 +62,18 @@ public partial class TranslationOverlayWindow : Window
     public event Action? CopyRequested;
 
     public bool IsSubtitleMode => _isSubtitleMode;
+    public bool IsDismissed => _dismissed;
+    public long OperationGeneration => _operationGeneration;
     public bool IsCaptureExcluded { get; private set; }
     public string TranslatedText => TranslatedTextBlock.Text;
     public string StatusText => StatusTextBlock.Text;
+
+    public void BeginOperation() =>
+        RunOnUiThread(() =>
+        {
+            _dismissed = false;
+            _operationGeneration++;
+        });
 
     public void ApplySettings(AppSettings settings)
     {
@@ -93,13 +104,18 @@ public partial class TranslationOverlayWindow : Window
             }
 
             if (_isSubtitleMode && IsVisible)
+            {
+                UpdateLayout();
                 PositionWindow(subtitleMode: true, default);
+            }
         });
     }
 
     public void ShowStatus(string status, PixelPoint anchor) =>
         RunOnUiThread(() =>
         {
+            if (_dismissed)
+                return;
             if (!_isSubtitleMode)
                 ClearTranslationContent();
             StatusTextBlock.Text = status ?? "";
@@ -111,6 +127,8 @@ public partial class TranslationOverlayWindow : Window
         ArgumentNullException.ThrowIfNull(response);
         RunOnUiThread(() =>
         {
+            if (_dismissed)
+                return;
             OriginalTextBlock.Text = response.OriginalText ?? "";
             OriginalPanel.Visibility =
                 string.IsNullOrWhiteSpace(response.OriginalText)
@@ -141,6 +159,10 @@ public partial class TranslationOverlayWindow : Window
     public void ShowError(string message, PixelPoint anchor) =>
         RunOnUiThread(() =>
         {
+            if (_dismissed)
+                return;
+            if (!_isSubtitleMode)
+                ClearTranslationContent();
             TranslatedTextBlock.Text = "";
             TranslatedPanel.Visibility = Visibility.Collapsed;
             CopyButton.IsEnabled = false;
@@ -154,6 +176,15 @@ public partial class TranslationOverlayWindow : Window
         bool canReselect) =>
         RunOnUiThread(() =>
         {
+            var enteringSubtitleMode = active && !_isSubtitleMode;
+            if (enteringSubtitleMode)
+            {
+                _dismissed = false;
+                _operationGeneration++;
+                ClearTranslationContent();
+                StatusTextBlock.Text = "";
+            }
+
             _isSubtitleMode = active;
             _subtitlePaused = paused;
             _canReselect = canReselect;
@@ -176,23 +207,31 @@ public partial class TranslationOverlayWindow : Window
                 StatusTextBlock.Text = paused
                     ? "字幕翻译已暂停。"
                     : "字幕翻译准备中。";
-            PrepareInitialReveal();
+            var reveal = enteringSubtitleMode || !IsVisible;
+            if (reveal)
+                PrepareInitialReveal();
             if (!IsVisible)
                 ShowWindowSafely();
             UpdateLayout();
             PositionWindow(subtitleMode: true, default);
-            BeginContentTransition(initialReveal: true);
+            if (reveal)
+                BeginContentTransition(initialReveal: true);
         });
 
     private void ShowAt(PixelPoint anchor, bool subtitleMode)
     {
-        PrepareInitialReveal();
+        if (_dismissed)
+            return;
+        var reveal = !IsVisible;
+        if (reveal)
+            PrepareInitialReveal();
         if (!ShowWindowSafely())
             return;
 
         UpdateLayout();
         PositionWindow(subtitleMode, anchor);
-        BeginContentTransition(initialReveal: true);
+        if (reveal)
+            BeginContentTransition(initialReveal: true);
     }
 
     private bool ShowWindowSafely()
@@ -561,8 +600,25 @@ public partial class TranslationOverlayWindow : Window
         CopyRequested?.Invoke();
     }
 
-    private void OnCloseClick(object sender, RoutedEventArgs e) =>
+    private void OnCloseClick(object sender, RoutedEventArgs e)
+    {
+        var wasSubtitleMode = _isSubtitleMode;
+        Dismiss();
+        if (wasSubtitleMode)
+            StopSubtitleRequested?.Invoke();
+    }
+
+    private void Dismiss()
+    {
+        _dismissed = true;
+        _operationGeneration++;
+        _isSubtitleMode = false;
+        _subtitlePaused = false;
+        _canReselect = false;
+        _isDragging = false;
+        SubtitleControlBar.Visibility = Visibility.Collapsed;
         HideAndClear();
+    }
 
     private void OnPauseResumeClick(object sender, RoutedEventArgs e)
     {
@@ -665,6 +721,9 @@ public partial class TranslationOverlayWindow : Window
 
     private void OnClosing(object? sender, CancelEventArgs e)
     {
+        _dismissed = true;
+        _operationGeneration++;
+        _isSubtitleMode = false;
         _isDragging = false;
         ClearTranslationContent();
         StatusTextBlock.Text = "";

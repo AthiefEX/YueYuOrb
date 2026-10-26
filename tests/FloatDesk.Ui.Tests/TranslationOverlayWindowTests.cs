@@ -2,7 +2,9 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using FloatDesk.App.Views;
 using FloatDesk.Core.Geometry;
 using FloatDesk.Core.Models;
@@ -340,6 +342,440 @@ public sealed class TranslationOverlayWindowTests
     }
 
     [Fact]
+    public void CloseInSubtitleModeStopsAndBlocksLateResultsUntilNextOperation()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                var stopCount = 0;
+                window.StopSubtitleRequested += () => stopCount++;
+                window.SetSubtitleControls(
+                    active: true,
+                    paused: false,
+                    canReselect: true);
+                window.ShowStatus(
+                    "正在识别字幕…",
+                    new PixelPoint(40, 40));
+                var generationBeforeClose = window.OperationGeneration;
+
+                Assert.IsType<Button>(
+                    window.FindName("CloseButton")).RaiseEvent(
+                    new RoutedEventArgs(Button.ClickEvent));
+
+                Assert.Equal(1, stopCount);
+                Assert.True(window.IsDismissed);
+                Assert.True(
+                    window.OperationGeneration > generationBeforeClose);
+                Assert.False(window.IsSubtitleMode);
+                Assert.False(window.IsVisible);
+
+                window.ShowResult(
+                    TranslationResponse.Ok(
+                        "late source",
+                        "迟到的结果",
+                        "en",
+                        "MyMemory"),
+                    new PixelPoint(40, 40));
+                window.ShowError(
+                    "迟到的错误",
+                    new PixelPoint(40, 40));
+                window.ShowStatus(
+                    "迟到的状态",
+                    new PixelPoint(40, 40));
+
+                Assert.False(window.IsVisible);
+                Assert.Equal("", window.TranslatedText);
+                Assert.Equal("", window.StatusText);
+
+                var dismissedGeneration = window.OperationGeneration;
+                window.BeginOperation();
+                Assert.False(window.IsDismissed);
+                Assert.True(
+                    window.OperationGeneration > dismissedGeneration);
+                window.ShowResult(
+                    TranslationResponse.Ok(
+                        "next source",
+                        "下一次结果",
+                        "en",
+                        "MyMemory"),
+                    new PixelPoint(40, 40));
+
+                Assert.True(window.IsVisible);
+                Assert.Equal("下一次结果", window.TranslatedText);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void CloseInOneShotModeDoesNotRaiseSubtitleStop()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                var stopCount = 0;
+                window.StopSubtitleRequested += () => stopCount++;
+                window.ShowResult(
+                    TranslationResponse.Ok(
+                        "Hello",
+                        "你好",
+                        "en",
+                        "MyMemory"),
+                    new PixelPoint(40, 40));
+
+                Assert.IsType<Button>(
+                    window.FindName("CloseButton")).RaiseEvent(
+                    new RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal(0, stopCount);
+                Assert.False(window.IsVisible);
+
+                window.ShowResult(
+                    TranslationResponse.Ok(
+                        "late",
+                        "迟到",
+                        "en",
+                        "MyMemory"),
+                    new PixelPoint(40, 40));
+                Assert.False(window.IsVisible);
+                Assert.Equal("", window.TranslatedText);
+
+                window.BeginOperation();
+                window.ShowStatus(
+                    "下一次操作",
+                    new PixelPoint(40, 40));
+                Assert.True(window.IsVisible);
+                Assert.Equal("下一次操作", window.StatusText);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void VisibleStatusUpdatesDoNotRestartTheRevealTransition()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                window.ShowStatus(
+                    "第一次状态",
+                    new PixelPoint(40, 40));
+                var layer = Assert.IsType<Grid>(
+                    window.FindName("TransitionLayer"));
+                var translate = Assert.IsType<TranslateTransform>(
+                    window.FindName("TransitionTranslate"));
+                layer.BeginAnimation(UIElement.OpacityProperty, null);
+                translate.BeginAnimation(
+                    System.Windows.Media.TranslateTransform.YProperty,
+                    null);
+                layer.Opacity = 0.64;
+                translate.Y = 5;
+
+                window.ShowStatus(
+                    "第二次状态",
+                    new PixelPoint(40, 40));
+
+                Assert.Equal(0.64, layer.Opacity, precision: 2);
+                Assert.Equal(5, translate.Y, precision: 2);
+                Assert.False(layer.HasAnimatedProperties);
+                Assert.False(translate.HasAnimatedProperties);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void VisibleSubtitleControlUpdatesDoNotRestartTheRevealTransition()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                window.SetSubtitleControls(
+                    active: true,
+                    paused: false,
+                    canReselect: true);
+                var layer = Assert.IsType<Grid>(
+                    window.FindName("TransitionLayer"));
+                var translate = Assert.IsType<TranslateTransform>(
+                    window.FindName("TransitionTranslate"));
+                layer.BeginAnimation(UIElement.OpacityProperty, null);
+                translate.BeginAnimation(
+                    System.Windows.Media.TranslateTransform.YProperty,
+                    null);
+                layer.Opacity = 0.71;
+                translate.Y = 4;
+
+                window.SetSubtitleControls(
+                    active: true,
+                    paused: true,
+                    canReselect: false);
+
+                Assert.Equal(0.71, layer.Opacity, precision: 2);
+                Assert.Equal(4, translate.Y, precision: 2);
+                Assert.False(layer.HasAnimatedProperties);
+                Assert.False(translate.HasAnimatedProperties);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void EnteringSubtitleModeClearsPreviousOneShotPresentation()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                window.ShowResult(
+                    TranslationResponse.Ok(
+                        "old source",
+                        "旧译文",
+                        "en",
+                        "MyMemory"),
+                    new PixelPoint(40, 40));
+                Assert.NotEqual("", window.TranslatedText);
+
+                window.SetSubtitleControls(
+                    active: true,
+                    paused: false,
+                    canReselect: true);
+
+                Assert.Equal("", window.TranslatedText);
+                Assert.Equal("字幕翻译准备中。", window.StatusText);
+                Assert.Equal(
+                    "",
+                    Assert.IsType<TextBlock>(
+                        window.FindName("OriginalTextBlock")).Text);
+                Assert.Equal(
+                    "",
+                    Assert.IsType<TextBlock>(
+                        window.FindName("MetadataTextBlock")).Text);
+                Assert.Equal(
+                    Visibility.Collapsed,
+                    Assert.IsType<Border>(
+                        window.FindName("OriginalPanel")).Visibility);
+                Assert.Equal(
+                    Visibility.Collapsed,
+                    Assert.IsType<Border>(
+                        window.FindName("TranslatedPanel")).Visibility);
+                Assert.False(
+                    Assert.IsType<Button>(
+                        window.FindName("CopyButton")).IsEnabled);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void ErrorAfterResultClearsStaleSourceAndProviderPresentation()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                window.ShowResult(
+                    TranslationResponse.Ok(
+                        "old source",
+                        "旧译文",
+                        "en",
+                        "MyMemory"),
+                    new PixelPoint(40, 40));
+
+                window.ShowError(
+                    "网络连接不可用。",
+                    new PixelPoint(40, 40));
+
+                Assert.Equal("网络连接不可用。", window.StatusText);
+                Assert.Equal("", window.TranslatedText);
+                Assert.Equal(
+                    "",
+                    Assert.IsType<TextBlock>(
+                        window.FindName("OriginalTextBlock")).Text);
+                Assert.Equal(
+                    "",
+                    Assert.IsType<TextBlock>(
+                        window.FindName("MetadataTextBlock")).Text);
+                Assert.Equal(
+                    Visibility.Collapsed,
+                    Assert.IsType<Border>(
+                        window.FindName("OriginalPanel")).Visibility);
+                Assert.Equal(
+                    Visibility.Collapsed,
+                    Assert.IsType<Border>(
+                        window.FindName("TranslatedPanel")).Visibility);
+                Assert.False(
+                    Assert.IsType<Button>(
+                        window.FindName("CopyButton")).IsEnabled);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void FontSizeChangeLaysOutBeforeRepositioningVisibleSubtitle()
+    {
+        RunOnSta(() =>
+        {
+            var monitor = DisplayTopology.SelectPrimaryMonitor(
+                    DisplayTopology.GetMonitors())
+                ?? throw new InvalidOperationException("No monitor found.");
+            var baseSettings = AppSettings.CreateDefault() with
+            {
+                Translation = TranslationSettings.CreateDefault() with
+                {
+                    SubtitleFontSizeDip = 14,
+                    SubtitleOverlayPlacement =
+                        new TranslationOverlayPlacement(
+                            monitor.DeviceName,
+                            0.5,
+                            0.5)
+                }
+            };
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                window.ApplySettings(baseSettings);
+                window.SetSubtitleControls(
+                    active: true,
+                    paused: false,
+                    canReselect: true);
+                window.ShowResult(
+                    TranslationResponse.Ok(
+                        "source",
+                        string.Concat(
+                            Enumerable.Repeat(
+                                "这是一段用于验证字幕字号变化后布局与定位的长译文。",
+                                8)),
+                        "en",
+                        "MyMemory"),
+                    new PixelPoint(40, 40));
+                window.UpdateLayout();
+                var beforeTextHeight = Assert.IsType<TextBlock>(
+                    window.FindName("TranslatedTextBlock")).ActualHeight;
+                var beforeWindowHeight = window.ActualHeight;
+
+                window.ApplySettings(baseSettings with
+                {
+                    Translation = baseSettings.Translation with
+                    {
+                        SubtitleFontSizeDip = 34
+                    }
+                });
+
+                var afterTextHeight = Assert.IsType<TextBlock>(
+                    window.FindName("TranslatedTextBlock")).ActualHeight;
+                Assert.True(
+                    afterTextHeight > beforeTextHeight + 20,
+                    $"Expected relayout after font change: " +
+                    $"{beforeTextHeight:0.0} -> {afterTextHeight:0.0}.");
+                Assert.True(window.ActualHeight > beforeWindowHeight);
+
+                var bounds = DesktopGeometry.GetVisibleWindowBounds(
+                    new WindowInteropHelper(window).Handle);
+                Assert.True(bounds.Left >= monitor.WorkArea.Left);
+                Assert.True(bounds.Top >= monitor.WorkArea.Top);
+                Assert.True(bounds.Right <= monitor.WorkArea.Right);
+                Assert.True(bounds.Bottom <= monitor.WorkArea.Bottom);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void NativeWindowStylesAreAppliedAfterShowing()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                window.ShowStatus(
+                    "native style",
+                    new PixelPoint(40, 40));
+                var handle = new WindowInteropHelper(window).Handle;
+                Assert.NotEqual(nint.Zero, handle);
+
+                var style = GetWindowLongPtr(handle, -20).ToInt64();
+                Assert.NotEqual(
+                    0,
+                    style & 0x08000000L);
+                Assert.NotEqual(0, style & 0x00000080L);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void DisplayAffinitySeamReceivesHandleAndExcludeFlag()
+    {
+        var hwnd = new nint(0x1234);
+        nint observedHandle = 0;
+        uint observedAffinity = 0;
+
+        Assert.True(WindowCaptureExclusion.TryExclude(
+            hwnd,
+            (handle, affinity) =>
+            {
+                observedHandle = handle;
+                observedAffinity = affinity;
+                return true;
+            }));
+        Assert.Equal(hwnd, observedHandle);
+        Assert.Equal(0x11u, observedAffinity);
+
+        Assert.False(WindowCaptureExclusion.TryExclude(
+            hwnd,
+            static (_, _) => false));
+        Assert.False(WindowCaptureExclusion.TryExclude(
+            hwnd,
+            static (_, _) => throw new InvalidOperationException(
+                "affinity failed")));
+
+        var invoked = false;
+        Assert.False(WindowCaptureExclusion.TryExclude(
+            0,
+            (_, _) =>
+            {
+                invoked = true;
+                return true;
+            }));
+        Assert.False(invoked);
+    }
+
+    [Fact]
     public void OverlayUsesNoActivateToolWindowAndCaptureExclusionHooks()
     {
         var code = File.ReadAllText(FindRepoFile(
@@ -410,4 +846,7 @@ public sealed class TranslationOverlayWindowTests
         throw new FileNotFoundException(
             $"Could not find repository file '{relativePath}'.");
     }
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    private static extern nint GetWindowLongPtr(nint hwnd, int index);
 }
