@@ -8,7 +8,7 @@ using FloatDesk.Windows.Windows;
 
 namespace FloatDesk.App.Coordination;
 
-public sealed class RegionSelectionCoordinator : IDisposable
+public sealed class RegionSelectionCoordinator : IDisposable, IAsyncDisposable
 {
     private readonly Func<IReadOnlyList<DisplayMonitor>> _getMonitors;
     private readonly Func<CaptureFrame, BitmapSource> _bitmapFactory;
@@ -19,12 +19,16 @@ public sealed class RegionSelectionCoordinator : IDisposable
         IRegionSelectionSurface> _surfaceFactory;
     private readonly Action<Action> _dispatch;
     private readonly Func<Action, Task<bool>> _tryScheduleCleanup;
+    private readonly Func<bool> _isOwnerThread;
     private readonly object _lifecycleSync = new();
     private readonly Queue<Action> _pendingCleanups = new();
-    private bool _disposed;
-    private int _activeSelections;
+    private readonly HashSet<SelectionOperation> _activeOperations = [];
+    private readonly CancellationTokenSource _lifetime = new();
+    private readonly SemaphoreSlim _drainGate = new(1, 1);
+    private bool _disposeRequested;
+    private bool _shutdownCompleted;
     private TaskCompletionSource? _activeSelectionsDrained;
-    private Task _disposeBarrier = Task.CompletedTask;
+    private TaskCompletionSource<RegionSelectionShutdownResult>? _shutdownCompletion;
 
     public RegionSelectionCoordinator()
         : this(
@@ -45,13 +49,15 @@ public sealed class RegionSelectionCoordinator : IDisposable
         Func<CaptureFrame, BitmapSource> bitmapFactory,
         Func<DisplayMonitor, PixelRect, BitmapSource, IRegionSelectionSurface> surfaceFactory,
         Action<Action>? dispatch = null,
-        Func<Action, Task<bool>>? tryScheduleCleanup = null)
+        Func<Action, Task<bool>>? tryScheduleCleanup = null,
+        Func<bool>? isOwnerThread = null)
     {
         _getMonitors = getMonitors;
         _bitmapFactory = bitmapFactory;
         _surfaceFactory = surfaceFactory;
         _dispatch = dispatch ?? DispatchToWpf;
         _tryScheduleCleanup = tryScheduleCleanup ?? TryScheduleWpfCleanup;
+        _isOwnerThread = isOwnerThread ?? IsWpfOwnerThread;
     }
 
     internal int PendingCleanupCount
@@ -68,7 +74,7 @@ public sealed class RegionSelectionCoordinator : IDisposable
         get
         {
             lock (_lifecycleSync)
-                return _disposed;
+                return _disposeRequested;
         }
     }
 
@@ -77,7 +83,7 @@ public sealed class RegionSelectionCoordinator : IDisposable
         get
         {
             lock (_lifecycleSync)
-                return _disposeBarrier;
+                return _shutdownCompletion?.Task ?? Task.CompletedTask;
         }
     }
 
@@ -87,27 +93,33 @@ public sealed class RegionSelectionCoordinator : IDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(desktop);
-        BeginSelectionOperation();
+        var operation = BeginSelectionOperation();
+        using var lifetimeToken = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            _lifetime.Token);
+        var effectiveCancellationToken = lifetimeToken.Token;
         try
         {
             await FlushPendingCleanupsAsync()
                 .ConfigureAwait(true);
             ThrowIfDisposed();
-            cancellationToken.ThrowIfCancellationRequested();
+            effectiveCancellationToken.ThrowIfCancellationRequested();
             return await SelectCoreAsync(
                 desktop,
                 diagnostics,
-                cancellationToken).ConfigureAwait(true);
+                operation,
+                effectiveCancellationToken).ConfigureAwait(true);
         }
         finally
         {
-            EndSelectionOperation();
+            EndSelectionOperation(operation);
         }
     }
 
     private async Task<PixelRect?> SelectCoreAsync(
         CaptureFrame desktop,
         Action<string, IReadOnlyDictionary<string, object?>?>? diagnostics,
+        SelectionOperation operation,
         CancellationToken cancellationToken)
     {
         var completion = new TaskCompletionSource<PixelRect?>(
@@ -149,6 +161,15 @@ public sealed class RegionSelectionCoordinator : IDisposable
         bool TryClaimCompletion() =>
             Interlocked.Exchange(ref completionClaimed, 1) == 0;
 
+        bool ShutdownRequested() =>
+            IsDisposed ||
+            cancellationToken.IsCancellationRequested;
+
+        void FinishOperation()
+        {
+            EndSelectionOperation(operation);
+        }
+
         void Complete(PixelRect? result)
         {
             if (!TryClaimCompletion())
@@ -161,6 +182,7 @@ public sealed class RegionSelectionCoordinator : IDisposable
             finally
             {
                 completion.TrySetResult(result);
+                FinishOperation();
             }
         }
 
@@ -176,6 +198,7 @@ public sealed class RegionSelectionCoordinator : IDisposable
             finally
             {
                 completion.TrySetException(exception);
+                FinishOperation();
             }
         }
 
@@ -186,6 +209,8 @@ public sealed class RegionSelectionCoordinator : IDisposable
             else
                 Fail(exception);
         }
+
+        operation.SetShutdown(() => Complete(null));
 
         void HandleDispatchFailure(Exception exception)
         {
@@ -212,6 +237,7 @@ public sealed class RegionSelectionCoordinator : IDisposable
                 completion.TrySetResult(null);
             else
                 completion.TrySetException(exception);
+            FinishOperation();
         }
 
         void HandleSurfaceEvent(Action action)
@@ -332,7 +358,7 @@ public sealed class RegionSelectionCoordinator : IDisposable
         void BeginSelection()
         {
             if (completion.Task.IsCompleted ||
-                cancellationToken.IsCancellationRequested)
+                ShutdownRequested())
             {
                 Complete(null);
                 return;
@@ -340,6 +366,11 @@ public sealed class RegionSelectionCoordinator : IDisposable
 
             try
             {
+                if (ShutdownRequested())
+                {
+                    Complete(null);
+                    return;
+                }
                 var bitmap = _bitmapFactory(desktop);
                 var monitors = _getMonitors();
                 diagnostics?.Invoke(
@@ -353,7 +384,7 @@ public sealed class RegionSelectionCoordinator : IDisposable
                 foreach (var monitor in monitors)
                 {
                     if (completion.Task.IsCompleted ||
-                        cancellationToken.IsCancellationRequested)
+                        ShutdownRequested())
                     {
                         break;
                     }
@@ -362,17 +393,18 @@ public sealed class RegionSelectionCoordinator : IDisposable
                         desktop.Bounds,
                         bitmap));
                     if (completion.Task.IsCompleted ||
-                        cancellationToken.IsCancellationRequested)
+                        ShutdownRequested())
                     {
                         closeStarted = true;
                         CloseAll();
                         completion.TrySetResult(null);
+                        FinishOperation();
                         return;
                     }
                 }
 
                 if (completion.Task.IsCompleted ||
-                    cancellationToken.IsCancellationRequested ||
+                    ShutdownRequested() ||
                     surfaces.Count == 0)
                 {
                     Complete(null);
@@ -382,15 +414,26 @@ public sealed class RegionSelectionCoordinator : IDisposable
                 AttachHandlers();
                 foreach (var surface in surfaces)
                 {
-                    if (closeStarted || completion.Task.IsCompleted)
+                    if (closeStarted ||
+                        completion.Task.IsCompleted ||
+                        ShutdownRequested())
+                    {
                         break;
+                    }
                     shown.Add(surface);
                     surface.Show();
                     if (closeStarted || completion.Task.IsCompleted)
                         return;
+                    if (ShutdownRequested())
+                    {
+                        Complete(null);
+                        return;
+                    }
                     surface.PlaceWindow();
                 }
-                if (!closeStarted && !completion.Task.IsCompleted)
+                if (!closeStarted &&
+                    !completion.Task.IsCompleted &&
+                    !ShutdownRequested())
                 {
                     surfaces[0].Activate();
                     surfaces[0].Focus();
@@ -418,7 +461,7 @@ public sealed class RegionSelectionCoordinator : IDisposable
 
         using var registration = cancellationToken.Register(Cancel);
         if (cancellationToken.IsCancellationRequested)
-            Cancel();
+            Complete(null);
         else
         {
             try
@@ -436,40 +479,95 @@ public sealed class RegionSelectionCoordinator : IDisposable
 
     public void Dispose()
     {
-        Task activeDrained;
-        TaskCompletionSource barrier;
-        lock (_lifecycleSync)
+        var activeDrained = RequestDispose();
+        if (_isOwnerThread())
         {
-            if (_disposed)
+            var result = TryShutdownOnOwnerThread();
+            if (result.Drained)
+            {
+                GC.SuppressFinalize(this);
                 return;
-            _disposed = true;
-            barrier = new TaskCompletionSource(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-            _disposeBarrier = barrier.Task;
-            activeDrained = _activeSelections == 0
-                ? Task.CompletedTask
-                : GetActiveSelectionsDrainedTask();
+            }
         }
 
-        _ = DrainForDisposeAsync(activeDrained, barrier);
+        _ = DrainForDisposeAsync(activeDrained);
+        GC.SuppressFinalize(this);
     }
 
-    private void BeginSelectionOperation()
+    public async ValueTask DisposeAsync()
+    {
+        var result = await ShutdownAsync().ConfigureAwait(false);
+        GC.SuppressFinalize(this);
+        if (!result.Drained)
+        {
+            throw new InvalidOperationException(
+                "Region selection cleanup could not be completed; " +
+                $"{result.PendingCleanupCount} cleanup operation(s) remain.");
+        }
+    }
+
+    internal async Task<RegionSelectionShutdownResult> ShutdownAsync()
+    {
+        var activeDrained = RequestDispose();
+        await _drainGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (TryGetShutdownResult(out var completed))
+                return completed;
+
+            await activeDrained.ConfigureAwait(false);
+            if (!await FlushPendingCleanupsForDisposeAsync()
+                    .ConfigureAwait(false))
+            {
+                return UndrainedResult();
+            }
+
+            return TryCompleteShutdown(out var result)
+                ? result
+                : UndrainedResult();
+        }
+        catch (Exception)
+        {
+            return UndrainedResult();
+        }
+        finally
+        {
+            _drainGate.Release();
+        }
+    }
+
+    internal RegionSelectionShutdownResult ShutdownOnOwnerThread()
+    {
+        if (!_isOwnerThread())
+        {
+            throw new InvalidOperationException(
+                "Region selection shutdown must run on the UI owner thread.");
+        }
+
+        RequestDispose();
+        return TryShutdownOnOwnerThread();
+    }
+
+    private SelectionOperation BeginSelectionOperation()
     {
         lock (_lifecycleSync)
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            _activeSelections++;
+            ObjectDisposedException.ThrowIf(_disposeRequested, this);
+            var operation = new SelectionOperation();
+            _activeOperations.Add(operation);
+            return operation;
         }
     }
 
-    private void EndSelectionOperation()
+    private void EndSelectionOperation(SelectionOperation operation)
     {
         TaskCompletionSource? drained = null;
         lock (_lifecycleSync)
         {
-            _activeSelections--;
-            if (_activeSelections == 0)
+            operation.MarkStopped();
+            if (!_activeOperations.Remove(operation))
+                return;
+            if (_activeOperations.Count == 0)
             {
                 drained = _activeSelectionsDrained;
                 _activeSelectionsDrained = null;
@@ -488,7 +586,7 @@ public sealed class RegionSelectionCoordinator : IDisposable
     private void ThrowIfDisposed()
     {
         lock (_lifecycleSync)
-            ObjectDisposedException.ThrowIf(_disposed, this);
+            ObjectDisposedException.ThrowIf(_disposeRequested, this);
     }
 
     private async Task FlushPendingCleanupsAsync()
@@ -514,7 +612,7 @@ public sealed class RegionSelectionCoordinator : IDisposable
         }
     }
 
-    private async Task FlushPendingCleanupsForDisposeAsync()
+    private async Task<bool> FlushPendingCleanupsForDisposeAsync()
     {
         while (true)
         {
@@ -522,14 +620,14 @@ public sealed class RegionSelectionCoordinator : IDisposable
             lock (_lifecycleSync)
             {
                 if (_pendingCleanups.Count == 0)
-                    return;
+                    return true;
                 cleanup = _pendingCleanups.Peek();
             }
 
             if (!await TryScheduleCleanupAsync(cleanup)
                     .ConfigureAwait(false))
             {
-                return;
+                return false;
             }
 
             RemovePendingCleanup(cleanup);
@@ -560,8 +658,11 @@ public sealed class RegionSelectionCoordinator : IDisposable
     {
         lock (_lifecycleSync)
         {
-            if (_disposed && _activeSelections == 0)
+            if (_shutdownCompleted ||
+                _pendingCleanups.Contains(cleanup))
+            {
                 return;
+            }
             _pendingCleanups.Enqueue(cleanup);
         }
     }
@@ -578,22 +679,154 @@ public sealed class RegionSelectionCoordinator : IDisposable
         }
     }
 
-    private async Task DrainForDisposeAsync(
-        Task activeDrained,
-        TaskCompletionSource barrier)
+    private async Task DrainForDisposeAsync(Task activeDrained)
     {
+        await _drainGate.WaitAsync().ConfigureAwait(false);
         try
         {
+            if (TryGetShutdownResult(out _))
+                return;
             await activeDrained.ConfigureAwait(false);
-            await FlushPendingCleanupsForDisposeAsync()
-                .ConfigureAwait(false);
+            if (await FlushPendingCleanupsForDisposeAsync()
+                    .ConfigureAwait(false))
+            {
+                _ = TryCompleteShutdown(out _);
+            }
         }
         catch (Exception)
         {
         }
         finally
         {
-            barrier.TrySetResult();
+            _drainGate.Release();
+        }
+    }
+
+    private Task RequestDispose()
+    {
+        Task activeDrained;
+        var cancelLifetime = false;
+        lock (_lifecycleSync)
+        {
+            if (!_disposeRequested)
+            {
+                _disposeRequested = true;
+                _shutdownCompletion = new TaskCompletionSource<
+                    RegionSelectionShutdownResult>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                cancelLifetime = true;
+            }
+
+            if (_shutdownCompleted)
+                return Task.CompletedTask;
+            activeDrained = _activeOperations.Count == 0
+                ? Task.CompletedTask
+                : GetActiveSelectionsDrainedTask();
+        }
+
+        if (cancelLifetime)
+            _lifetime.Cancel();
+        return activeDrained;
+    }
+
+    private RegionSelectionShutdownResult TryShutdownOnOwnerThread()
+    {
+        if (!_drainGate.Wait(0))
+            return UndrainedResult();
+
+        try
+        {
+            SelectionOperation[] operations;
+            lock (_lifecycleSync)
+                operations = [.. _activeOperations];
+            foreach (var operation in operations)
+                operation.ShutdownFromOwner();
+
+            while (true)
+            {
+                Action cleanup;
+                lock (_lifecycleSync)
+                {
+                    if (_pendingCleanups.Count == 0)
+                        break;
+                    cleanup = _pendingCleanups.Peek();
+                }
+
+                try
+                {
+                    cleanup();
+                }
+                catch (Exception)
+                {
+                    return UndrainedResult();
+                }
+                RemovePendingCleanup(cleanup);
+            }
+
+            return TryCompleteShutdown(out var result)
+                ? result
+                : UndrainedResult();
+        }
+        finally
+        {
+            _drainGate.Release();
+        }
+    }
+
+    private bool TryCompleteShutdown(
+        out RegionSelectionShutdownResult result)
+    {
+        TaskCompletionSource<RegionSelectionShutdownResult>? completion = null;
+        lock (_lifecycleSync)
+        {
+            if (_shutdownCompleted)
+            {
+                result = new RegionSelectionShutdownResult(true, 0);
+                return true;
+            }
+
+            if (!_disposeRequested ||
+                _activeOperations.Count != 0 ||
+                _pendingCleanups.Count != 0)
+            {
+                result = new RegionSelectionShutdownResult(
+                    false,
+                    _pendingCleanups.Count);
+                return false;
+            }
+
+            _shutdownCompleted = true;
+            result = new RegionSelectionShutdownResult(true, 0);
+            completion = _shutdownCompletion;
+        }
+
+        completion?.TrySetResult(result);
+        return true;
+    }
+
+    private bool TryGetShutdownResult(
+        out RegionSelectionShutdownResult result)
+    {
+        lock (_lifecycleSync)
+        {
+            if (_shutdownCompleted)
+            {
+                result = new RegionSelectionShutdownResult(true, 0);
+                return true;
+            }
+        }
+
+        result = default;
+        return false;
+    }
+
+    private RegionSelectionShutdownResult UndrainedResult()
+    {
+        lock (_lifecycleSync)
+        {
+            return new RegionSelectionShutdownResult(
+                _shutdownCompleted,
+                _pendingCleanups.Count);
         }
     }
 
@@ -624,6 +857,9 @@ public sealed class RegionSelectionCoordinator : IDisposable
         }
         dispatcher.Invoke(action);
     }
+
+    private static bool IsWpfOwnerThread() =>
+        System.Windows.Application.Current?.Dispatcher.CheckAccess() == true;
 
     private static Task<bool> TryScheduleWpfCleanup(Action action)
     {
@@ -680,7 +916,37 @@ public sealed class RegionSelectionCoordinator : IDisposable
             return Task.FromResult(false);
         }
     }
+
+    private sealed class SelectionOperation
+    {
+        private Action? _shutdown;
+        private int _stopped;
+        private int _shutdownRequested;
+
+        public void SetShutdown(Action shutdown)
+        {
+            _shutdown = shutdown;
+            if (Volatile.Read(ref _shutdownRequested) != 0 &&
+                Volatile.Read(ref _stopped) == 0)
+            {
+                shutdown();
+            }
+        }
+
+        public void ShutdownFromOwner()
+        {
+            Volatile.Write(ref _shutdownRequested, 1);
+            if (Volatile.Read(ref _stopped) == 0)
+                _shutdown?.Invoke();
+        }
+
+        public void MarkStopped() => Interlocked.Exchange(ref _stopped, 1);
+    }
 }
+
+internal readonly record struct RegionSelectionShutdownResult(
+    bool Drained,
+    int PendingCleanupCount);
 
 internal interface IRegionSelectionSurface
 {

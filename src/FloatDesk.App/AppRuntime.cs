@@ -252,7 +252,19 @@ internal sealed class AppRuntime : IDisposable
             }
 
             _captureCoordinator?.Dispose();
-            _regionSelection.Dispose();
+            var regionShutdown = ShutdownRegionSelectionForApplication(
+                _regionSelection,
+                System.Windows.Application.Current?.Dispatcher.CheckAccess() == true);
+            if (!regionShutdown.Drained)
+            {
+                _logger.WriteAsync(
+                    "capture.region.shutdown.undrained",
+                    new Dictionary<string, object?>
+                    {
+                        ["pendingCleanupCount"] =
+                            regionShutdown.PendingCleanupCount
+                    }).GetAwaiter().GetResult();
+            }
             _captureSessionGate.Dispose();
             _ocr.Dispose();
             _foreground.Dispose();
@@ -276,6 +288,16 @@ internal sealed class AppRuntime : IDisposable
             Microsoft.Win32.SystemEvents.UserPreferenceChanged -=
                 OnUserPreferenceChanged;
         }
+    }
+
+    internal static RegionSelectionShutdownResult
+        ShutdownRegionSelectionForApplication(
+            RegionSelectionCoordinator coordinator,
+            bool isOwnerThread)
+    {
+        return isOwnerThread
+            ? coordinator.ShutdownOnOwnerThread()
+            : coordinator.ShutdownAsync().GetAwaiter().GetResult();
     }
 
     private SettingsWindow CreateSettingsWindow() =>

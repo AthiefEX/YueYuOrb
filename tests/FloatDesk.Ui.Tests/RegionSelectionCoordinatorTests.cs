@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Runtime.ExceptionServices;
+using FloatDesk.App;
 using FloatDesk.App.Coordination;
 using FloatDesk.Core.Geometry;
 using FloatDesk.Core.Models;
@@ -524,8 +525,7 @@ public sealed class RegionSelectionCoordinatorTests
         Assert.False(coordinator.DisposeBarrier.IsCompleted);
         cleanupScheduler.Release.TrySetResult();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => selectionTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Null(await selectionTask.WaitAsync(TimeSpan.FromSeconds(2)));
         await eventTask.WaitAsync(TimeSpan.FromSeconds(2));
         await coordinator.DisposeBarrier.WaitAsync(TimeSpan.FromSeconds(2));
 
@@ -543,6 +543,274 @@ public sealed class RegionSelectionCoordinatorTests
                 desktop,
                 null,
                 CancellationToken.None));
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task FailedDisposeDrainKeepsBarrierPendingUntilSchedulerRecovers()
+    {
+        using var dispatcher = new SingleThreadDispatcher();
+        var first = new FakeRegionSelectionSurface();
+        var second = new FakeRegionSelectionSurface();
+        var surfaces = new Queue<FakeRegionSelectionSurface>(
+            [first, second]);
+        using var desktop = DesktopFrame();
+        var dispatchCount = 0;
+        var cleanupScheduler = new FakeCleanupScheduler(dispatcher)
+        {
+            Accept = false
+        };
+        using var coordinator = CreateCoordinator(
+            [Monitor(@"\\.\DISPLAY1"), Monitor(@"\\.\DISPLAY2", 100)],
+            surfaces,
+            action =>
+            {
+                if (Interlocked.Increment(ref dispatchCount) == 2)
+                    throw new InvalidOperationException("dispatch failed");
+                dispatcher.Dispatch(action);
+            },
+            cleanupScheduler.TryScheduleAsync);
+
+        var selectionTask = coordinator.SelectAsync(
+            desktop,
+            null,
+            CancellationToken.None);
+        await Task.WhenAll(first.Shown.Task, second.Shown.Task)
+            .WaitAsync(TimeSpan.FromSeconds(2));
+        await Task.Run(() =>
+            first.RaiseDragStarted(new PixelPoint(10, 10)));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => selectionTask.WaitAsync(TimeSpan.FromSeconds(2)));
+
+        coordinator.Dispose();
+        var failed = await coordinator.ShutdownAsync()
+            .WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.False(failed.Drained);
+        Assert.Equal(1, failed.PendingCleanupCount);
+        Assert.Equal(1, coordinator.PendingCleanupCount);
+        Assert.False(coordinator.DisposeBarrier.IsCompleted);
+        Assert.False(first.Hidden);
+        Assert.False(second.Hidden);
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await coordinator.DisposeAsync());
+
+        cleanupScheduler.Accept = true;
+        var recovered = await coordinator.ShutdownAsync()
+            .WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(recovered.Drained);
+        Assert.Equal(0, coordinator.PendingCleanupCount);
+        await coordinator.DisposeBarrier.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.True(first.Hidden);
+        Assert.True(second.Hidden);
+        Assert.Equal(1, first.CloseCount);
+        Assert.Equal(1, second.CloseCount);
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task DisposeBeforeBeginSelectionCreatesNoSurface()
+    {
+        using var dispatcher = new SingleThreadDispatcher();
+        using var desktop = DesktopFrame();
+        var dispatchEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseDispatch = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var surfaceFactoryCalls = 0;
+        using var coordinator = new RegionSelectionCoordinator(
+            () => [Monitor()],
+            _ => null!,
+            (_, _, _) =>
+            {
+                Interlocked.Increment(ref surfaceFactoryCalls);
+                return new FakeRegionSelectionSurface();
+            },
+            action =>
+            {
+                dispatchEntered.TrySetResult();
+                releaseDispatch.Task.GetAwaiter().GetResult();
+                dispatcher.Dispatch(action);
+            },
+            new FakeCleanupScheduler(dispatcher)
+            {
+                Accept = true
+            }.TryScheduleAsync,
+            () => false);
+
+        var selectionTask = Task.Run(() => coordinator.SelectAsync(
+            desktop,
+            null,
+            CancellationToken.None));
+        await dispatchEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var shutdownTask = Task.Run(() => coordinator.ShutdownAsync());
+        await WaitUntilAsync(
+            () => coordinator.IsDisposed,
+            TimeSpan.FromSeconds(2));
+        releaseDispatch.TrySetResult();
+
+        Assert.Null(await selectionTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        var shutdown = await shutdownTask.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.True(shutdown.Drained);
+        Assert.Equal(0, surfaceFactoryCalls);
+        await coordinator.DisposeBarrier.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task ShutdownCancelsDisplayedOverlayAndWaitsForCleanup()
+    {
+        using var dispatcher = new SingleThreadDispatcher();
+        var surface = new FakeRegionSelectionSurface();
+        using var desktop = DesktopFrame();
+        using var coordinator = CreateCoordinator(
+            [Monitor()],
+            new Queue<FakeRegionSelectionSurface>([surface]),
+            dispatcher.Dispatch,
+            new FakeCleanupScheduler(dispatcher)
+            {
+                Accept = true
+            }.TryScheduleAsync);
+
+        var selectionTask = coordinator.SelectAsync(
+            desktop,
+            null,
+            CancellationToken.None);
+        await surface.Shown.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var shutdown = await coordinator.ShutdownAsync()
+            .WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(shutdown.Drained);
+        Assert.Null(await selectionTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.True(surface.Hidden);
+        Assert.Equal(1, surface.CloseCount);
+        await coordinator.DisposeBarrier.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.All(
+            surface.SurfaceThreadIds,
+            threadId => Assert.Equal(dispatcher.ThreadId, threadId));
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task DisposeCancelsDisplayedOverlayAndCompletesBarrier()
+    {
+        using var dispatcher = new SingleThreadDispatcher();
+        var surface = new FakeRegionSelectionSurface();
+        using var desktop = DesktopFrame();
+        using var coordinator = CreateCoordinator(
+            [Monitor()],
+            new Queue<FakeRegionSelectionSurface>([surface]),
+            dispatcher.Dispatch,
+            new FakeCleanupScheduler(dispatcher)
+            {
+                Accept = true
+            }.TryScheduleAsync);
+
+        var selectionTask = coordinator.SelectAsync(
+            desktop,
+            null,
+            CancellationToken.None);
+        await surface.Shown.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        coordinator.Dispose();
+
+        Assert.Null(await selectionTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        await coordinator.DisposeBarrier.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.True(surface.Hidden);
+        Assert.Equal(1, surface.CloseCount);
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task ApplicationShutdownWaitsForPendingCleanup()
+    {
+        using var dispatcher = new SingleThreadDispatcher();
+        var first = new FakeRegionSelectionSurface();
+        var second = new FakeRegionSelectionSurface();
+        var surfaces = new Queue<FakeRegionSelectionSurface>(
+            [first, second]);
+        using var desktop = DesktopFrame();
+        var dispatchCount = 0;
+        var cleanupScheduler = new SwitchableCleanupScheduler(dispatcher)
+        {
+            Accept = false
+        };
+        using var coordinator = CreateCoordinator(
+            [Monitor(@"\\.\DISPLAY1"), Monitor(@"\\.\DISPLAY2", 100)],
+            surfaces,
+            action =>
+            {
+                if (Interlocked.Increment(ref dispatchCount) == 2)
+                    throw new InvalidOperationException("dispatch failed");
+                dispatcher.Dispatch(action);
+            },
+            cleanupScheduler.TryScheduleAsync);
+
+        var selectionTask = coordinator.SelectAsync(
+            desktop,
+            null,
+            CancellationToken.None);
+        await Task.WhenAll(first.Shown.Task, second.Shown.Task)
+            .WaitAsync(TimeSpan.FromSeconds(2));
+        await Task.Run(() =>
+            first.RaiseDragStarted(new PixelPoint(10, 10)));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => selectionTask.WaitAsync(TimeSpan.FromSeconds(2)));
+
+        cleanupScheduler.Accept = true;
+        cleanupScheduler.BlockNext = true;
+        var shutdownTask = Task.Run(() =>
+            AppRuntime.ShutdownRegionSelectionForApplication(
+                coordinator,
+                isOwnerThread: false));
+        await cleanupScheduler.Entered.Task
+            .WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.False(shutdownTask.IsCompleted);
+        Assert.False(first.Hidden);
+        Assert.False(second.Hidden);
+
+        cleanupScheduler.Release.TrySetResult();
+        var shutdown = await shutdownTask.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(shutdown.Drained);
+        Assert.True(first.Hidden);
+        Assert.True(second.Hidden);
+        await coordinator.DisposeBarrier.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task ApplicationShutdownUsesSynchronousOwnerPath()
+    {
+        using var dispatcher = new SingleThreadDispatcher();
+        var surface = new FakeRegionSelectionSurface();
+        using var desktop = DesktopFrame();
+        using var coordinator = new RegionSelectionCoordinator(
+            () => [Monitor()],
+            _ => null!,
+            (_, _, _) => surface,
+            dispatcher.Dispatch,
+            new FakeCleanupScheduler(dispatcher)
+            {
+                Accept = true
+            }.TryScheduleAsync,
+            () => Environment.CurrentManagedThreadId == dispatcher.ThreadId);
+
+        var selectionTask = coordinator.SelectAsync(
+            desktop,
+            null,
+            CancellationToken.None);
+        await surface.Shown.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        RegionSelectionShutdownResult? shutdown = null;
+        dispatcher.Dispatch(() =>
+            shutdown = AppRuntime.ShutdownRegionSelectionForApplication(
+                coordinator,
+                isOwnerThread: true));
+
+        Assert.True(shutdown?.Drained);
+        Assert.Null(await selectionTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.True(surface.Hidden);
+        Assert.Equal(1, surface.CloseCount);
+        await coordinator.DisposeBarrier.WaitAsync(TimeSpan.FromSeconds(2));
     }
 
     private static RegionSelectionCoordinator CreateCoordinator(
@@ -745,6 +1013,44 @@ public sealed class RegionSelectionCoordinatorTests
 
             dispatcher.Dispatch(cleanup);
             return true;
+        }
+    }
+
+    private sealed class SwitchableCleanupScheduler(
+        SingleThreadDispatcher dispatcher)
+    {
+        public bool Accept { get; set; }
+        public bool BlockNext { get; set; }
+        public TaskCompletionSource Entered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<bool> TryScheduleAsync(Action cleanup)
+        {
+            if (!Accept)
+                return false;
+            if (BlockNext)
+            {
+                BlockNext = false;
+                Entered.TrySetResult();
+                await Release.Task;
+            }
+            dispatcher.Dispatch(cleanup);
+            return true;
+        }
+    }
+
+    private static async Task WaitUntilAsync(
+        Func<bool> condition,
+        TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (!condition())
+        {
+            if (DateTime.UtcNow >= deadline)
+                throw new TimeoutException("Condition was not reached.");
+            await Task.Delay(10);
         }
     }
 
