@@ -590,6 +590,210 @@ public sealed class TranslationOverlayWindowTests
     }
 
     [Fact]
+    public void StoppingSubtitleInvalidatesOperationAndBlocksLateUpdates()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                var operation = window.BeginOperation(subtitle: true);
+                window.SetSubtitleControls(
+                    operation,
+                    active: true,
+                    paused: false,
+                    canReselect: true);
+                window.ShowStatus(
+                    operation,
+                    "字幕进行中",
+                    new PixelPoint(40, 40));
+
+                window.SetSubtitleControls(
+                    operation,
+                    active: false,
+                    paused: false,
+                    canReselect: false);
+
+                Assert.True(window.IsDismissed);
+                Assert.False(window.IsSubtitleMode);
+                Assert.False(window.IsVisible);
+                Assert.Equal("", window.StatusText);
+
+                window.ShowStatus(
+                    operation,
+                    "迟到的状态",
+                    new PixelPoint(40, 40));
+                window.ShowResult(
+                    operation,
+                    TranslationResponse.Ok(
+                        "late source",
+                        "迟到的结果",
+                        "en",
+                        "MyMemory"),
+                    new PixelPoint(40, 40));
+                window.ShowError(
+                    operation,
+                    "迟到的错误",
+                    new PixelPoint(40, 40));
+                window.SetSubtitleControls(
+                    operation,
+                    active: true,
+                    paused: false,
+                    canReselect: true);
+
+                Assert.True(window.IsDismissed);
+                Assert.False(window.IsSubtitleMode);
+                Assert.False(window.IsVisible);
+                Assert.Equal("", window.TranslatedText);
+                Assert.Equal("", window.StatusText);
+
+                var nextOperation = window.BeginOperation(subtitle: true);
+                window.SetSubtitleControls(
+                    nextOperation,
+                    active: true,
+                    paused: false,
+                    canReselect: true);
+                window.ShowStatus(
+                    nextOperation,
+                    "新的字幕操作",
+                    new PixelPoint(40, 40));
+
+                Assert.False(window.IsDismissed);
+                Assert.True(window.IsSubtitleMode);
+                Assert.True(window.IsVisible);
+                Assert.Equal("新的字幕操作", window.StatusText);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void InteractiveOperationAfterActiveSubtitleClearsSubtitleState()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                var subtitleOperation =
+                    window.BeginOperation(subtitle: true);
+                window.SetSubtitleControls(
+                    subtitleOperation,
+                    active: true,
+                    paused: true,
+                    canReselect: true);
+                window.ShowResult(
+                    subtitleOperation,
+                    TranslationResponse.Ok(
+                        "old subtitle source",
+                        "旧字幕译文",
+                        "en",
+                        "MyMemory"),
+                    new PixelPoint(40, 40));
+                Assert.True(window.IsSubtitleMode);
+
+                var interactiveOperation = window.BeginOperation();
+                window.ShowStatus(
+                    interactiveOperation,
+                    "交互操作状态",
+                    new PixelPoint(40, 40));
+
+                Assert.True(window.IsVisible);
+                Assert.False(window.IsSubtitleMode);
+                Assert.Equal("交互操作状态", window.StatusText);
+                Assert.Equal("", window.TranslatedText);
+                Assert.Equal(
+                    "",
+                    Assert.IsType<TextBlock>(
+                        window.FindName("OriginalTextBlock")).Text);
+                Assert.Equal(
+                    "",
+                    Assert.IsType<TextBlock>(
+                        window.FindName("MetadataTextBlock")).Text);
+                Assert.Equal(
+                    Visibility.Collapsed,
+                    Assert.IsType<Border>(
+                        window.FindName("SubtitleControlBar")).Visibility);
+                Assert.False(
+                    Assert.IsType<Button>(
+                        window.FindName("CopyButton")).IsEnabled);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void NewSubtitleOperationResetsPreviousSubtitlePresentation()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                var operationA = window.BeginOperation(subtitle: true);
+                window.SetSubtitleControls(
+                    operationA,
+                    active: true,
+                    paused: true,
+                    canReselect: true);
+                window.ShowResult(
+                    operationA,
+                    TranslationResponse.Ok(
+                        "old subtitle source",
+                        "旧字幕译文",
+                        "en",
+                        "MyMemory"),
+                    new PixelPoint(40, 40));
+
+                var operationB = window.BeginOperation(subtitle: true);
+
+                Assert.True(window.IsVisible);
+                Assert.True(window.IsSubtitleMode);
+                Assert.Equal("", window.TranslatedText);
+                Assert.Equal("字幕翻译准备中。", window.StatusText);
+                Assert.Equal(
+                    "",
+                    Assert.IsType<TextBlock>(
+                        window.FindName("OriginalTextBlock")).Text);
+                Assert.Equal(
+                    "",
+                    Assert.IsType<TextBlock>(
+                        window.FindName("MetadataTextBlock")).Text);
+                Assert.Equal(
+                    Visibility.Visible,
+                    Assert.IsType<Border>(
+                        window.FindName("SubtitleControlBar")).Visibility);
+                Assert.Equal(
+                    "暂停",
+                    Assert.IsType<Button>(
+                        window.FindName("PauseResumeButton")).Content);
+                Assert.False(
+                    Assert.IsType<Button>(
+                        window.FindName("ReselectButton")).IsEnabled);
+                Assert.False(
+                    Assert.IsType<Button>(
+                        window.FindName("CopyButton")).IsEnabled);
+
+                window.ShowStatus(
+                    operationB,
+                    "新字幕准备中",
+                    new PixelPoint(40, 40));
+                Assert.Equal("新字幕准备中", window.StatusText);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
     public void ClosedWindowRejectsNewOperationsWithoutWritingContent()
     {
         RunOnSta(() =>

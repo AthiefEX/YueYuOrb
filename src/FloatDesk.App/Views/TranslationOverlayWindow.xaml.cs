@@ -84,10 +84,13 @@ public partial class TranslationOverlayWindow : Window
     public string StatusText => StatusTextBlock.Text;
 
     /// <summary>
-    /// Starts an operation after an earlier result was dismissed. The returned
-    /// token must be carried through all updates for that operation.
+    /// Starts a clean operation after an earlier result was dismissed.
+    /// Interactive operations start hidden and one-shot; subtitle operations
+    /// start visible with clean subtitle controls. The returned token must be
+    /// carried through all updates for that operation.
     /// </summary>
-    public TranslationOverlayOperationToken BeginOperation()
+    public TranslationOverlayOperationToken BeginOperation(
+        bool subtitle = false)
     {
         var operation = default(TranslationOverlayOperationToken);
         RunOnUiThread(() =>
@@ -99,6 +102,9 @@ public partial class TranslationOverlayWindow : Window
             var generation = NextGeneration(_activeOperationGeneration);
             _activeOperationGeneration = generation;
             operation = new TranslationOverlayOperationToken(generation);
+            ResetOperationPresentation();
+            if (subtitle)
+                BeginSubtitlePresentation(operation);
         });
         return operation;
     }
@@ -220,6 +226,12 @@ public partial class TranslationOverlayWindow : Window
             if (!IsCurrentOperation(operation))
                 return;
 
+            if (!active)
+            {
+                Dismiss();
+                return;
+            }
+
             var enteringSubtitleMode = active && !_isSubtitleMode;
             if (enteringSubtitleMode)
             {
@@ -259,6 +271,43 @@ public partial class TranslationOverlayWindow : Window
             if (reveal)
                 BeginContentTransition(initialReveal: true);
         });
+
+    private void ResetOperationPresentation()
+    {
+        if (_isDragging)
+        {
+            _isDragging = false;
+            TitleBar.ReleaseMouseCapture();
+        }
+
+        _isSubtitleMode = false;
+        _subtitlePaused = false;
+        _canReselect = false;
+        SubtitleControlBar.Visibility = Visibility.Collapsed;
+        PauseResumeButton.Content = "暂停";
+        AutomationProperties.SetName(
+            PauseResumeButton,
+            "暂停字幕翻译");
+        ReselectButton.IsEnabled = false;
+        HideAndClear();
+    }
+
+    private void BeginSubtitlePresentation(
+        TranslationOverlayOperationToken operation)
+    {
+        _isSubtitleMode = true;
+        _subtitlePaused = false;
+        _canReselect = false;
+        ClearTranslationContent();
+        SubtitleControlBar.Visibility = Visibility.Visible;
+        PauseResumeButton.Content = "暂停";
+        AutomationProperties.SetName(
+            PauseResumeButton,
+            "暂停字幕翻译");
+        ReselectButton.IsEnabled = false;
+        StatusTextBlock.Text = "字幕翻译准备中。";
+        ShowAt(operation, default, subtitleMode: true);
+    }
 
     private void ShowAt(
         TranslationOverlayOperationToken operation,
