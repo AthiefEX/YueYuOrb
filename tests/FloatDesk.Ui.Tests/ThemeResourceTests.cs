@@ -4,6 +4,7 @@ using System.Windows.Markup;
 using System.Windows.Media;
 using System.Xml.Linq;
 using FloatDesk.App;
+using FloatDesk.App.Views;
 using FloatDesk.Core.Models;
 
 namespace FloatDesk.Ui.Tests;
@@ -150,6 +151,61 @@ public sealed class ThemeResourceTests
             "await ApplyThemeAsync();",
             ensureBrowser,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TranslationOverlayFollowsDynamicThemeBrushes()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var light = Color.FromRgb(242, 248, 255);
+                var dark = Color.FromRgb(24, 37, 52);
+                var window = new TranslationOverlayWindow();
+                try
+                {
+                    window.Resources["SettingsCardBrush"] =
+                        new SolidColorBrush(light);
+                    window.ShowStatus(
+                        "主题测试",
+                        new FloatDesk.Core.Geometry.PixelPoint(20, 20));
+                    window.UpdateLayout();
+
+                    var card = Assert.IsType<Border>(
+                        window.FindName("OverlayCard"));
+                    Assert.Equal(
+                        light,
+                        Assert.IsType<SolidColorBrush>(
+                            card.Background).Color);
+
+                    window.Resources["SettingsCardBrush"] =
+                        new SolidColorBrush(dark);
+                    window.UpdateLayout();
+                    Assert.Equal(
+                        dark,
+                        Assert.IsType<SolidColorBrush>(
+                            card.Background).Color);
+                }
+                finally
+                {
+                    window.Close();
+                }
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(8)),
+            "STA test thread timed out.");
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
     }
 
     [Fact(Timeout = 10_000)]
