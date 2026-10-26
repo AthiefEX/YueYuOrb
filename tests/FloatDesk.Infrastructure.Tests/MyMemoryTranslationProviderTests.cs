@@ -40,6 +40,16 @@ public sealed class MyMemoryTranslationProviderTests
         Assert.Throws<ArgumentException>(() => TranslationLanguageMapper.ToMyMemory("xx"));
 
     [Fact]
+    public void ProviderMappersRepresentItalian()
+    {
+        Assert.Equal("it", TranslationLanguageMapper.ToMyMemory(TranslationLanguages.Italian));
+        Assert.Equal("it", TranslationLanguageMapper.ToAzure(TranslationLanguages.Italian));
+        Assert.Equal("IT", TranslationLanguageMapper.ToDeepL(TranslationLanguages.Italian));
+        Assert.Equal("IT", TranslationLanguageMapper.ToDeepLSource(TranslationLanguages.Italian));
+        Assert.Equal("it", TranslationLanguageMapper.ToLibre(TranslationLanguages.Italian));
+    }
+
+    [Fact]
     public void AdvertisesMyMemoryLimits()
     {
         using var http = new HttpClient(new StubHandler(_ => Json("{}")));

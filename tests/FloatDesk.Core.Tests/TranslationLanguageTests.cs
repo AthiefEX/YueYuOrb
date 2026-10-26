@@ -54,4 +54,12 @@ public sealed class TranslationLanguageTests
         Assert.Equal("en", result.LanguageTag);
         Assert.True(result.Confidence < 0.5);
     }
+
+    [Fact]
+    public void ItalianIsACanonicalTranslationLanguage()
+    {
+        Assert.Equal("it", TranslationLanguages.Italian);
+        Assert.True(TranslationLanguages.IsKnown(TranslationLanguages.Italian));
+        Assert.True(TranslationLanguages.IsTranslationLanguage(TranslationLanguages.Italian));
+    }
 }

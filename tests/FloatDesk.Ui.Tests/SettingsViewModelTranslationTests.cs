@@ -65,6 +65,69 @@ public sealed class SettingsViewModelTranslationTests
         Assert.Equal(TranslationLanguages.Korean, candidate.Translation.TargetLanguage);
     }
 
+    [Theory]
+    [InlineData(TranslationLanguages.Hebrew)]
+    [InlineData(TranslationLanguages.Thai)]
+    [InlineData(TranslationLanguages.Hindi)]
+    public void KnownLanguagesOutsidePublishedListsUseSentinelAndPreserveLatestWhenUntouched(
+        string language)
+    {
+        var original = AppSettings.CreateDefault() with
+        {
+            Translation = AppSettings.CreateDefault().Translation with
+            {
+                SourceLanguage = language,
+                TargetLanguage = language
+            }
+        };
+        var viewModel = SettingsViewModel.From(original);
+        var latest = original with
+        {
+            Translation = original.Translation with
+            {
+                SourceLanguage = TranslationLanguages.Japanese,
+                TargetLanguage = TranslationLanguages.English
+            }
+        };
+
+        Assert.Equal(-1, viewModel.TranslationSourceLanguageIndex);
+        Assert.Equal(-1, viewModel.TranslationTargetLanguageIndex);
+
+        var candidate = viewModel.BuildCandidate(latest);
+
+        Assert.Equal(TranslationLanguages.Japanese, candidate.Translation.SourceLanguage);
+        Assert.Equal(TranslationLanguages.English, candidate.Translation.TargetLanguage);
+    }
+
+    [Theory]
+    [InlineData(TranslationLanguages.Hebrew)]
+    [InlineData(TranslationLanguages.Thai)]
+    [InlineData(TranslationLanguages.Hindi)]
+    public void SelectingPublishedLanguagesWinsAfterAnOutsideListSavedValue(
+        string language)
+    {
+        var original = AppSettings.CreateDefault() with
+        {
+            Translation = AppSettings.CreateDefault().Translation with
+            {
+                SourceLanguage = language,
+                TargetLanguage = language
+            }
+        };
+        var viewModel = SettingsViewModel.From(original);
+        viewModel.TranslationSourceLanguageIndex =
+            SettingsViewModel.TranslationSourceLanguages.ToList()
+                .IndexOf(TranslationLanguages.French);
+        viewModel.TranslationTargetLanguageIndex =
+            SettingsViewModel.TranslationTargetLanguages.ToList()
+                .IndexOf(TranslationLanguages.Korean);
+
+        var candidate = viewModel.BuildCandidate(original);
+
+        Assert.Equal(TranslationLanguages.French, candidate.Translation.SourceLanguage);
+        Assert.Equal(TranslationLanguages.Korean, candidate.Translation.TargetLanguage);
+    }
+
     [Fact]
     public void FromSeedsOcrSelectionWithTheFirstProfileLanguage()
     {
@@ -126,6 +189,61 @@ public sealed class SettingsViewModelTranslationTests
         var viewModel = SettingsViewModel.From(settings, ocrLanguages: options);
 
         Assert.Equal(1, viewModel.TranslationOcrLanguageIndex);
+    }
+
+    [Fact]
+    public void UnavailableSavedOcrLanguageUsesSentinelAndPreservesLatestWhenUntouched()
+    {
+        OcrLanguageOption[] options =
+        [
+            new("en-US", "English (United States)"),
+            new("fr-FR", "French (France)")
+        ];
+        var original = AppSettings.CreateDefault() with
+        {
+            Translation = AppSettings.CreateDefault().Translation with
+            {
+                OcrLanguage = "de-DE"
+            }
+        };
+        var viewModel = SettingsViewModel.From(original, ocrLanguages: options);
+        var latest = original with
+        {
+            Translation = original.Translation with { OcrLanguage = "ja-JP" }
+        };
+
+        Assert.Equal(-1, viewModel.TranslationOcrLanguageIndex);
+
+        var candidate = viewModel.BuildCandidate(latest);
+
+        Assert.Equal("ja-JP", candidate.Translation.OcrLanguage);
+    }
+
+    [Fact]
+    public void ExplicitlySelectingFirstOcrOptionAfterUnavailableValuePersistsIt()
+    {
+        OcrLanguageOption[] options =
+        [
+            new("en-US", "English (United States)"),
+            new("fr-FR", "French (France)")
+        ];
+        var original = AppSettings.CreateDefault() with
+        {
+            Translation = AppSettings.CreateDefault().Translation with
+            {
+                OcrLanguage = "de-DE"
+            }
+        };
+        var viewModel = SettingsViewModel.From(original, ocrLanguages: options);
+        var latest = original with
+        {
+            Translation = original.Translation with { OcrLanguage = "fr-FR" }
+        };
+        viewModel.TranslationOcrLanguageIndex = 0;
+
+        var candidate = viewModel.BuildCandidate(latest);
+
+        Assert.Equal("en-US", candidate.Translation.OcrLanguage);
     }
 
     [Fact]

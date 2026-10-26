@@ -81,6 +81,21 @@ public sealed class TranslationSettingsValidationTests
     }
 
     [Fact]
+    public void ValidatorAcceptsItalianAsATranslationLanguage()
+    {
+        var settings = AppSettings.CreateDefault() with
+        {
+            Translation = AppSettings.CreateDefault().Translation with
+            {
+                SourceLanguage = TranslationLanguages.Italian,
+                TargetLanguage = TranslationLanguages.Italian
+            }
+        };
+
+        Assert.Empty(SettingsValidator.Validate(settings));
+    }
+
+    [Fact]
     public void ValidatorReportsMissingTargetLanguageWithoutThrowing()
     {
         var original = AppSettings.CreateDefault();

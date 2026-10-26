@@ -24,7 +24,7 @@ public partial class SettingsViewModel : ObservableObject
         TranslationLanguages.Russian,
         TranslationLanguages.Arabic,
         TranslationLanguages.Portuguese,
-        "it"
+        TranslationLanguages.Italian
     ];
 
     public static IReadOnlyList<string> TranslationTargetLanguages { get; } =
@@ -395,8 +395,8 @@ public partial class SettingsViewModel : ObservableObject
             translation = translation with { AzureRegion = azureRegion };
         }
 
-        var ocrLanguage = SelectedOcrLanguage();
-        if (!string.Equals(
+        if (TryGetSelectedOcrLanguage(out var ocrLanguage) &&
+            !string.Equals(
                 ocrLanguage,
                 BaselineOcrLanguage(),
                 StringComparison.OrdinalIgnoreCase))
@@ -430,31 +430,24 @@ public partial class SettingsViewModel : ObservableObject
         return translation;
     }
 
-    private string? SelectedOcrLanguage()
+    private bool TryGetSelectedOcrLanguage(out string? language)
     {
         if (TranslationOcrLanguageIndex >= 0 &&
             TranslationOcrLanguageIndex < OcrLanguages.Count)
         {
-            return OcrLanguages[TranslationOcrLanguageIndex].LanguageTag;
+            language = OcrLanguages[TranslationOcrLanguageIndex].LanguageTag;
+            return true;
         }
-        if (OcrLanguages.Count > 0)
-            return OcrLanguages[0].LanguageTag;
-        return _baseline.Translation.OcrLanguage;
+        language = null;
+        return false;
     }
 
     private string? BaselineOcrLanguage()
     {
         var saved = _baseline.Translation.OcrLanguage;
-        if (!string.IsNullOrWhiteSpace(saved))
-        {
-            var match = IndexOfOcrLanguage(OcrLanguages, saved);
-            if (match >= 0)
-                return OcrLanguages[match].LanguageTag;
-            if (OcrLanguages.Count > 0)
-                return OcrLanguages[0].LanguageTag;
-            return saved;
-        }
-        return OcrLanguages.FirstOrDefault()?.LanguageTag;
+        return string.IsNullOrWhiteSpace(saved)
+            ? OcrLanguages.FirstOrDefault()?.LanguageTag
+            : saved;
     }
 
     private WheelActionKind[] BuildWheelActions()
@@ -543,7 +536,7 @@ public partial class SettingsViewModel : ObservableObject
             if (EqualityComparer<T>.Default.Equals(values[index], value))
                 return index;
         }
-        return values.Count > 0 ? 0 : -1;
+        return -1;
     }
 
     private static int IndexOf(
@@ -560,7 +553,7 @@ public partial class SettingsViewModel : ObservableObject
                 return index;
             }
         }
-        return values.Count > 0 ? 0 : -1;
+        return -1;
     }
 
     private static int IndexOfOcrLanguage(
@@ -581,7 +574,7 @@ public partial class SettingsViewModel : ObservableObject
                 return index;
             }
         }
-        return 0;
+        return -1;
     }
 
     private static string LanguageAt(
