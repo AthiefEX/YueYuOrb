@@ -138,6 +138,9 @@ public sealed class CustomTranslationProviderTests
     [InlineData("<think>Need to translate this.</think>你好", "你好")]
     [InlineData("<think>first</think> <think>second</think>", null)]
     [InlineData("你好<think>reasoning</think>", "你好")]
+    [InlineData("<think>Need to translate this.", null)]
+    [InlineData(" <THINK>Need to translate this.\nMore thought.", null)]
+    [InlineData("<think>Need to translate this.\n\n你好", "你好")]
     public async Task OpenAiSeparatesReasoningBlocksFromTranslation(string content, string? expected)
     {
         var payload = JsonSerializer.Serialize(new { choices = new[] { new { message = new { content } } } });
