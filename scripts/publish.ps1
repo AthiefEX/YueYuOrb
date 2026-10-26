@@ -47,6 +47,11 @@ try {
         -o $publishDirectory
     if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
 
+    Copy-Item -LiteralPath (Join-Path $root 'LICENSE') `
+        -Destination (Join-Path $publishDirectory 'LICENSE')
+    Copy-Item -LiteralPath (Join-Path $root 'README.md') `
+        -Destination (Join-Path $publishDirectory 'README.md')
+
     Compress-Archive -Path (Join-Path $publishDirectory '*') `
         -DestinationPath $zipPath -CompressionLevel Optimal
     $exeHash = Get-FileHash -Algorithm SHA256 `

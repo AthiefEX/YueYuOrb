@@ -3,5 +3,6 @@ obj/
 artifacts/
 .vs/
 .superpowers/
+work/
 TestResults/
 *.user

@@ -52,6 +52,14 @@ public sealed class ReleaseConfigurationTests
             "-p:NuGetAudit=false",
             script,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "Join-Path $root 'LICENSE'",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Join-Path $root 'README.md'",
+            script,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -92,6 +100,12 @@ public sealed class ReleaseConfigurationTests
             "Name: \"chinesesimp\"",
             installer,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "MessagesFile: \"Languages\\ChineseSimplified.isl\"",
+            installer,
+            StringComparison.Ordinal);
+        Assert.True(File.Exists(FindRepoFile(
+            "installer/Languages/ChineseSimplified.isl")));
     }
 
     [Fact]
