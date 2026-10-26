@@ -74,6 +74,153 @@ public sealed class TranslationSettingsApplierTests
     }
 
     [Fact]
+    public async Task SavedCandidateFromUpdateDelegateTargetsCredentialDespiteCurrentRace()
+    {
+        var settings = new RecordingSettingsCoordinator(
+            AppSettings.CreateDefault());
+        var credentials = new RecordingCredentialStore();
+        var applier = new TranslationSettingsApplier(settings, credentials);
+        var candidate = AppSettings.CreateDefault() with
+        {
+            Translation = AppSettings.CreateDefault().Translation with
+            {
+                Provider = TranslationProviderKind.DeepL,
+                Endpoint = "https://saved.example.test"
+            }
+        };
+        settings.CurrentAfterUpdate = AppSettings.CreateDefault() with
+        {
+            Translation = AppSettings.CreateDefault().Translation with
+            {
+                Provider = TranslationProviderKind.AzureTranslator,
+                Endpoint = "https://raced.example.test"
+            }
+        };
+        var intendedTarget = TranslationCredentialTarget.From(
+            candidate.Translation);
+
+        var result = await applier.ApplyAsync(
+            _ => candidate,
+            stagedApiKey: "saved-key",
+            clearSavedKey: false,
+            intendedTarget,
+            CancellationToken.None);
+
+        Assert.True(result.Success, result.Message);
+        Assert.Equal(
+            "saved-key",
+            await credentials.GetAsync(
+                TranslationProviderKind.DeepL,
+                "https://saved.example.test",
+                CancellationToken.None));
+        Assert.Null(await credentials.GetAsync(
+            TranslationProviderKind.AzureTranslator,
+            "https://raced.example.test",
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task StagedKeyIsNotSavedWhenCredentialTargetChanges()
+    {
+        var settings = new RecordingSettingsCoordinator(
+            AppSettings.CreateDefault());
+        var credentials = new RecordingCredentialStore();
+        var applier = new TranslationSettingsApplier(settings, credentials);
+        var intendedTarget = TranslationCredentialTarget.From(
+            TranslationProviderKind.DeepL,
+            "https://api-free.deepl.com");
+        var candidate = AppSettings.CreateDefault() with
+        {
+            Translation = AppSettings.CreateDefault().Translation with
+            {
+                Provider = TranslationProviderKind.AzureTranslator,
+                Endpoint = "https://api.cognitive.microsofttranslator.com"
+            }
+        };
+
+        var result = await applier.ApplyAsync(
+            _ => candidate,
+            stagedApiKey: "must-not-move",
+            clearSavedKey: false,
+            intendedTarget,
+            CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Equal("TranslationCredentialTargetChanged", result.ErrorCode);
+        Assert.Equal(0, credentials.SaveCount);
+        Assert.Null(await credentials.GetAsync(
+            TranslationProviderKind.AzureTranslator,
+            "https://api.cognitive.microsofttranslator.com",
+            CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ClearOnlyDeletesCredentialAtTheIntentTarget()
+    {
+        var settings = new RecordingSettingsCoordinator(
+            AppSettings.CreateDefault());
+        var credentials = new RecordingCredentialStore();
+        await credentials.SaveAsync(
+            TranslationProviderKind.AzureTranslator,
+            "https://api.cognitive.microsofttranslator.com",
+            "azure-key",
+            CancellationToken.None);
+        credentials.ResetCounters();
+        var applier = new TranslationSettingsApplier(settings, credentials);
+        var intendedTarget = TranslationCredentialTarget.From(
+            TranslationProviderKind.DeepL,
+            "https://api-free.deepl.com");
+        var candidate = AppSettings.CreateDefault() with
+        {
+            Translation = AppSettings.CreateDefault().Translation with
+            {
+                Provider = TranslationProviderKind.AzureTranslator,
+                Endpoint = "https://api.cognitive.microsofttranslator.com"
+            }
+        };
+
+        var result = await applier.ApplyAsync(
+            _ => candidate,
+            stagedApiKey: null,
+            clearSavedKey: true,
+            intendedTarget,
+            CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Equal("TranslationCredentialTargetChanged", result.ErrorCode);
+        Assert.Equal(0, credentials.DeleteCount);
+        Assert.Equal(
+            "azure-key",
+            await credentials.GetAsync(
+                TranslationProviderKind.AzureTranslator,
+                "https://api.cognitive.microsofttranslator.com",
+                CancellationToken.None));
+    }
+
+    [Fact]
+    public void CredentialIntentResetsWhenProviderOrEndpointIdentityChanges()
+    {
+        var intent = new TranslationCredentialIntentState();
+        var original = TranslationCredentialTarget.From(
+            TranslationProviderKind.DeepL,
+            "https://api-free.deepl.com");
+        var changedEndpoint = TranslationCredentialTarget.From(
+            TranslationProviderKind.DeepL,
+            "https://deepl.example.test");
+        var changedProvider = TranslationCredentialTarget.From(
+            TranslationProviderKind.AzureTranslator,
+            "https://api-free.deepl.com");
+
+        intent.Mark(original);
+
+        Assert.True(intent.ResetIfIdentityChanged(changedEndpoint));
+        Assert.Null(intent.Target);
+        Assert.False(intent.ResetIfIdentityChanged(changedProvider));
+        intent.Mark(changedProvider);
+        Assert.Equal(changedProvider, intent.Target);
+    }
+
+    [Fact]
     public async Task KeySaveFailureReportsThatSettingsWereSaved()
     {
         var settings = new RecordingSettingsCoordinator(
@@ -325,10 +472,91 @@ public sealed class TranslationSettingsApplierTests
     }
 
     [Fact]
+    public async Task ProviderCancellationAfterLinkedTimeoutIsReportedAsTimeout()
+    {
+        var settings = AppSettings.CreateDefault() with
+        {
+            Translation = AppSettings.CreateDefault().Translation with
+            {
+                Provider = TranslationProviderKind.DeepL,
+                Endpoint = "https://api-free.deepl.com"
+            }
+        };
+        var provider = new RecordingTranslationProvider
+        {
+            Result = TranslationProviderResult.Fail(
+                TranslationFailureKind.Cancelled)
+        };
+        var tester = new TranslationConnectionTester(
+            new RecordingCredentialStore(),
+            new RecordingProviderFactory(provider),
+            TimeSpan.Zero);
+
+        var result = await tester.TestAsync(
+            settings.Translation,
+            stagedApiKey: "secret",
+            CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Equal("TranslationConnectionTimeout", result.ErrorCode);
+        Assert.Contains("超时", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ProviderCancellationFromUserTokenRemainsCancelled()
+    {
+        var settings = AppSettings.CreateDefault() with
+        {
+            Translation = AppSettings.CreateDefault().Translation with
+            {
+                Provider = TranslationProviderKind.DeepL,
+                Endpoint = "https://api-free.deepl.com"
+            }
+        };
+        var provider = new RecordingTranslationProvider
+        {
+            Result = TranslationProviderResult.Fail(
+                TranslationFailureKind.Cancelled)
+        };
+        var tester = new TranslationConnectionTester(
+            new RecordingCredentialStore(),
+            new RecordingProviderFactory(provider),
+            TimeSpan.FromMinutes(1));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var result = await tester.TestAsync(
+            settings.Translation,
+            stagedApiKey: "secret",
+            cancellation.Token);
+
+        Assert.False(result.Success);
+        Assert.Equal("TranslationConnectionCancelled", result.ErrorCode);
+        Assert.Contains("已取消", result.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("超时", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StaleOperationCannotCompleteOrReplaceActiveOperation()
+    {
+        var gate = new TranslationOperationGate();
+        var first = gate.Begin();
+        var second = gate.Begin();
+
+        Assert.False(gate.IsActive(first));
+        Assert.True(gate.IsActive(second));
+        Assert.False(gate.TryComplete(first));
+        Assert.True(gate.IsActive(second));
+        Assert.True(gate.TryComplete(second));
+        Assert.False(gate.IsActive(second));
+    }
+
+    [Fact]
     public void TranslationPageExposesProviderLanguageSecretOcrAndSubtitleFields()
     {
-        var xaml = XDocument.Load(FindRepoFile(
-            "src/FloatDesk.App/Views/SettingsWindow.xaml")).ToString();
+        var document = XDocument.Load(FindRepoFile(
+            "src/FloatDesk.App/Views/SettingsWindow.xaml"));
+        var xaml = document.ToString();
         foreach (var name in new[]
                  {
                      "TranslationProviderComboBox",
@@ -354,6 +582,17 @@ public sealed class TranslationSettingsApplierTests
         Assert.Contains("实时翻译", xaml, StringComparison.Ordinal);
         Assert.Contains("免费服务", xaml, StringComparison.Ordinal);
         Assert.Contains("截图不会上传", xaml, StringComparison.Ordinal);
+        foreach (var phrase in new[]
+                 {
+                     "GET",
+                     "第三方服务",
+                     "查询字符串",
+                     "网络中间",
+                     "自定义翻译服务"
+                 })
+        {
+            Assert.Contains(phrase, xaml, StringComparison.Ordinal);
+        }
         Assert.Contains("PasswordBox", xaml, StringComparison.Ordinal);
         Assert.Contains(
             "Style=\"{StaticResource SettingsPasswordBoxStyle}\"",
@@ -363,6 +602,39 @@ public sealed class TranslationSettingsApplierTests
             "Text=\"{Binding TranslationApiKey",
             xaml,
             StringComparison.Ordinal);
+
+        var xName = XName.Get(
+            "Name",
+            "http://schemas.microsoft.com/winfx/2006/xaml");
+        foreach (var name in new[]
+                 {
+                     "TranslationProviderComboBox",
+                     "TranslationSourceLanguageComboBox",
+                     "TranslationTargetLanguageComboBox",
+                     "TranslationEndpointTextBox",
+                     "TranslationApiKeyBox",
+                     "TranslationModelTextBox",
+                     "TranslationAzureRegionTextBox",
+                     "TranslationOcrLanguageComboBox",
+                     "SubtitleRefreshIntervalTextBox",
+                     "SubtitleOverlayOpacityTextBox",
+                     "SubtitleFontSizeTextBox",
+                     "TestTranslationConnectionButton",
+                     "ClearSavedTranslationKeyCheckBox",
+                     "TranslationKeyStatusText",
+                     "TranslationTestStatusText",
+                     "TranslationSelectionHotkeyTextBox",
+                     "TranslationRegionHotkeyTextBox",
+                     "SubtitlesHotkeyTextBox"
+                 })
+        {
+            var element = document
+                .Descendants()
+                .Single(candidate =>
+                    (string?)candidate.Attribute(xName) == name);
+            Assert.False(string.IsNullOrWhiteSpace(
+                (string?)element.Attribute("AutomationProperties.Name")));
+        }
     }
 
     private static string FindRepoFile(string relativePath)
@@ -397,6 +669,7 @@ public sealed class TranslationSettingsApplierTests
         public int UpdateCount { get; private set; }
         public OperationResult? UpdateFailure { get; init; }
         public Exception? UpdateException { get; init; }
+        public AppSettings? CurrentAfterUpdate { get; set; }
 
         public Task InitializeAsync(CancellationToken cancellationToken) =>
             Task.CompletedTask;
@@ -412,6 +685,8 @@ public sealed class TranslationSettingsApplierTests
             if (UpdateFailure is not null)
                 return Task.FromResult(UpdateFailure);
             Current = update(Current);
+            if (CurrentAfterUpdate is not null)
+                Current = CurrentAfterUpdate;
             Changed?.Invoke(Current);
             return Task.FromResult(OperationResult.Ok());
         }

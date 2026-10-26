@@ -280,19 +280,19 @@
                                                     <TextBlock Text="翻译选中" Style="{StaticResource SettingsLabelStyle}" />
                                                     <TextBlock Text="翻译当前应用中的选中文字" Style="{StaticResource SettingsDescriptionStyle}" />
                                                 </StackPanel>
-                                                <TextBox x:Name="TranslationSelectionHotkeyTextBox" Grid.Row="3" Grid.Column="1" Text="{Binding TranslationSelectionHotkey}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" />
+                                                <TextBox x:Name="TranslationSelectionHotkeyTextBox" Grid.Row="3" Grid.Column="1" Text="{Binding TranslationSelectionHotkey}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" AutomationProperties.Name="翻译选中快捷键" />
                                                 <Border Grid.Row="4" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
                                                 <StackPanel Grid.Row="4" VerticalAlignment="Center">
                                                     <TextBlock Text="框选翻译" Style="{StaticResource SettingsLabelStyle}" />
                                                     <TextBlock Text="框选屏幕区域并翻译识别文字" Style="{StaticResource SettingsDescriptionStyle}" />
                                                 </StackPanel>
-                                                <TextBox x:Name="TranslationRegionHotkeyTextBox" Grid.Row="4" Grid.Column="1" Text="{Binding TranslationRegionHotkey}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" />
+                                                <TextBox x:Name="TranslationRegionHotkeyTextBox" Grid.Row="4" Grid.Column="1" Text="{Binding TranslationRegionHotkey}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" AutomationProperties.Name="框选翻译快捷键" />
                                                 <Border Grid.Row="5" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
                                                 <StackPanel Grid.Row="5" VerticalAlignment="Center">
                                                     <TextBlock Text="字幕翻译" Style="{StaticResource SettingsLabelStyle}" />
                                                     <TextBlock Text="开始或停止固定区域字幕翻译" Style="{StaticResource SettingsDescriptionStyle}" />
                                                 </StackPanel>
-                                                <TextBox x:Name="SubtitlesHotkeyTextBox" Grid.Row="5" Grid.Column="1" Text="{Binding SubtitlesHotkey}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" />
+                                                <TextBox x:Name="SubtitlesHotkeyTextBox" Grid.Row="5" Grid.Column="1" Text="{Binding SubtitlesHotkey}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" AutomationProperties.Name="字幕翻译快捷键" />
                                             </Grid>
                                         </Border>
                                         <Border Style="{StaticResource SettingsToolbarStyle}" Margin="0,12,0,0">
@@ -777,6 +777,7 @@
                                                               SelectedIndex="{Binding TranslationProviderIndex}"
                                                               SelectionChanged="OnTranslationProviderSelectionChanged"
                                                               Style="{StaticResource SettingsComboBoxStyle}"
+                                                              AutomationProperties.Name="翻译服务"
                                                               VerticalAlignment="Center">
                                                         <ComboBoxItem Content="MyMemory（免费）" />
                                                         <ComboBoxItem Content="Azure Translator" />
@@ -796,6 +797,7 @@
                                                               Grid.Column="1"
                                                               SelectedIndex="{Binding TranslationSourceLanguageIndex}"
                                                               Style="{StaticResource SettingsComboBoxStyle}"
+                                                              AutomationProperties.Name="翻译原文语言"
                                                               VerticalAlignment="Center">
                                                         <ComboBoxItem Content="自动检测" />
                                                         <ComboBoxItem Content="简体中文" />
@@ -823,6 +825,7 @@
                                                               Grid.Column="1"
                                                               SelectedIndex="{Binding TranslationTargetLanguageIndex}"
                                                               Style="{StaticResource SettingsComboBoxStyle}"
+                                                              AutomationProperties.Name="翻译目标语言"
                                                               VerticalAlignment="Center">
                                                         <ComboBoxItem Content="简体中文" />
                                                         <ComboBoxItem Content="繁体中文" />
@@ -850,6 +853,7 @@
                                                                  Text="{Binding TranslationEndpoint}"
                                                                  LostKeyboardFocus="OnTranslationEndpointLostKeyboardFocus"
                                                                  Style="{StaticResource SettingsTextBoxStyle}"
+                                                                 AutomationProperties.Name="翻译接口地址"
                                                                  VerticalAlignment="Center" />
                                                     </Grid>
                                                 </Border>
@@ -865,6 +869,7 @@
                                                                          Grid.Column="1"
                                                                          PasswordChanged="OnTranslationApiKeyPasswordChanged"
                                                                          Style="{StaticResource SettingsPasswordBoxStyle}"
+                                                                         AutomationProperties.Name="翻译 API 密钥"
                                                                          VerticalAlignment="Center" />
                                                         </Grid>
                                                         <Grid Margin="180,7,0,0">
@@ -874,7 +879,9 @@
                                                             </Grid.ColumnDefinitions>
                                                             <TextBlock x:Name="TranslationKeyStatusText"
                                                                        Text="正在读取密钥状态…"
-                                                                       Style="{StaticResource SettingsCaptionStyle}" />
+                                                                       Style="{StaticResource SettingsCaptionStyle}"
+                                                                       AutomationProperties.Name="翻译 API 密钥状态"
+                                                                       AutomationProperties.LiveSetting="Polite" />
                                                             <CheckBox x:Name="ClearSavedTranslationKeyCheckBox"
                                                                       Grid.Column="1"
                                                                       Content="清除已保存密钥"
@@ -883,6 +890,7 @@
                                                                       Checked="OnClearSavedTranslationKeyChanged"
                                                                       Unchecked="OnClearSavedTranslationKeyChanged"
                                                                       Style="{StaticResource SettingsCheckBoxStyle}"
+                                                                      AutomationProperties.Name="清除已保存翻译 API 密钥"
                                                                       Margin="12,0,0,0" />
                                                         </Grid>
                                                         <TextBlock Text="密码框只保留本次编辑的临时值；留空不会覆盖已保存密钥，输入新密钥后点击“应用”才会加密保存。"
@@ -901,6 +909,7 @@
                                                                  Grid.Column="1"
                                                                  Text="{Binding TranslationModel}"
                                                                  Style="{StaticResource SettingsTextBoxStyle}"
+                                                                 AutomationProperties.Name="翻译模型"
                                                                  VerticalAlignment="Center" />
                                                     </Grid>
                                                 </Border>
@@ -915,6 +924,7 @@
                                                                  Grid.Column="1"
                                                                  Text="{Binding TranslationAzureRegion}"
                                                                  Style="{StaticResource SettingsTextBoxStyle}"
+                                                                 AutomationProperties.Name="Azure 翻译区域"
                                                                  VerticalAlignment="Center" />
                                                     </Grid>
                                                 </Border>
@@ -930,7 +940,8 @@
                                                                   ItemsSource="{Binding OcrLanguages}"
                                                                   DisplayMemberPath="DisplayName"
                                                                   SelectedIndex="{Binding TranslationOcrLanguageIndex}"
-                                                                  Style="{StaticResource SettingsComboBoxStyle}" />
+                                                                  Style="{StaticResource SettingsComboBoxStyle}"
+                                                                  AutomationProperties.Name="翻译 OCR 语言" />
                                                         <TextBlock Text="仅列出 Windows 已安装的 OCR 语言，可在系统语言设置中安装语言包。"
                                                                    Style="{StaticResource SettingsCaptionStyle}"
                                                                    Margin="0,4,0,0" />
@@ -967,6 +978,7 @@
                                                          Grid.Column="1"
                                                          Text="{Binding SubtitleRefreshIntervalMs}"
                                                          Style="{StaticResource SettingsTextBoxStyle}"
+                                                         AutomationProperties.Name="字幕翻译采样间隔"
                                                          VerticalAlignment="Center" />
                                                 <Border Grid.Row="1" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
                                                 <TextBlock Grid.Row="1" Text="浮层透明度（60–100%）" Style="{StaticResource SettingsLabelStyle}" />
@@ -975,6 +987,7 @@
                                                          Grid.Column="1"
                                                          Text="{Binding SubtitleOverlayOpacityPercent}"
                                                          Style="{StaticResource SettingsTextBoxStyle}"
+                                                         AutomationProperties.Name="字幕翻译浮层透明度"
                                                          VerticalAlignment="Center" />
                                                 <Border Grid.Row="2" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
                                                 <TextBlock Grid.Row="2" Text="字号（14–36 DIP）" Style="{StaticResource SettingsLabelStyle}" />
@@ -983,6 +996,7 @@
                                                          Grid.Column="1"
                                                          Text="{Binding SubtitleFontSizeDip}"
                                                          Style="{StaticResource SettingsTextBoxStyle}"
+                                                         AutomationProperties.Name="字幕翻译字号"
                                                          VerticalAlignment="Center" />
                                             </Grid>
                                         </Border>
@@ -1007,14 +1021,17 @@
                                                     Content="测试连接"
                                                     Click="OnTestTranslationConnectionClick"
                                                     Style="{StaticResource ActionButtonStyle}"
+                                                    AutomationProperties.Name="测试翻译连接"
                                                     VerticalAlignment="Center" />
                                         </Grid>
                                         <TextBlock x:Name="TranslationTestStatusText"
                                                    Style="{StaticResource SettingsCaptionStyle}"
+                                                   AutomationProperties.Name="翻译连接测试状态"
+                                                   AutomationProperties.LiveSetting="Polite"
                                                    Margin="0,10,0,0" />
                                         <Border Style="{StaticResource SettingsToolbarStyle}" Margin="0,14,0,0">
                                             <StackPanel>
-                                                <TextBlock Text="免费服务：MyMemory 无需 API 密钥，但受每日与单次请求额度限制；额度用尽或网络繁忙时可能失败。"
+                                                <TextBlock Text="免费服务：MyMemory 无需 API 密钥，但受每日与单次请求额度限制；额度用尽或网络繁忙时可能失败。MyMemory 通过 GET 请求地址接收待翻译文字，文字会发送给第三方服务，查询字符串可能被网络中间设备或代理日志看到；如需更多控制，可选择自定义翻译服务。"
                                                            Style="{StaticResource SettingsDescriptionStyle}" />
                                                 <TextBlock Text="隐私：截图不会上传，只有选中或 OCR 识别出的文字会发送给所选翻译服务。API 密钥使用 Windows DPAPI 当前用户范围加密，不会写入设置文件。"
                                                            Style="{StaticResource SettingsDescriptionStyle}"

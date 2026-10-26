@@ -21,19 +21,53 @@ public sealed class TranslationSettingsApplier
         Func<AppSettings, AppSettings> update,
         string? stagedApiKey,
         bool clearSavedKey,
+        CancellationToken cancellationToken) =>
+        await ApplyAsync(
+            update,
+            stagedApiKey,
+            clearSavedKey,
+            intendedCredentialTarget: null,
+            cancellationToken);
+
+    public async Task<OperationResult> ApplyAsync(
+        Func<AppSettings, AppSettings> update,
+        string? stagedApiKey,
+        bool clearSavedKey,
+        TranslationCredentialTarget? intendedCredentialTarget,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(update);
+        AppSettings? savedCandidate = null;
         var settingsResult = await _settings.UpdateAsync(
-            update,
+            current =>
+            {
+                savedCandidate = update(current);
+                return savedCandidate;
+            },
             cancellationToken);
         if (!settingsResult.Success)
             return settingsResult;
+        if (savedCandidate is null)
+        {
+            return OperationResult.Fail(
+                "SettingsUpdateContract",
+                "设置已保存，但无法确认保存内容。请重新打开设置后再试。");
+        }
 
-        var translation = _settings.Current.Translation;
+        var translation = savedCandidate.Translation;
         var key = string.IsNullOrWhiteSpace(stagedApiKey)
             ? null
             : stagedApiKey.Trim();
+        if ((key is not null || clearSavedKey) &&
+            intendedCredentialTarget is not null &&
+            !intendedCredentialTarget.Matches(translation))
+        {
+            return OperationResult.Fail(
+                "TranslationCredentialTargetChanged",
+                key is not null
+                    ? "设置已保存，但翻译服务或接口已变化，API 密钥未保存。请重新输入密钥。"
+                    : "设置已保存，但翻译服务或接口已变化，未清除任何 API 密钥。");
+        }
         try
         {
             if (key is not null)
@@ -77,16 +111,21 @@ public sealed class TranslationSettingsApplier
 public sealed class TranslationConnectionTester
 {
     private const string TestText = "Hello";
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(15);
     private readonly ITranslationCredentialStore _credentials;
     private readonly ITranslationProviderFactory _providers;
+    private readonly TimeSpan _timeout;
 
     public TranslationConnectionTester(
         ITranslationCredentialStore credentials,
-        ITranslationProviderFactory providers)
+        ITranslationProviderFactory providers,
+        TimeSpan? timeout = null)
     {
         _credentials = credentials ?? throw new ArgumentNullException(nameof(credentials));
         _providers = providers ?? throw new ArgumentNullException(nameof(providers));
+        _timeout = timeout ?? DefaultTimeout;
+        if (_timeout < TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(timeout));
     }
 
     public async Task<OperationResult> TestAsync(
@@ -118,7 +157,10 @@ public sealed class TranslationConnectionTester
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(
                 cancellationToken);
-            timeout.CancelAfter(Timeout);
+            if (_timeout == TimeSpan.Zero)
+                timeout.Cancel();
+            else
+                timeout.CancelAfter(_timeout);
             var provider = _providers.Create(settings, key);
             var result = await provider.TranslateAsync(
                 new TranslationRequest(
@@ -127,11 +169,24 @@ public sealed class TranslationConnectionTester
                     settings.TargetLanguage,
                     TranslationPurpose.Interactive),
                 timeout.Token);
-            return result.Success
-                ? OperationResult.Ok("连接成功。")
-                : OperationResult.Fail(
-                    "TranslationConnectionFailed",
-                    FailureMessage(result.FailureKind));
+            if (result.Success)
+                return OperationResult.Ok("连接成功。");
+            if (timeout.IsCancellationRequested &&
+                !cancellationToken.IsCancellationRequested)
+            {
+                return TimeoutResult();
+            }
+            if (result.FailureKind == TranslationFailureKind.Timeout)
+                return TimeoutResult();
+            if (result.FailureKind == TranslationFailureKind.Cancelled)
+            {
+                return OperationResult.Fail(
+                    "TranslationConnectionCancelled",
+                    "连接测试已取消。");
+            }
+            return OperationResult.Fail(
+                "TranslationConnectionFailed",
+                FailureMessage(result.FailureKind));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -139,9 +194,7 @@ public sealed class TranslationConnectionTester
         }
         catch (OperationCanceledException)
         {
-            return OperationResult.Fail(
-                "TranslationConnectionTimeout",
-                "连接测试超时，请检查网络或接口地址。");
+            return TimeoutResult();
         }
         catch
         {
@@ -155,6 +208,11 @@ public sealed class TranslationConnectionTester
         provider is TranslationProviderKind.AzureTranslator or
             TranslationProviderKind.DeepL or
             TranslationProviderKind.OpenAiCompatible;
+
+    private static OperationResult TimeoutResult() =>
+        OperationResult.Fail(
+            "TranslationConnectionTimeout",
+            "连接测试超时，请检查网络或接口地址。");
 
     private static string FailureMessage(TranslationFailureKind kind) =>
         kind switch

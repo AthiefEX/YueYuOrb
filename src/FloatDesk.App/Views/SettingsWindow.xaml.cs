@@ -35,6 +35,8 @@ public partial class SettingsWindow : Window
     private readonly TranslationSettingsApplier _translationApplier;
     private readonly TranslationConnectionTester _translationConnectionTester;
     private readonly Func<IReadOnlyList<OcrLanguageOption>> _getOcrLanguages;
+    private readonly TranslationCredentialIntentState _translationCredentialIntent = new();
+    private readonly TranslationOperationGate _translationTestOperations = new();
     private SettingsViewModel _viewModel;
     private CancellationTokenSource? _translationTestCancellation;
     private bool _applyInProgress;
@@ -73,7 +75,7 @@ public partial class SettingsWindow : Window
         Closing += (_, args) =>
         {
             CancelTranslationTest();
-            TranslationApiKeyBox.Clear();
+            ResetTranslationCredentialIntent();
             args.Cancel = true;
             Hide();
         };
@@ -210,6 +212,7 @@ public partial class SettingsWindow : Window
             return;
         try
         {
+            ResetTranslationCredentialIntentIfIdentityChanged();
             if (!_viewModel.TryBuildCandidate(
                     _settings.Current,
                     out _,
@@ -219,16 +222,25 @@ public partial class SettingsWindow : Window
                 return;
             }
             _applyInProgress = true;
+            EnsureTranslationCredentialIntentTarget();
+            AppSettings? savedSnapshot = null;
             var stagedApiKey = TranslationApiKeyBox.Password;
             var result = await _translationApplier.ApplyAsync(
-                current => _viewModel.TryBuildCandidate(
-                    current,
-                    out var candidate,
-                    out _)
-                    ? candidate
-                    : current,
+                current =>
+                {
+                    if (_viewModel.TryBuildCandidate(
+                            current,
+                            out var candidate,
+                            out _))
+                    {
+                        savedSnapshot = candidate;
+                        return candidate;
+                    }
+                    return current;
+                },
                 stagedApiKey,
                 _viewModel.ClearSavedTranslationKey,
+                _translationCredentialIntent.Target,
                 CancellationToken.None);
             SaveStatusText.Text = result.Success
                 ? result.Message ?? "已保存。"
@@ -236,15 +248,22 @@ public partial class SettingsWindow : Window
             var settingsSaved = result.Success ||
                 result.ErrorCode is
                     "TranslationKeySaveFailed" or
-                    "TranslationKeyDeleteFailed";
+                    "TranslationKeyDeleteFailed" or
+                    "TranslationCredentialTargetChanged";
             if (!settingsSaved)
                 return;
-            var candidate = _settings.Current;
-            StartupService.SetEnabled(candidate.General.StartWithWindows);
-            Applied?.Invoke(candidate);
-            if (result.Success)
-                TranslationApiKeyBox.Clear();
-            await ReloadViewModelAsync();
+            if (savedSnapshot is not null)
+            {
+                StartupService.SetEnabled(
+                    savedSnapshot.General.StartWithWindows);
+                Applied?.Invoke(savedSnapshot);
+            }
+            if (result.Success ||
+                result.ErrorCode == "TranslationCredentialTargetChanged")
+            {
+                ResetTranslationCredentialIntent();
+            }
+            await ReloadViewModelAsync(savedSnapshot);
         }
         catch (OperationCanceledException)
         {
@@ -262,7 +281,7 @@ public partial class SettingsWindow : Window
     private void OnCancelClick(object sender, RoutedEventArgs e)
     {
         CancelTranslationTest();
-        TranslationApiKeyBox.Clear();
+        ResetTranslationCredentialIntent();
         _viewModel = SettingsViewModel.From(
             _settings.Current,
             ocrLanguages: _getOcrLanguages());
@@ -276,6 +295,7 @@ public partial class SettingsWindow : Window
         object sender,
         SelectionChangedEventArgs e)
     {
+        ResetTranslationCredentialIntentIfIdentityChanged();
         ApplyTranslationProviderLayout();
         if (IsLoaded)
             _ = RefreshTranslationKeyStatusAsync();
@@ -285,6 +305,7 @@ public partial class SettingsWindow : Window
         object sender,
         KeyboardFocusChangedEventArgs e)
     {
+        ResetTranslationCredentialIntentIfIdentityChanged();
         if (IsLoaded)
             _ = RefreshTranslationKeyStatusAsync();
     }
@@ -293,8 +314,17 @@ public partial class SettingsWindow : Window
         object sender,
         RoutedEventArgs e)
     {
-        if (!IsLoaded)
+        if (!IsLoaded || TranslationKeyStatusText is null)
             return;
+        if (TranslationApiKeyBox.Password.Length > 0)
+        {
+            _translationCredentialIntent.Mark(
+                CurrentTranslationCredentialTarget());
+        }
+        else if (!_viewModel.ClearSavedTranslationKey)
+        {
+            _translationCredentialIntent.Clear();
+        }
         TranslationKeyStatusText.Text =
             TranslationApiKeyBox.Password.Length > 0
                 ? "已输入新密钥，点击“应用”后加密保存。"
@@ -312,9 +342,16 @@ public partial class SettingsWindow : Window
         if (_viewModel.ClearSavedTranslationKey &&
             TranslationApiKeyBox.Password.Length == 0)
         {
+            _translationCredentialIntent.Mark(
+                CurrentTranslationCredentialTarget());
             TranslationKeyStatusText.Text =
                 "已保存密钥将在点击“应用”后清除。";
             return;
+        }
+        if (!_viewModel.ClearSavedTranslationKey &&
+            TranslationApiKeyBox.Password.Length == 0)
+        {
+            _translationCredentialIntent.Clear();
         }
         _ = RefreshTranslationKeyStatusAsync();
     }
@@ -323,6 +360,9 @@ public partial class SettingsWindow : Window
         object sender,
         RoutedEventArgs e)
     {
+        CancelTranslationTest();
+        ResetTranslationCredentialIntentIfIdentityChanged();
+        EnsureTranslationCredentialIntentTarget();
         if (!_viewModel.TryBuildCandidate(
                 _settings.Current,
                 out var candidate,
@@ -337,47 +377,71 @@ public partial class SettingsWindow : Window
             TranslationTestStatusText.Text = string.Join(" ", validation);
             return;
         }
+        if (!CurrentTranslationCredentialTarget().Matches(
+                candidate.Translation))
+        {
+            TranslationTestStatusText.Text =
+                "翻译服务或接口已变化，请重新确认密钥后再测试连接。";
+            return;
+        }
 
-        CancelTranslationTest();
+        var operation = _translationTestOperations.Begin();
         var cancellation = new CancellationTokenSource();
         _translationTestCancellation = cancellation;
         TestTranslationConnectionButton.IsEnabled = false;
-        TranslationTestStatusText.Text = "正在测试连接…";
+        SetTranslationTestStatus(operation, "正在测试连接…");
         try
         {
             var result = await _translationConnectionTester.TestAsync(
                 candidate.Translation,
                 TranslationApiKeyBox.Password,
                 cancellation.Token);
-            TranslationTestStatusText.Text =
-                result.Message ?? (result.Success ? "连接成功。" : "连接失败。");
+            SetTranslationTestStatus(
+                operation,
+                result.Message ?? (result.Success ? "连接成功。" : "连接失败。"));
         }
         catch (OperationCanceledException) when (
             cancellation.IsCancellationRequested)
         {
-            TranslationTestStatusText.Text = "连接测试已取消。";
+            SetTranslationTestStatus(operation, "连接测试已取消。");
         }
         catch (Exception exception)
         {
-            TranslationTestStatusText.Text =
-                $"连接测试失败：{exception.GetType().Name}";
+            SetTranslationTestStatus(
+                operation,
+                $"连接测试失败：{exception.GetType().Name}");
         }
         finally
         {
-            if (ReferenceEquals(
+            var wasActive = _translationTestOperations.TryComplete(operation);
+            if (wasActive &&
+                ReferenceEquals(
                     _translationTestCancellation,
                     cancellation))
             {
                 _translationTestCancellation = null;
             }
-            TestTranslationConnectionButton.IsEnabled = true;
+            if (wasActive &&
+                TestTranslationConnectionButton is not null)
+            {
+                TestTranslationConnectionButton.IsEnabled = true;
+            }
             cancellation.Dispose();
         }
     }
 
-    private async Task ReloadViewModelAsync()
+    private void SetTranslationTestStatus(object operation, string status)
     {
-        var settings = _settings.Current;
+        if (_translationTestOperations.IsActive(operation) &&
+            TranslationTestStatusText is not null)
+        {
+            TranslationTestStatusText.Text = status;
+        }
+    }
+
+    private async Task ReloadViewModelAsync(AppSettings? savedSnapshot = null)
+    {
+        var settings = savedSnapshot ?? _settings.Current;
         var hasSavedKey = await HasSavedTranslationKeyAsync(settings.Translation);
         _viewModel = SettingsViewModel.From(
             settings,
@@ -396,9 +460,8 @@ public partial class SettingsWindow : Window
         {
             return;
         }
-        var translation = _viewModel.BuildCandidate(
-            _settings.Current).Translation;
-        if (translation.Provider == TranslationProviderKind.MyMemory)
+        var target = CurrentTranslationCredentialTarget();
+        if (target.Provider == TranslationProviderKind.MyMemory)
         {
             _viewModel.HasSavedTranslationKey = false;
             TranslationKeyStatusText.Text = "MyMemory 免费服务无需 API 密钥。";
@@ -408,9 +471,16 @@ public partial class SettingsWindow : Window
         try
         {
             var hasSavedKey = await _translationCredentials.HasAsync(
-                translation.Provider,
-                translation.Endpoint,
+                target.Provider,
+                target.Endpoint,
                 CancellationToken.None);
+            if (!string.Equals(
+                    CurrentTranslationCredentialTarget().Identity,
+                    target.Identity,
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
             _viewModel.HasSavedTranslationKey = hasSavedKey;
             TranslationKeyStatusText.Text =
                 TranslationApiKeyBox.Password.Length > 0
@@ -421,6 +491,13 @@ public partial class SettingsWindow : Window
         }
         catch (Exception exception)
         {
+            if (!string.Equals(
+                    CurrentTranslationCredentialTarget().Identity,
+                    target.Identity,
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
             _viewModel.HasSavedTranslationKey = false;
             TranslationKeyStatusText.Text =
                 $"无法读取密钥状态：{exception.GetType().Name}";
@@ -456,14 +533,7 @@ public partial class SettingsWindow : Window
         {
             return;
         }
-        var provider = TranslationProviderComboBox.SelectedIndex switch
-        {
-            1 => TranslationProviderKind.AzureTranslator,
-            2 => TranslationProviderKind.DeepL,
-            3 => TranslationProviderKind.LibreTranslate,
-            4 => TranslationProviderKind.OpenAiCompatible,
-            _ => TranslationProviderKind.MyMemory
-        };
+        var provider = SelectedTranslationProvider();
         var custom = provider != TranslationProviderKind.MyMemory;
         TranslationEndpointField.Visibility = Visible(custom);
         TranslationApiKeyField.Visibility = Visible(custom);
@@ -490,10 +560,59 @@ public partial class SettingsWindow : Window
     private static Visibility Visible(bool visible) =>
         visible ? Visibility.Visible : Visibility.Collapsed;
 
+    private TranslationProviderKind SelectedTranslationProvider() =>
+        TranslationProviderComboBox.SelectedIndex switch
+        {
+            1 => TranslationProviderKind.AzureTranslator,
+            2 => TranslationProviderKind.DeepL,
+            3 => TranslationProviderKind.LibreTranslate,
+            4 => TranslationProviderKind.OpenAiCompatible,
+            _ => TranslationProviderKind.MyMemory
+        };
+
+    private TranslationCredentialTarget CurrentTranslationCredentialTarget() =>
+        TranslationCredentialTarget.From(
+            SelectedTranslationProvider(),
+            TranslationEndpointTextBox?.Text ?? "");
+
+    private void EnsureTranslationCredentialIntentTarget()
+    {
+        if (TranslationApiKeyBox.Password.Length == 0 &&
+            !_viewModel.ClearSavedTranslationKey)
+        {
+            return;
+        }
+        _translationCredentialIntent.Mark(
+            CurrentTranslationCredentialTarget());
+    }
+
+    private void ResetTranslationCredentialIntentIfIdentityChanged()
+    {
+        if (TranslationProviderComboBox is null ||
+            TranslationEndpointTextBox is null)
+        {
+            return;
+        }
+        if (_translationCredentialIntent.ResetIfIdentityChanged(
+                CurrentTranslationCredentialTarget()))
+        {
+            ResetTranslationCredentialIntent();
+        }
+    }
+
+    private void ResetTranslationCredentialIntent()
+    {
+        _translationCredentialIntent.Clear();
+        TranslationApiKeyBox?.Clear();
+        if (_viewModel is not null)
+            _viewModel.ClearSavedTranslationKey = false;
+    }
+
     private void CancelTranslationTest()
     {
         _translationTestCancellation?.Cancel();
         _translationTestCancellation = null;
+        _translationTestOperations.Clear();
         if (TestTranslationConnectionButton is not null)
             TestTranslationConnectionButton.IsEnabled = true;
     }
