@@ -81,27 +81,107 @@ public sealed class TranslationCredentialIntentState
 
 public sealed class TranslationOperationGate
 {
-    private object? _active;
+    private sealed record ActiveOperation(
+        object Token,
+        string? Identity);
+
+    private ActiveOperation? _active;
 
     public object Begin()
+        => BeginCore(identity: null);
+
+    public object Begin(TranslationCredentialTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        return BeginCore(target.Identity);
+    }
+
+    private object BeginCore(string? identity)
     {
         var operation = new object();
-        Interlocked.Exchange(ref _active, operation);
+        Interlocked.Exchange(
+            ref _active,
+            new ActiveOperation(operation, identity));
         return operation;
     }
 
-    public bool IsActive(object operation) =>
-        ReferenceEquals(
-            Volatile.Read(ref _active),
-            operation);
+    public bool IsActive(object operation)
+    {
+        var active = Volatile.Read(ref _active);
+        return active is not null &&
+            ReferenceEquals(active.Token, operation);
+    }
 
-    public bool TryComplete(object operation) =>
-        ReferenceEquals(
-            Interlocked.CompareExchange(
-                ref _active,
-                null,
-                operation),
-            operation);
+    public bool IsActive(
+        object operation,
+        TranslationCredentialTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        var active = Volatile.Read(ref _active);
+        return active is not null &&
+            ReferenceEquals(active.Token, operation) &&
+            string.Equals(
+                active.Identity,
+                target.Identity,
+                StringComparison.Ordinal);
+    }
+
+    public bool HasActiveIdentityDifferentFrom(
+        TranslationCredentialTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        var active = Volatile.Read(ref _active);
+        return active?.Identity is not null &&
+            !string.Equals(
+                active.Identity,
+                target.Identity,
+                StringComparison.Ordinal);
+    }
+
+    public bool TryComplete(object operation)
+        => TryCompleteCore(operation, identity: null, requireIdentity: false);
+
+    public bool TryComplete(
+        object operation,
+        TranslationCredentialTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        return TryCompleteCore(
+            operation,
+            target.Identity,
+            requireIdentity: true);
+    }
+
+    private bool TryCompleteCore(
+        object operation,
+        string? identity,
+        bool requireIdentity)
+    {
+        while (true)
+        {
+            var active = Volatile.Read(ref _active);
+            if (active is null ||
+                !ReferenceEquals(active.Token, operation) ||
+                (requireIdentity &&
+                 !string.Equals(
+                     active.Identity,
+                     identity,
+                     StringComparison.Ordinal)))
+            {
+                return false;
+            }
+
+            if (ReferenceEquals(
+                    Interlocked.CompareExchange(
+                        ref _active,
+                        null,
+                        active),
+                    active))
+            {
+                return true;
+            }
+        }
+    }
 
     public void Clear() => Interlocked.Exchange(ref _active, null);
 }

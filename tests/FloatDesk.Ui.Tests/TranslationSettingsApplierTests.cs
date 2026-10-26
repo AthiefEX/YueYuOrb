@@ -552,6 +552,31 @@ public sealed class TranslationSettingsApplierTests
     }
 
     [Fact]
+    public void CredentialIdentityChangeRejectsStaleConnectionOperationAndAllowsNextTest()
+    {
+        var gate = new TranslationOperationGate();
+        var deepLTarget = TranslationCredentialTarget.From(
+            TranslationProviderKind.DeepL,
+            "https://api-free.deepl.com");
+        var azureTarget = TranslationCredentialTarget.From(
+            TranslationProviderKind.AzureTranslator,
+            "https://api.cognitive.microsofttranslator.com");
+        var staleOperation = gate.Begin(deepLTarget);
+
+        Assert.True(gate.IsActive(staleOperation, deepLTarget));
+        Assert.False(gate.IsActive(staleOperation, azureTarget));
+        Assert.False(gate.TryComplete(staleOperation, azureTarget));
+        Assert.True(gate.HasActiveIdentityDifferentFrom(azureTarget));
+
+        gate.Clear();
+        Assert.False(gate.IsActive(staleOperation, azureTarget));
+
+        var nextOperation = gate.Begin(azureTarget);
+        Assert.True(gate.IsActive(nextOperation, azureTarget));
+        Assert.True(gate.TryComplete(nextOperation, azureTarget));
+    }
+
+    [Fact]
     public void TranslationPageExposesProviderLanguageSecretOcrAndSubtitleFields()
     {
         var document = XDocument.Load(FindRepoFile(

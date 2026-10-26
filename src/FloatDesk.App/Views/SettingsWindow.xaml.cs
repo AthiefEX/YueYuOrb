@@ -385,7 +385,9 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        var operation = _translationTestOperations.Begin();
+        var testTarget = TranslationCredentialTarget.From(
+            candidate.Translation);
+        var operation = _translationTestOperations.Begin(testTarget);
         var cancellation = new CancellationTokenSource();
         _translationTestCancellation = cancellation;
         TestTranslationConnectionButton.IsEnabled = false;
@@ -413,7 +415,9 @@ public partial class SettingsWindow : Window
         }
         finally
         {
-            var wasActive = _translationTestOperations.TryComplete(operation);
+            var wasActive = _translationTestOperations.TryComplete(
+                operation,
+                CurrentTranslationCredentialTarget());
             if (wasActive &&
                 ReferenceEquals(
                     _translationTestCancellation,
@@ -432,7 +436,9 @@ public partial class SettingsWindow : Window
 
     private void SetTranslationTestStatus(object operation, string status)
     {
-        if (_translationTestOperations.IsActive(operation) &&
+        if (_translationTestOperations.IsActive(
+                operation,
+                CurrentTranslationCredentialTarget()) &&
             TranslationTestStatusText is not null)
         {
             TranslationTestStatusText.Text = status;
@@ -593,8 +599,14 @@ public partial class SettingsWindow : Window
         {
             return;
         }
+        var currentTarget = CurrentTranslationCredentialTarget();
+        if (_translationTestOperations.HasActiveIdentityDifferentFrom(
+                currentTarget))
+        {
+            CancelTranslationTest();
+        }
         if (_translationCredentialIntent.ResetIfIdentityChanged(
-                CurrentTranslationCredentialTarget()))
+                currentTarget))
         {
             ResetTranslationCredentialIntent();
         }
