@@ -11,14 +11,28 @@ public sealed class TranslationCenter : IDisposable
     private readonly object _sync = new();
     private readonly Dictionary<(string Text, string Source, string Target, TranslationPurpose Purpose),
         (TranslationResponse Response, DateTimeOffset Expires)> _cache = [];
-    private readonly Dictionary<(string Text, string Source, string Target, TranslationPurpose Purpose), Task<TranslationResponse>> _pending = [];
+    private readonly Dictionary<(string Text, string Source, string Target, TranslationPurpose Purpose), PendingOperation> _pending = [];
+    private readonly Timer _cleanupTimer;
+    private int _activeOperations;
+    private bool _disposed;
     private DateTimeOffset _nextRequest;
+
+    private sealed class PendingOperation
+    {
+        public TaskCompletionSource<TranslationResponse> Completion { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public CancellationTokenSource Cancellation { get; } = new();
+        public int Subscribers { get; set; }
+        public bool Completed { get; set; }
+        public bool Abandoned { get; set; }
+    }
 
     public TranslationCenter(ITranslationProvider provider, IClock clock)
     {
         _provider = provider ?? throw new ArgumentNullException(nameof(provider));
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
         _concurrency = new SemaphoreSlim(Math.Max(1, provider.Capabilities.MaxConcurrentRequests));
+        _cleanupTimer = new Timer(_ => PurgeExpired(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
     }
 
     public Task<TranslationResponse> TranslateAsync(string text, string sourceLanguage, string targetLanguage,
@@ -39,51 +53,81 @@ public sealed class TranslationCenter : IDisposable
             return Task.FromResult(Fail(TranslationFailureKind.NoTranslationNeeded));
 
         var key = (normalized, source, target, purpose);
-        Task<TranslationResponse> task;
-        TaskCompletionSource<TranslationResponse>? completion = null;
+        PendingOperation operation;
+        var start = false;
         lock (_sync)
         {
+            if (_disposed) return Task.FromResult(Fail(TranslationFailureKind.Cancelled));
             if (_cache.TryGetValue(key, out var cached))
             {
                 if (cached.Expires > _clock.UtcNow) return Task.FromResult(cached.Response);
                 _cache.Remove(key);
             }
-            if (!_pending.TryGetValue(key, out task!))
+            if (!_pending.TryGetValue(key, out operation!))
             {
-                completion = new TaskCompletionSource<TranslationResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
-                task = completion.Task;
-                _pending[key] = task;
+                operation = new PendingOperation();
+                _pending[key] = operation;
+                _activeOperations++;
+                start = true;
             }
+            operation.Subscribers++;
         }
-        if (completion is not null)
-            _ = CompleteAsync(completion, key, normalized, source, target, purpose);
-        return AwaitResponseAsync(task, normalized, source, cancellationToken);
+        if (start) _ = CompleteAsync(operation, key, normalized, source, target, purpose);
+        return AwaitResponseAsync(operation, key, normalized, source, cancellationToken);
 
         TranslationResponse Fail(TranslationFailureKind kind) =>
             TranslationResponse.Fail(normalized, source, _provider.DisplayName, kind, kind.ToString(), kind.ToString());
     }
 
-    private async Task<TranslationResponse> AwaitResponseAsync(Task<TranslationResponse> task,
+    private async Task<TranslationResponse> AwaitResponseAsync(PendingOperation operation,
+        (string Text, string Source, string Target, TranslationPurpose Purpose) key,
         string originalText, string sourceLanguage, CancellationToken cancellationToken)
     {
-        try { return await task.WaitAsync(cancellationToken); }
+        try { return await operation.Completion.Task.WaitAsync(cancellationToken); }
         catch (OperationCanceledException)
         {
             return TranslationResponse.Fail(originalText, sourceLanguage, _provider.DisplayName,
                 TranslationFailureKind.Cancelled, "Cancelled", "Cancelled");
         }
+        finally
+        {
+            var cancel = false;
+            lock (_sync)
+            {
+                operation.Subscribers--;
+                if (operation.Subscribers == 0 && !operation.Completed)
+                {
+                    operation.Abandoned = true;
+                    if (_pending.TryGetValue(key, out var current) && ReferenceEquals(current, operation))
+                        _pending.Remove(key);
+                    cancel = true;
+                }
+            }
+            if (cancel) TryCancel(operation);
+        }
     }
 
-    private async Task CompleteAsync(TaskCompletionSource<TranslationResponse> completion,
+    private async Task CompleteAsync(PendingOperation operation,
         (string Text, string Source, string Target, TranslationPurpose Purpose) key,
         string text, string source, string target, TranslationPurpose purpose)
     {
         try
         {
-            var response = await ExecuteAsync(text, source, target, purpose, CancellationToken.None);
+            TranslationResponse response;
+            try { response = await ExecuteAsync(text, source, target, purpose, operation.Cancellation.Token); }
+            catch (OperationCanceledException)
+            {
+                response = TranslationResponse.Fail(text, source, _provider.DisplayName,
+                    TranslationFailureKind.Cancelled, "Cancelled", "Cancelled");
+            }
+            catch (Exception)
+            {
+                response = TranslationResponse.Fail(text, source, _provider.DisplayName,
+                    TranslationFailureKind.ProviderError, "ProviderError", "ProviderError");
+            }
             lock (_sync)
             {
-                if (response.Success)
+                if (!_disposed && !operation.Abandoned && !operation.Cancellation.IsCancellationRequested && response.Success)
                 {
                     if (_cache.Count >= 128)
                     {
@@ -92,18 +136,57 @@ public sealed class TranslationCenter : IDisposable
                     }
                     _cache[key] = (response, _clock.UtcNow.AddMinutes(10));
                 }
-                _pending.Remove(key);
+                if (_pending.TryGetValue(key, out var current) && ReferenceEquals(current, operation))
+                    _pending.Remove(key);
+                operation.Completed = true;
             }
-            completion.SetResult(response);
+            operation.Completion.TrySetResult(response);
         }
-        catch (Exception exception)
+        finally
         {
-            lock (_sync) _pending.Remove(key);
-            completion.SetException(exception);
+            operation.Cancellation.Dispose();
+            lock (_sync)
+            {
+                _activeOperations--;
+                if (_disposed && _activeOperations == 0) DisposeGates();
+            }
+        }
+    }
+
+    public int PurgeExpired()
+    {
+        lock (_sync)
+        {
+            var expired = _cache.Where(entry => entry.Value.Expires <= _clock.UtcNow)
+                .Select(entry => entry.Key).ToArray();
+            foreach (var key in expired) _cache.Remove(key);
+            return expired.Length;
         }
     }
 
     public void Dispose()
+    {
+        PendingOperation[] operations;
+        lock (_sync)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _cache.Clear();
+            operations = _pending.Values.ToArray();
+            _pending.Clear();
+            if (_activeOperations == 0) DisposeGates();
+        }
+        _cleanupTimer.Dispose();
+        foreach (var operation in operations) TryCancel(operation);
+    }
+
+    private static void TryCancel(PendingOperation operation)
+    {
+        try { operation.Cancellation.Cancel(); }
+        catch (ObjectDisposedException) { }
+    }
+
+    private void DisposeGates()
     {
         _concurrency.Dispose();
         _rateGate.Dispose();
@@ -121,9 +204,10 @@ public sealed class TranslationCenter : IDisposable
         try { chunks = TranslationTextProcessor.Chunk(text, capabilities.MaxUtf8BytesPerRequest, capabilities.MaxCharacters); }
         catch (ArgumentException) { return Fail(TranslationFailureKind.InvalidRequest); }
         if (chunks.Count > capabilities.MaxChunks) return Fail(TranslationFailureKind.InvalidRequest);
-        var resolved = source.Equals(TranslationLanguages.Auto, StringComparison.OrdinalIgnoreCase) && !capabilities.SupportsAutoDetect
+        var requestSource = source.Equals(TranslationLanguages.Auto, StringComparison.OrdinalIgnoreCase) && !capabilities.SupportsAutoDetect
             ? TranslationLanguageDetector.Detect(text).LanguageTag : source;
-        if (resolved.Equals(target, StringComparison.OrdinalIgnoreCase)) return Fail(TranslationFailureKind.NoTranslationNeeded);
+        if (requestSource.Equals(target, StringComparison.OrdinalIgnoreCase)) return Fail(TranslationFailureKind.NoTranslationNeeded);
+        var reportedSource = requestSource;
 
         var translated = new List<string>(chunks.Count);
         foreach (var chunk in chunks)
@@ -140,18 +224,18 @@ public sealed class TranslationCenter : IDisposable
                 }
                 finally { _rateGate.Release(); }
 
-                var result = await _provider.TranslateAsync(new TranslationRequest(chunk.Text, resolved, target, purpose), cancellationToken);
+                var result = await _provider.TranslateAsync(new TranslationRequest(chunk.Text, requestSource, target, purpose), cancellationToken);
                 if (!result.Success) return Fail(result.FailureKind);
                 if (result.TranslatedText is null) return Fail(TranslationFailureKind.ProviderError);
                 translated.Add(result.TranslatedText + chunk.SeparatorAfter);
                 if (result.DetectedLanguage is { Length: > 0 } detected && TranslationLanguages.IsKnown(detected))
-                    resolved = detected;
+                    reportedSource = detected;
             }
             catch (OperationCanceledException) { return Fail(TranslationFailureKind.Cancelled); }
             catch (TimeoutException) { return Fail(TranslationFailureKind.Timeout); }
             catch (Exception) { return Fail(TranslationFailureKind.ProviderError); }
             finally { _concurrency.Release(); }
         }
-        return TranslationResponse.Ok(text, TranslationTextProcessor.Join(translated, target), resolved, _provider.DisplayName);
+        return TranslationResponse.Ok(text, TranslationTextProcessor.Join(translated, target), reportedSource, _provider.DisplayName);
     }
 }
