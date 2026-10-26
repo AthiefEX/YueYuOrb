@@ -31,4 +31,37 @@ public sealed class CaptureCoordinatorTests
             gate.TryEnter());
         Assert.NotNull(replacement);
     }
+
+    [Fact(Timeout = 10_000)]
+    public async Task ActiveFlagClearsBeforeLeaseAllowsSuccessor()
+    {
+        using var gate = new CaptureSessionGate();
+        var states = new List<bool>();
+        var successorCouldEnterDuringCleanup = false;
+        using var coordinator = new CaptureCoordinator(
+            null!,
+            null!,
+            () => AppSettings.CreateDefault(),
+            static () => 0,
+            active =>
+            {
+                states.Add(active);
+                if (active)
+                    return;
+                using var probe = gate.TryEnter();
+                successorCouldEnterDuringCleanup = probe is not null;
+            },
+            sessionGate: gate);
+
+        var result = await coordinator.StartAsync(
+            CaptureMode.Region,
+            CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Equal([true, false], states);
+        Assert.False(successorCouldEnterDuringCleanup);
+        using var next = Assert.IsType<CaptureSessionGate.Lease>(
+            gate.TryEnter());
+        Assert.NotNull(next);
+    }
 }

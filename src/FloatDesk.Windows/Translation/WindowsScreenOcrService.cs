@@ -10,6 +10,7 @@ namespace FloatDesk.Windows.Translation;
 public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
 {
     private readonly IWindowsOcrBackend _backend;
+    private readonly IWindowsOcrFramePreparer _preparer;
     private readonly Lazy<IReadOnlyList<OcrLanguageOption>> _availableLanguages;
     private readonly object _queueSync = new();
     private readonly object _invokeSync = new();
@@ -20,13 +21,23 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
     private int _disposed;
 
     public WindowsScreenOcrService()
-        : this(new WinRtWindowsOcrBackend())
+        : this(
+            new WinRtWindowsOcrBackend(),
+            WindowsOcrFramePreparer.Instance)
     {
     }
 
     internal WindowsScreenOcrService(IWindowsOcrBackend backend)
+        : this(backend, WindowsOcrFramePreparer.Instance)
+    {
+    }
+
+    internal WindowsScreenOcrService(
+        IWindowsOcrBackend backend,
+        IWindowsOcrFramePreparer preparer)
     {
         _backend = backend;
+        _preparer = preparer;
         _availableLanguages = new Lazy<IReadOnlyList<OcrLanguageOption>>(
             LoadAvailableLanguages,
             LazyThreadSafetyMode.ExecutionAndPublication);
@@ -53,27 +64,16 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
             this);
         cancellationToken.ThrowIfCancellationRequested();
 
-        WindowsOcrBitmap bitmap;
-        try
-        {
-            bitmap = PrepareBitmap(frame, _backend.MaxImageDimension);
-        }
-        catch (ObjectDisposedException)
-        {
-            throw;
-        }
-        catch (Exception)
-        {
-            return new ScreenOcrResult(null, "OcrFailed", "无法识别屏幕文字。");
-        }
-
-        if (bitmap.Bgra32.All(static value => value == 0))
-            return new ScreenOcrResult(null, "OcrNoText", "未识别到文字。");
-
         var normalizedTag = string.IsNullOrWhiteSpace(languageTag)
             ? null
             : languageTag.Trim();
-        var work = new RecognitionWork(bitmap, normalizedTag);
+        var work = new RecognitionWork(
+            new WindowsOcrFrame(
+                frame.Bounds,
+                frame.Stride,
+                frame.Bgra32),
+            normalizedTag,
+            cancellationToken);
         lock (_queueSync)
         {
             ObjectDisposedException.ThrowIf(
@@ -142,8 +142,10 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
         ReadOnlySpan<byte> source,
         int stride,
         int width,
-        int height)
+        int height,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (width <= 0 || height <= 0)
             return [];
         var rowBytes = checked(width * 4);
@@ -153,15 +155,18 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
             throw new ArgumentException("The capture frame is incomplete.");
         }
 
-        if (stride == rowBytes)
+        if (stride == rowBytes && !cancellationToken.CanBeCanceled)
             return source[..checked(rowBytes * height)].ToArray();
 
         var packed = new byte[checked(rowBytes * height)];
         for (var row = 0; row < height; row++)
         {
+            if ((row & 0x1F) == 0)
+                cancellationToken.ThrowIfCancellationRequested();
             source.Slice(row * stride, rowBytes)
                 .CopyTo(packed.AsSpan(row * rowBytes, rowBytes));
         }
+        cancellationToken.ThrowIfCancellationRequested();
         return packed;
     }
 
@@ -227,9 +232,10 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
         return null;
     }
 
-    private static WindowsOcrBitmap PrepareBitmap(
-        CaptureFrame frame,
-        int maxImageDimension)
+    internal static WindowsOcrBitmap PrepareBitmap(
+        WindowsOcrFrame frame,
+        int maxImageDimension,
+        CancellationToken cancellationToken)
     {
         var width = frame.Bounds.Width;
         var height = frame.Bounds.Height;
@@ -237,10 +243,11 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
             throw new ArgumentOutOfRangeException(nameof(frame));
 
         var packed = PackBgraRows(
-            frame.Bgra32.Span,
+            frame.Pixels.Span,
             frame.Stride,
             width,
-            height);
+            height,
+            cancellationToken);
         if (width <= maxImageDimension && height <= maxImageDimension)
             return new WindowsOcrBitmap(width, height, packed);
 
@@ -259,7 +266,8 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
                     width,
                     height,
                     maxImageDimension,
-                    scaledHeight));
+                    scaledHeight,
+                    cancellationToken));
         }
 
         var scaledWidth = Math.Max(
@@ -275,7 +283,8 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
                 width,
                 height,
                 scaledWidth,
-                maxImageDimension));
+                maxImageDimension,
+                cancellationToken));
     }
 
     internal static byte[] DownscaleBgra(
@@ -283,8 +292,10 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
         int width,
         int height,
         int targetWidth,
-        int targetHeight)
+        int targetHeight,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (width <= 0 || height <= 0 ||
             targetWidth <= 0 || targetHeight <= 0 ||
             targetWidth > width || targetHeight > height)
@@ -299,6 +310,8 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
         var target = new byte[checked(targetWidth * targetHeight * 4)];
         for (var y = 0; y < targetHeight; y++)
         {
+            if ((y & 0xF) == 0)
+                cancellationToken.ThrowIfCancellationRequested();
             var sourceY = ((y + 0.5) * height / targetHeight) - 0.5;
             if (sourceY < 0)
                 sourceY = 0;
@@ -338,6 +351,7 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
                 }
             }
         }
+        cancellationToken.ThrowIfCancellationRequested();
         return target;
     }
 
@@ -372,7 +386,29 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
 
                 try
                 {
-                    var result = RecognizeWorkAsync(work)
+                    int maxImageDimension;
+                    lock (_invokeSync)
+                    {
+                        ObjectDisposedException.ThrowIf(
+                            Volatile.Read(ref _disposed) != 0,
+                            this);
+                        maxImageDimension = _backend.MaxImageDimension;
+                    }
+                    using var preparationCancellation =
+                        CancellationTokenSource.CreateLinkedTokenSource(
+                            work.CallerCancellation,
+                            _workerCancellation.Token);
+                    var bitmap = _preparer.Prepare(
+                        work.Frame,
+                        maxImageDimension,
+                        preparationCancellation.Token);
+                    preparationCancellation.Token.ThrowIfCancellationRequested();
+                    var result = bitmap.Bgra32.All(static value => value == 0)
+                        ? new ScreenOcrResult(
+                            null,
+                            "OcrNoText",
+                            "未识别到文字。")
+                        : RecognizeWorkAsync(work, bitmap)
                         .GetAwaiter()
                         .GetResult();
                     work.Completion.TrySetResult(result);
@@ -387,6 +423,12 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
                     work.Completion.TrySetException(
                         new ObjectDisposedException(
                             nameof(WindowsScreenOcrService)));
+                }
+                catch (OperationCanceledException)
+                    when (work.CallerCancellation.IsCancellationRequested)
+                {
+                    work.Completion.TrySetCanceled(
+                        work.CallerCancellation);
                 }
                 catch (Exception)
                 {
@@ -409,7 +451,8 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
     }
 
     private async Task<ScreenOcrResult> RecognizeWorkAsync(
-        RecognitionWork work)
+        RecognitionWork work,
+        WindowsOcrBitmap bitmap)
     {
         IWindowsOcrEngine? engine;
         Task<IReadOnlyList<string>>? recognition;
@@ -419,8 +462,9 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
             ObjectDisposedException.ThrowIf(
                 Volatile.Read(ref _disposed) != 0,
                 this);
+            work.CallerCancellation.ThrowIfCancellationRequested();
             engineFailure = TryCreateRecognition(
-                work.Bitmap,
+                bitmap,
                 work.LanguageTag,
                 out engine,
                 out recognition);
@@ -458,6 +502,33 @@ internal sealed record WindowsOcrBitmap(
     int Width,
     int Height,
     byte[] Bgra32);
+
+internal readonly record struct WindowsOcrFrame(
+    FloatDesk.Core.Geometry.PixelRect Bounds,
+    int Stride,
+    ReadOnlyMemory<byte> Pixels);
+
+internal interface IWindowsOcrFramePreparer
+{
+    WindowsOcrBitmap Prepare(
+        WindowsOcrFrame frame,
+        int maxImageDimension,
+        CancellationToken cancellationToken);
+}
+
+internal sealed class WindowsOcrFramePreparer : IWindowsOcrFramePreparer
+{
+    public static WindowsOcrFramePreparer Instance { get; } = new();
+
+    public WindowsOcrBitmap Prepare(
+        WindowsOcrFrame frame,
+        int maxImageDimension,
+        CancellationToken cancellationToken) =>
+        WindowsScreenOcrService.PrepareBitmap(
+            frame,
+            maxImageDimension,
+            cancellationToken);
+}
 
 internal interface IWindowsOcrEngine : IDisposable
 {
@@ -542,13 +613,16 @@ internal sealed class WinRtWindowsOcrBackend : IWindowsOcrBackend
 }
 
 internal sealed class RecognitionWork(
-    WindowsOcrBitmap bitmap,
-    string? languageTag)
+    WindowsOcrFrame frame,
+    string? languageTag,
+    CancellationToken callerCancellation)
 {
     private int _state;
 
-    public WindowsOcrBitmap Bitmap { get; } = bitmap;
+    public WindowsOcrFrame Frame { get; } = frame;
     public string? LanguageTag { get; } = languageTag;
+    public CancellationToken CallerCancellation { get; } =
+        callerCancellation;
     public TaskCompletionSource<ScreenOcrResult> Completion { get; } =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 

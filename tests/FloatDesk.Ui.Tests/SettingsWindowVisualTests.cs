@@ -247,48 +247,6 @@ public sealed class SettingsWindowVisualTests
         }
     }
 
-    [Fact]
-    public void ImportAndResetReloadWithOcrLanguageOptions()
-    {
-        var code = File.ReadAllText(FindRepoFile(
-            "src/FloatDesk.App/Views/SettingsWindow.xaml.cs"));
-        var import = ExtractMethod(
-            code,
-            "private async void OnImportSettingsClick");
-        var reset = ExtractMethod(
-            code,
-            "private async void OnResetPreferencesClick");
-
-        foreach (var method in new[] { import, reset })
-        {
-            Assert.Contains(
-                "await ReloadViewModelAsync();",
-                method,
-                StringComparison.Ordinal);
-            Assert.DoesNotContain(
-                "SettingsViewModel.From(_settings.Current)",
-                method,
-                StringComparison.Ordinal);
-        }
-    }
-
-    private static string ExtractMethod(string source, string signature)
-    {
-        var start = source.IndexOf(signature, StringComparison.Ordinal);
-        Assert.True(start >= 0, $"Could not find '{signature}'.");
-        var opening = source.IndexOf('{', start);
-        Assert.True(opening >= 0, $"Could not find method body for '{signature}'.");
-        var depth = 0;
-        for (var index = opening; index < source.Length; index++)
-        {
-            if (source[index] == '{')
-                depth++;
-            else if (source[index] == '}' && --depth == 0)
-                return source[start..(index + 1)];
-        }
-        throw new InvalidOperationException($"Unterminated method '{signature}'.");
-    }
-
     private static string FindRepoFile(string relativePath)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

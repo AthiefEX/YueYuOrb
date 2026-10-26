@@ -440,11 +440,10 @@ public partial class SettingsWindow : Window
     private async Task ReloadViewModelAsync(AppSettings? savedSnapshot = null)
     {
         var settings = savedSnapshot ?? _settings.Current;
-        var hasSavedKey = await HasSavedTranslationKeyAsync(settings.Translation);
-        _viewModel = SettingsViewModel.From(
+        _viewModel = await SettingsReloadFactory.CreateAsync(
             settings,
-            hasSavedKey,
-            _getOcrLanguages());
+            _translationCredentials,
+            _getOcrLanguages);
         DataContext = _viewModel;
         ApplyTranslationProviderLayout();
         await RefreshTranslationKeyStatusAsync();
@@ -499,24 +498,6 @@ public partial class SettingsWindow : Window
             _viewModel.HasSavedTranslationKey = false;
             TranslationKeyStatusText.Text =
                 $"无法读取密钥状态：{exception.GetType().Name}";
-        }
-    }
-
-    private async Task<bool> HasSavedTranslationKeyAsync(
-        TranslationSettings settings)
-    {
-        if (settings.Provider == TranslationProviderKind.MyMemory)
-            return false;
-        try
-        {
-            return await _translationCredentials.HasAsync(
-                settings.Provider,
-                settings.Endpoint,
-                CancellationToken.None);
-        }
-        catch
-        {
-            return false;
         }
     }
 

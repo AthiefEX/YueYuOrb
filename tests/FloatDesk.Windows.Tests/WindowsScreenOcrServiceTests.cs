@@ -402,6 +402,73 @@ public sealed class WindowsScreenOcrServiceTests
             service.RecognizeAsync(frame, null, CancellationToken.None));
     }
 
+    [Fact(Timeout = 10_000)]
+    public async Task CancelledOversizedPreparationDoesNotStartWinRtOrOverlapSecondCall()
+    {
+        var preparer = new BlockingFramePreparer();
+        var engine = new FakeOcrEngine(["second"]);
+        var backend = new FakeOcrBackend
+        {
+            MaxImageDimension = 4,
+            ProfileEngine = engine
+        };
+        using var service = new WindowsScreenOcrService(backend, preparer);
+        using var frame = Frame(64, 64, 256);
+        using var cancellation = new CancellationTokenSource();
+
+        var canceledCall = service.RecognizeAsync(
+            frame,
+            null,
+            cancellation.Token);
+        await preparer.FirstStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => canceledCall);
+
+        var secondCall = service.RecognizeAsync(
+            frame,
+            null,
+            CancellationToken.None);
+        await Task.Delay(50);
+
+        Assert.Equal(1, preparer.CallCount);
+        Assert.Equal(0, engine.CallCount);
+
+        preparer.ReleaseFirst.TrySetResult();
+
+        Assert.Equal(
+            "second",
+            (await secondCall.WaitAsync(TimeSpan.FromSeconds(2))).Text);
+        Assert.Equal(2, preparer.CallCount);
+        Assert.Equal(1, engine.CallCount);
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task DisposeDuringPreparationNeverStartsWinRtWork()
+    {
+        var preparer = new BlockingFramePreparer();
+        var engine = new FakeOcrEngine(["unexpected"]);
+        var backend = new FakeOcrBackend { ProfileEngine = engine };
+        var service = new WindowsScreenOcrService(backend, preparer);
+        using var frame = Frame(64, 64, 256);
+
+        var recognition = service.RecognizeAsync(
+            frame,
+            null,
+            CancellationToken.None);
+        await preparer.FirstStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        service.Dispose();
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => recognition.WaitAsync(TimeSpan.FromSeconds(2)));
+
+        preparer.ReleaseFirst.TrySetResult();
+        await Task.Delay(50);
+
+        Assert.Equal(1, preparer.CallCount);
+        Assert.Equal(0, engine.CallCount);
+    }
+
     private static CaptureFrame NonBlankFrame() =>
         new(
             new PixelRect(0, 0, 1, 1),
@@ -494,6 +561,29 @@ public sealed class WindowsScreenOcrServiceTests
 
         public void Dispose()
         {
+        }
+    }
+
+    private sealed class BlockingFramePreparer : IWindowsOcrFramePreparer
+    {
+        public TaskCompletionSource FirstStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleaseFirst { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int CallCount { get; private set; }
+
+        public WindowsOcrBitmap Prepare(
+            WindowsOcrFrame frame,
+            int maxImageDimension,
+            CancellationToken cancellationToken)
+        {
+            CallCount++;
+            if (CallCount == 1)
+            {
+                FirstStarted.TrySetResult();
+                ReleaseFirst.Task.GetAwaiter().GetResult();
+            }
+            return new WindowsOcrBitmap(1, 1, [1, 2, 3, 255]);
         }
     }
 }

@@ -16,6 +16,7 @@ public sealed class RegionSelectionCoordinator
         PixelRect,
         BitmapSource,
         IRegionSelectionSurface> _surfaceFactory;
+    private readonly Action<Action> _dispatch;
 
     public RegionSelectionCoordinator()
         : this(
@@ -25,18 +26,21 @@ public sealed class RegionSelectionCoordinator
                 new CaptureOverlaySurface(new CaptureOverlayWindow(
                     monitor,
                     frozenBounds,
-                    bitmap)))
+                    bitmap)),
+            DispatchToWpf)
     {
     }
 
     internal RegionSelectionCoordinator(
         Func<IReadOnlyList<DisplayMonitor>> getMonitors,
         Func<CaptureFrame, BitmapSource> bitmapFactory,
-        Func<DisplayMonitor, PixelRect, BitmapSource, IRegionSelectionSurface> surfaceFactory)
+        Func<DisplayMonitor, PixelRect, BitmapSource, IRegionSelectionSurface> surfaceFactory,
+        Action<Action>? dispatch = null)
     {
         _getMonitors = getMonitors;
         _bitmapFactory = bitmapFactory;
         _surfaceFactory = surfaceFactory;
+        _dispatch = dispatch ?? DispatchToWpf;
     }
 
     public async Task<PixelRect?> SelectAsync(
@@ -47,138 +51,146 @@ public sealed class RegionSelectionCoordinator
         ArgumentNullException.ThrowIfNull(desktop);
         var completion = new TaskCompletionSource<PixelRect?>(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        var sync = new object();
         var surfaces = new List<IRegionSelectionSurface>();
         var shown = new HashSet<IRegionSelectionSurface>();
+        var closed = new HashSet<IRegionSelectionSurface>();
         var closeStarted = false;
         PixelPoint? anchor = null;
         var selection = new PixelRect(0, 0, 0, 0);
 
-        static void CloseSurface(
-            IRegionSelectionSurface surface,
-            bool wasShown)
+        void CloseAll()
         {
-            try
+            foreach (var surface in surfaces)
             {
-                if (wasShown)
-                    surface.Hide();
-            }
-            catch (Exception)
-            {
-                // Closing is best effort; one broken overlay must not strand
-                // the remaining selection windows.
-            }
-            try
-            {
-                surface.CloseWithoutCancelling();
-            }
-            catch (Exception)
-            {
+                if (!closed.Add(surface))
+                    continue;
+                if (shown.Contains(surface))
+                {
+                    try
+                    {
+                        surface.Hide();
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+                try
+                {
+                    surface.CloseWithoutCancelling();
+                }
+                catch (Exception)
+                {
+                }
             }
         }
 
         void Complete(PixelRect? result)
         {
-            (IRegionSelectionSurface Surface, bool WasShown)[] snapshot;
-            lock (sync)
+            if (!completion.TrySetResult(result))
+                return;
+            closeStarted = true;
+            CloseAll();
+        }
+
+        void Fail(Exception exception)
+        {
+            if (!completion.TrySetException(exception))
+                return;
+            closeStarted = true;
+            CloseAll();
+        }
+
+        void FailOrCancel(Exception exception)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                Complete(null);
+            else
+                Fail(exception);
+        }
+
+        void HandleDispatchFailure(Exception exception)
+        {
+            var completed = cancellationToken.IsCancellationRequested
+                ? completion.TrySetResult(null)
+                : completion.TrySetException(exception);
+            if (!completed)
+                return;
+
+            closeStarted = true;
+            try
             {
-                if (!completion.TrySetResult(result))
-                    return;
-                closeStarted = true;
-                snapshot = surfaces
-                    .Select(surface => (
-                        Surface: surface,
-                        WasShown: shown.Contains(surface)))
-                    .ToArray();
+                _dispatch(CloseAll);
             }
-            foreach (var (surface, wasShown) in snapshot)
-                CloseSurface(surface, wasShown);
+            catch (Exception)
+            {
+                // The dispatcher may already be shutting down. This direct
+                // pass is the last opportunity to remove topmost overlays.
+                CloseAll();
+            }
+        }
+
+        void HandleSurfaceEvent(Action action)
+        {
+            try
+            {
+                _dispatch(() =>
+                {
+                    if (completion.Task.IsCompleted)
+                        return;
+                    try
+                    {
+                        action();
+                    }
+                    catch (Exception exception)
+                    {
+                        FailOrCancel(exception);
+                    }
+                });
+            }
+            catch (Exception exception)
+            {
+                HandleDispatchFailure(exception);
+            }
         }
 
         void UpdateSelection(PixelPoint current)
         {
-            lock (sync)
+            if (closeStarted || anchor is null)
+                return;
+            selection = SelectionGeometry.FromPoints(
+                anchor.Value,
+                current);
+            foreach (var surface in surfaces)
             {
-                if (closeStarted || anchor is null)
-                    return;
-                selection = SelectionGeometry.FromPoints(
-                    anchor.Value,
-                    current);
-                foreach (var surface in surfaces)
-                {
-                    if (closeStarted)
-                        break;
-                    surface.ShowSelection(selection);
-                }
+                if (closeStarted)
+                    break;
+                surface.ShowSelection(selection);
             }
         }
 
-        using var registration =
-            cancellationToken.Register(() => Complete(null));
-        if (completion.Task.IsCompleted)
-            return null;
-
-        var bitmap = _bitmapFactory(desktop);
-        var monitors = _getMonitors();
-        diagnostics?.Invoke(
-            "capture.region.overlays",
-            new Dictionary<string, object?>
-            {
-                ["count"] = monitors.Count,
-                ["frozenBounds"] = desktop.Bounds.ToString()
-            });
-
-        foreach (var monitor in monitors)
-        {
-            if (completion.Task.IsCompleted)
-                break;
-
-            var surface = _surfaceFactory(
-                monitor,
-                desktop.Bounds,
-                bitmap);
-            var closeImmediately = false;
-            lock (sync)
-            {
-                surfaces.Add(surface);
-                closeImmediately =
-                    closeStarted || completion.Task.IsCompleted;
-            }
-            if (closeImmediately)
-            {
-                CloseSurface(surface, false);
-                break;
-            }
-        }
-
-        if (completion.Task.IsCompleted || surfaces.Count == 0)
-        {
-            Complete(null);
-            return null;
-        }
-
-        lock (sync)
+        void AttachHandlers()
         {
             foreach (var surface in surfaces)
             {
-                surface.DragStarted += point =>
+                surface.DragStarted += point => HandleSurfaceEvent(() =>
                 {
-                    lock (sync)
+                    if (!closeStarted)
                     {
-                        if (closeStarted)
-                            return;
                         anchor = point;
+                        diagnostics?.Invoke(
+                            "capture.region.drag.started",
+                            new Dictionary<string, object?>
+                            {
+                                ["anchor"] = point.ToString()
+                            });
+                        UpdateSelection(point);
                     }
-                    diagnostics?.Invoke(
-                        "capture.region.drag.started",
-                        new Dictionary<string, object?>
-                        {
-                            ["anchor"] = point.ToString()
-                        });
+                });
+                surface.DragMoved += point => HandleSurfaceEvent(() =>
+                {
                     UpdateSelection(point);
-                };
-                surface.DragMoved += UpdateSelection;
-                surface.DragCompleted += point =>
+                });
+                surface.DragCompleted += point => HandleSurfaceEvent(() =>
                 {
                     UpdateSelection(point);
                     diagnostics?.Invoke(
@@ -187,63 +199,155 @@ public sealed class RegionSelectionCoordinator
                         {
                             ["selection"] = selection.ToString()
                         });
-                };
-                surface.CancelRequested += () =>
+                });
+                surface.CancelRequested += () => HandleSurfaceEvent(() =>
                 {
-                    diagnostics?.Invoke("capture.region.cancelled", null);
+                    try
+                    {
+                        diagnostics?.Invoke(
+                            "capture.region.cancelled",
+                            null);
+                    }
+                    catch (Exception)
+                    {
+                    }
                     Complete(null);
-                };
-                surface.ConfirmRequested += () =>
+                });
+                surface.ConfirmRequested += () => HandleSurfaceEvent(() =>
                 {
                     diagnostics?.Invoke(
                         "capture.region.confirmed",
                         new Dictionary<string, object?>
                         {
                             ["selection"] = selection.ToString(),
-                            ["usable"] = SelectionGeometry.IsUsable(selection)
+                            ["usable"] =
+                                SelectionGeometry.IsUsable(selection)
                         });
                     if (SelectionGeometry.IsUsable(selection))
                         Complete(selection);
-                };
-                surface.NudgeRequested += (dx, dy) =>
+                });
+                surface.NudgeRequested += (dx, dy) => HandleSurfaceEvent(() =>
                 {
-                    lock (sync)
+                    if (closeStarted ||
+                        !SelectionGeometry.IsUsable(selection))
                     {
-                        if (closeStarted ||
-                            !SelectionGeometry.IsUsable(selection))
-                        {
-                            return;
-                        }
-                        selection = ApplyNudge(
-                            selection,
-                            desktop.Bounds,
-                            dx,
-                            dy);
-                        foreach (var current in surfaces)
-                            current.ShowSelection(selection);
+                        return;
                     }
-                };
+                    selection = ApplyNudge(
+                        selection,
+                        desktop.Bounds,
+                        dx,
+                        dy);
+                    foreach (var current in surfaces)
+                        current.ShowSelection(selection);
+                });
             }
         }
 
-        lock (sync)
+        void BeginSelection()
         {
-            foreach (var surface in surfaces)
+            if (completion.Task.IsCompleted ||
+                cancellationToken.IsCancellationRequested)
             {
-                if (closeStarted || completion.Task.IsCompleted)
-                    break;
-                shown.Add(surface);
-                surface.Show();
-                if (closeStarted || completion.Task.IsCompleted)
-                    break;
-                surface.PlaceWindow();
+                Complete(null);
+                return;
             }
-            if (!closeStarted && !completion.Task.IsCompleted)
+
+            try
             {
-                surfaces[0].Activate();
-                surfaces[0].Focus();
+                var bitmap = _bitmapFactory(desktop);
+                var monitors = _getMonitors();
+                diagnostics?.Invoke(
+                    "capture.region.overlays",
+                    new Dictionary<string, object?>
+                    {
+                        ["count"] = monitors.Count,
+                        ["frozenBounds"] = desktop.Bounds.ToString()
+                    });
+
+                foreach (var monitor in monitors)
+                {
+                    if (completion.Task.IsCompleted ||
+                        cancellationToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    surfaces.Add(_surfaceFactory(
+                        monitor,
+                        desktop.Bounds,
+                        bitmap));
+                    if (completion.Task.IsCompleted ||
+                        cancellationToken.IsCancellationRequested)
+                    {
+                        closeStarted = true;
+                        CloseAll();
+                        completion.TrySetResult(null);
+                        return;
+                    }
+                }
+
+                if (completion.Task.IsCompleted ||
+                    cancellationToken.IsCancellationRequested ||
+                    surfaces.Count == 0)
+                {
+                    closeStarted = true;
+                    CloseAll();
+                    completion.TrySetResult(null);
+                    return;
+                }
+
+                AttachHandlers();
+                foreach (var surface in surfaces)
+                {
+                    if (closeStarted || completion.Task.IsCompleted)
+                        break;
+                    shown.Add(surface);
+                    surface.Show();
+                    if (closeStarted || completion.Task.IsCompleted)
+                        return;
+                    surface.PlaceWindow();
+                }
+                if (!closeStarted && !completion.Task.IsCompleted)
+                {
+                    surfaces[0].Activate();
+                    surfaces[0].Focus();
+                }
+            }
+            catch (Exception exception)
+            {
+                if (completion.Task.IsCompleted)
+                    return;
+                FailOrCancel(exception);
             }
         }
+
+        void Cancel()
+        {
+            try
+            {
+                _dispatch(() => Complete(null));
+            }
+            catch (Exception exception)
+            {
+                HandleDispatchFailure(exception);
+            }
+        }
+
+        using var registration = cancellationToken.Register(Cancel);
+        if (cancellationToken.IsCancellationRequested)
+            Cancel();
+        else
+        {
+            try
+            {
+                _dispatch(BeginSelection);
+            }
+            catch (Exception exception)
+            {
+                HandleDispatchFailure(exception);
+            }
+        }
+
         return await completion.Task.ConfigureAwait(true);
     }
 
@@ -262,6 +366,17 @@ public sealed class RegionSelectionCoordinator
             frozenBounds.Top,
             frozenBounds.Bottom - selection.Height);
         return new PixelRect(left, top, selection.Width, selection.Height);
+    }
+
+    private static void DispatchToWpf(Action action)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            action();
+            return;
+        }
+        dispatcher.Invoke(action);
     }
 }
 
