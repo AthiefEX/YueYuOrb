@@ -247,6 +247,46 @@ public sealed class SettingsWindowVisualTests
         }
     }
 
+    [Fact]
+    public void AppRuntimeSharesTranslationServicesAndDispatchesLifecycle()
+    {
+        var source = File.ReadAllText(FindRepoFile(
+            "src/FloatDesk.App/AppRuntime.cs"));
+
+        foreach (var integration in new[]
+                 {
+                     "HotkeyAction.TranslateSelection",
+                     "TranslateSelectionAsync",
+                     "TranslateSelectionRequested",
+                     "_translationRuntime.SetSessionLocked",
+                     "_translationRuntime.SetEmergencyPaused",
+                     "_translationRuntime.PauseForCapture",
+                     "_translationRuntime.ResumeAfterCapture",
+                     "new TranslationRuntime(",
+                     "new SelectedTextReader()",
+                     "new TranslationOverlayWindow()"
+                 })
+        {
+            Assert.Contains(
+                integration,
+                source,
+                StringComparison.Ordinal);
+        }
+
+        Assert.Contains(
+            "_translationCredentials,",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_translationProviders,",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "() => _ocr.AvailableLanguages",
+            source,
+            StringComparison.Ordinal);
+    }
+
     private static string FindRepoFile(string relativePath)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

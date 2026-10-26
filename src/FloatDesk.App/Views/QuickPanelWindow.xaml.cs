@@ -54,6 +54,9 @@ public partial class QuickPanelWindow : Window
     public event Action? AiRequested;
     public event Action? NotesRequested;
     public event Action<FloatDesk.Core.Models.CaptureMode>? CaptureRequested;
+    public event Action? TranslateSelectionRequested;
+    public event Action? TranslateRegionRequested;
+    public event Action? TranslateSubtitlesRequested;
 
     public bool IsPanelOpen => _panelOpen;
 
@@ -371,7 +374,10 @@ public partial class QuickPanelWindow : Window
         (AiButton, WheelActionKind.AiBrowser),
         (NotesButton, WheelActionKind.Notes),
         (InputLockButton, WheelActionKind.InputLock),
-        (SettingsButton, WheelActionKind.Settings)
+        (SettingsButton, WheelActionKind.Settings),
+        (TranslateSelectionButton, WheelActionKind.TranslateSelection),
+        (TranslateRegionButton, WheelActionKind.TranslateRegion),
+        (TranslateSubtitlesButton, WheelActionKind.TranslateSubtitles)
     ];
 
     private Button[] GetVisibleWheelButtons()
@@ -1284,6 +1290,21 @@ public partial class QuickPanelWindow : Window
 
     private void OnMonitorCaptureClick(object sender, RoutedEventArgs e) =>
         CaptureRequested?.Invoke(FloatDesk.Core.Models.CaptureMode.CurrentMonitor);
+
+    private void OnTranslateSelectionClick(
+        object sender,
+        RoutedEventArgs e) =>
+        TranslateSelectionRequested?.Invoke();
+
+    private void OnTranslateRegionClick(
+        object sender,
+        RoutedEventArgs e) =>
+        TranslateRegionRequested?.Invoke();
+
+    private void OnTranslateSubtitlesClick(
+        object sender,
+        RoutedEventArgs e) =>
+        TranslateSubtitlesRequested?.Invoke();
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern int GetSystemMetrics(int index);

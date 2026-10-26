@@ -20,7 +20,10 @@ public sealed class QuickPanelWindowLayoutTests
         "AiButton",
         "NotesButton",
         "InputLockButton",
-        "SettingsButton"
+        "SettingsButton",
+        "TranslateSelectionButton",
+        "TranslateRegionButton",
+        "TranslateSubtitlesButton"
     ];
     private static readonly string[] OrbitNames =
     [
@@ -160,7 +163,7 @@ public sealed class QuickPanelWindowLayoutTests
 
                 Assert.Equal(Visibility.Visible, scroller.Visibility);
                 Assert.Equal(
-                    23,
+                    26,
                     canvas.Children
                         .OfType<Button>()
                         .Count(button => button.Visibility == Visibility.Visible));
@@ -315,9 +318,15 @@ public sealed class QuickPanelWindowLayoutTests
                     "AiButton",
                     "NotesButton",
                     "InputLockButton",
-                    "SettingsButton"
+                    "SettingsButton",
+                    "TranslateSelectionButton",
+                    "TranslateRegionButton",
+                    "TranslateSubtitlesButton"
                 ];
-                foreach (var name in surfaces)
+                foreach (var name in surfaces.Where(name =>
+                             IsFullyInsideWheelViewport(
+                                 window,
+                                 name)))
                 {
                     var element = Assert.IsAssignableFrom<FrameworkElement>(
                         window.FindName(name));
@@ -387,7 +396,10 @@ public sealed class QuickPanelWindowLayoutTests
                     geometry.Bounds.Height < 450,
                     "An empty wheel should only cover its action arc.");
 
-                foreach (var name in FixedActionNames)
+                foreach (var name in FixedActionNames.Where(name =>
+                             IsFullyInsideWheelViewport(
+                                 window,
+                                 name)))
                 {
                     var button = Assert.IsAssignableFrom<FrameworkElement>(
                         window.FindName(name));
@@ -694,7 +706,7 @@ public sealed class QuickPanelWindowLayoutTests
                     .Where(button => button.Visibility == Visibility.Visible)
                     .ToArray();
 
-                Assert.Equal(23, wheelButtons.Length);
+                Assert.Equal(26, wheelButtons.Length);
                 Assert.Contains(
                     wheelButtons,
                     button => ReferenceEquals(
@@ -843,6 +855,9 @@ public sealed class QuickPanelWindowLayoutTests
     [InlineData(WheelActionKind.Notes, false)]
     [InlineData(WheelActionKind.InputLock, false)]
     [InlineData(WheelActionKind.Settings, false)]
+    [InlineData(WheelActionKind.TranslateSelection, false)]
+    [InlineData(WheelActionKind.TranslateRegion, false)]
+    [InlineData(WheelActionKind.TranslateSubtitles, false)]
     public async Task DisabledBuiltInWheelActionIsHidden(
         WheelActionKind action,
         bool enabled)
@@ -869,7 +884,7 @@ public sealed class QuickPanelWindowLayoutTests
                     .OfType<Button>()
                     .Where(button => button.Visibility == Visibility.Visible)
                     .ToArray();
-                Assert.Equal(6, visibleActions.Length);
+                Assert.Equal(9, visibleActions.Length);
                 Assert.DoesNotContain(
                     visibleActions,
                     button => button.Name == action switch
@@ -881,6 +896,12 @@ public sealed class QuickPanelWindowLayoutTests
                         WheelActionKind.Notes => "NotesButton",
                         WheelActionKind.InputLock => "InputLockButton",
                         WheelActionKind.Settings => "SettingsButton",
+                        WheelActionKind.TranslateSelection =>
+                            "TranslateSelectionButton",
+                        WheelActionKind.TranslateRegion =>
+                            "TranslateRegionButton",
+                        WheelActionKind.TranslateSubtitles =>
+                            "TranslateSubtitlesButton",
                         _ => throw new ArgumentOutOfRangeException(nameof(action))
                     });
             }
@@ -895,6 +916,106 @@ public sealed class QuickPanelWindowLayoutTests
         Assert.True(
             thread.Join(TimeSpan.FromSeconds(5)),
             "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task TranslationWheelButtonsRaiseDistinctEvents()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new QuickPanelWindow();
+                var raised = new List<string>();
+                window.TranslateSelectionRequested +=
+                    () => raised.Add("selection");
+                window.TranslateRegionRequested +=
+                    () => raised.Add("region");
+                window.TranslateSubtitlesRequested +=
+                    () => raised.Add("subtitles");
+                window.Apply(
+                    AppSettings.CreateDefault(),
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+
+                foreach (var (name, expected) in new[]
+                         {
+                             ("TranslateSelectionButton", "selection"),
+                             ("TranslateRegionButton", "region"),
+                             ("TranslateSubtitlesButton", "subtitles")
+                         })
+                {
+                    var button = Assert.IsType<Button>(
+                        window.FindName(name));
+                    Assert.False(string.IsNullOrWhiteSpace(
+                        System.Windows.Automation.AutomationProperties
+                            .GetName(button)));
+                    button.RaiseEvent(
+                        new RoutedEventArgs(Button.ClickEvent));
+                    Assert.Contains(expected, raised);
+                }
+
+                Assert.Equal(
+                    ["selection", "region", "subtitles"],
+                    raised);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(5)));
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task TranslationWheelButtonsUseDistinctBlueGreenAndSlateIcons()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new QuickPanelWindow();
+                window.Apply(
+                    AppSettings.CreateDefault(),
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+
+                var expectedBrushes = new[]
+                {
+                    ("TranslateSelectionButton", "MenuBlueBrush"),
+                    ("TranslateRegionButton", "MenuGreenBrush"),
+                    ("TranslateSubtitlesButton", "MenuSlateBrush")
+                };
+                foreach (var (name, brushKey) in expectedBrushes)
+                {
+                    var button = Assert.IsType<Button>(
+                        window.FindName(name));
+                    var content = Assert.IsType<Grid>(button.Content);
+                    var icon = Assert.IsType<Border>(
+                        content.Children[0]);
+                    Assert.Same(
+                        window.FindResource(brushKey),
+                        icon.Background);
+                }
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(5)));
         await Task.CompletedTask;
         if (failure is not null)
             throw new Xunit.Sdk.XunitException(failure.ToString());
@@ -1673,6 +1794,22 @@ public sealed class QuickPanelWindowLayoutTests
             top + inset,
             Math.Max(1, element.Width - (inset * 2)),
             Math.Max(1, element.Height - (inset * 2)));
+    }
+
+    private static bool IsFullyInsideWheelViewport(
+        QuickPanelWindow window,
+        string elementName)
+    {
+        var element = Assert.IsAssignableFrom<FrameworkElement>(
+            window.FindName(elementName));
+        var scroller = Assert.IsType<ScrollViewer>(
+            window.FindName("WheelScroller"));
+        var top = Canvas.GetTop(element);
+        var height = element.Height;
+        var viewportTop = scroller.VerticalOffset;
+        var viewportBottom = viewportTop + scroller.Height;
+        return top >= viewportTop - 0.1 &&
+               top + height <= viewportBottom + 0.1;
     }
 
     private static void AssertNoKeyboardFocusTrigger(

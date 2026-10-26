@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Threading;
 using FloatDesk.App.Coordination;
+using FloatDesk.App.Translation;
 using FloatDesk.App.ViewModels;
 using FloatDesk.App.Views;
 using FloatDesk.Core;
@@ -33,6 +34,9 @@ internal sealed class AppRuntime : IDisposable
     private readonly DpapiTranslationCredentialStore _translationCredentials;
     private readonly TranslationProviderFactory _translationProviders = new();
     private readonly WindowsScreenOcrService _ocr = new();
+    private readonly TranslationOverlayWindow _translationOverlay;
+    private readonly SelectedTextReader _selectedTextReader;
+    private readonly TranslationRuntime _translationRuntime;
     private readonly CaptureSessionGate _captureSessionGate = new();
     private readonly RegionSelectionCoordinator _regionSelection = new();
     private readonly DispatcherTimer _inputTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
@@ -46,6 +50,7 @@ internal sealed class AppRuntime : IDisposable
     private HotkeyService? _hotkeys;
     private ForegroundSnapshot _current = EmptySnapshot();
     private ForegroundSnapshot? _lastExternal;
+    private ForegroundSnapshot? _wheelTranslationTarget;
     private bool _manualEnglish;
     private bool _emergencyPaused;
     private bool _sessionLocked;
@@ -63,6 +68,15 @@ internal sealed class AppRuntime : IDisposable
         _notes = new SqliteNoteRepository(paths.NotesDatabase);
         _translationCredentials = new DpapiTranslationCredentialStore(
             Path.Combine(paths.Root, "translation-secrets.dat"));
+        _translationOverlay = new TranslationOverlayWindow();
+        _selectedTextReader = new SelectedTextReader();
+        _translationRuntime = new TranslationRuntime(
+            _translationOverlay,
+            _selectedTextReader,
+            _translationProviders,
+            _translationCredentials,
+            () => _current,
+            () => _wheelTranslationTarget ?? _lastExternal);
         _foreground = new ForegroundMonitor();
         _input = new InputLockEngine(
             new WindowsInputBackend(),
@@ -103,6 +117,8 @@ internal sealed class AppRuntime : IDisposable
         _panel.AiRequested += OpenAi;
         _panel.NotesRequested += OpenNotes;
         _panel.CaptureRequested += mode => _ = StartCaptureAsync(mode);
+        _panel.TranslateSelectionRequested +=
+            OnTranslateSelectionRequested;
 
         _coordinator = new WindowCoordinator(factories, _orb, _panel);
         _captureCoordinator = new CaptureCoordinator(
@@ -113,6 +129,10 @@ internal sealed class AppRuntime : IDisposable
             active =>
             {
                 _captureActive = active;
+                if (active)
+                    _translationRuntime.PauseForCapture();
+                else
+                    _translationRuntime.ResumeAfterCapture();
                 UpdateInputPollingCadence();
             },
             (eventName, properties) =>
@@ -237,6 +257,10 @@ internal sealed class AppRuntime : IDisposable
             _settings.Changed -= OnSettingsChanged;
             _input.StatusChanged -= OnInputStatusChanged;
             _foreground.Changed -= OnForegroundChanged;
+            _translationRuntime.Dispose();
+            _selectedTextReader.Dispose();
+            if (_translationOverlay.IsLoaded)
+                _translationOverlay.Close();
 
             var notes = GetTool<NotesWindow>();
             if (notes is not null)
@@ -373,6 +397,53 @@ internal sealed class AppRuntime : IDisposable
 
     private void OpenNotes() => ShowTool(ToolWindow.Notes);
 
+    private void OnTranslateSelectionRequested()
+    {
+        var target = SelectTranslationTarget();
+        _wheelTranslationTarget = target;
+        _panel?.HideAnimated();
+        _ = TranslateWheelSelectionAsync(target);
+    }
+
+    private async Task TranslateWheelSelectionAsync(
+        ForegroundSnapshot target)
+    {
+        try
+        {
+            await TranslateSelectionAsync(target);
+        }
+        finally
+        {
+            if (_wheelTranslationTarget == target)
+                _wheelTranslationTarget = null;
+        }
+    }
+
+    private async Task TranslateSelectionAsync(
+        ForegroundSnapshot target)
+    {
+        try
+        {
+            await _translationRuntime.TranslateSelectionAsync(
+                target,
+                _lifetime.Token);
+        }
+        catch (OperationCanceledException) when (
+            _lifetime.IsCancellationRequested)
+        {
+        }
+    }
+
+    private ForegroundSnapshot SelectTranslationTarget()
+    {
+        if (_current.TopLevelHwnd != 0 &&
+            !_current.IsOwnInteractive)
+        {
+            return _current;
+        }
+        return _lastExternal ?? _current;
+    }
+
     private async void OnLaunchRequested(LauncherItem item)
     {
         _panel?.HideAnimated();
@@ -412,6 +483,10 @@ internal sealed class AppRuntime : IDisposable
             case HotkeyAction.Notes:
                 OpenNotes();
                 break;
+            case HotkeyAction.TranslateSelection:
+                _ = TranslateSelectionAsync(
+                    SelectTranslationTarget());
+                break;
         }
     }
 
@@ -437,6 +512,7 @@ internal sealed class AppRuntime : IDisposable
     private void ToggleEmergencyPause()
     {
         _emergencyPaused = !_emergencyPaused;
+        _translationRuntime.SetEmergencyPaused(_emergencyPaused);
         _panel?.Apply(
             _settings.Current,
             _manualEnglish,
@@ -661,6 +737,7 @@ internal sealed class AppRuntime : IDisposable
         ThemeService.Apply(settings.General.Theme);
         _orb?.ApplySettings(settings);
         KeepOrbOnCurrentMonitor();
+        _translationRuntime.ApplySettings(settings);
         _panel?.Apply(
             settings,
             _manualEnglish,
@@ -779,6 +856,7 @@ internal sealed class AppRuntime : IDisposable
         _sessionLocked = e.Reason is
             Microsoft.Win32.SessionSwitchReason.SessionLock or
             Microsoft.Win32.SessionSwitchReason.ConsoleDisconnect;
+        _translationRuntime.SetSessionLocked(_sessionLocked);
         UpdateInputPollingCadence();
         if (!_sessionLocked)
             _ = ReEvaluateCurrentAsync();
@@ -873,18 +951,28 @@ internal sealed class AppRuntime : IDisposable
     {
         if (_captureCoordinator is null)
             return;
-        _panel?.PrepareForScreenCapture();
-        var result = await _captureCoordinator.StartAsync(mode, _lifetime.Token);
-        if (!result.Success &&
-            result.ErrorCode is not ("CaptureCancelled" or "CaptureBusy"))
+        _translationRuntime.PauseForCapture();
+        try
         {
-            MessageBox.Show(
-                result.Message ?? "截图失败。",
-                $"{ProductInfo.Name}截图",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+            _panel?.PrepareForScreenCapture();
+            var result = await _captureCoordinator.StartAsync(
+                mode,
+                _lifetime.Token);
+            if (!result.Success &&
+                result.ErrorCode is not ("CaptureCancelled" or "CaptureBusy"))
+            {
+                MessageBox.Show(
+                    result.Message ?? "截图失败。",
+                    $"{ProductInfo.Name}截图",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+            ApplyOverlay(_foreground.Current);
         }
-        ApplyOverlay(_foreground.Current);
+        finally
+        {
+            _translationRuntime.ResumeAfterCapture();
+        }
     }
 
     private static ForegroundSnapshot EmptySnapshot() =>
