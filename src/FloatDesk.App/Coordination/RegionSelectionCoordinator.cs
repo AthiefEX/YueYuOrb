@@ -45,7 +45,77 @@ public sealed class RegionSelectionCoordinator
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(desktop);
-        if (cancellationToken.IsCancellationRequested)
+        var completion = new TaskCompletionSource<PixelRect?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var sync = new object();
+        var surfaces = new List<IRegionSelectionSurface>();
+        var shown = new HashSet<IRegionSelectionSurface>();
+        var closeStarted = false;
+        PixelPoint? anchor = null;
+        var selection = new PixelRect(0, 0, 0, 0);
+
+        static void CloseSurface(
+            IRegionSelectionSurface surface,
+            bool wasShown)
+        {
+            try
+            {
+                if (wasShown)
+                    surface.Hide();
+            }
+            catch (Exception)
+            {
+                // Closing is best effort; one broken overlay must not strand
+                // the remaining selection windows.
+            }
+            try
+            {
+                surface.CloseWithoutCancelling();
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        void Complete(PixelRect? result)
+        {
+            (IRegionSelectionSurface Surface, bool WasShown)[] snapshot;
+            lock (sync)
+            {
+                if (!completion.TrySetResult(result))
+                    return;
+                closeStarted = true;
+                snapshot = surfaces
+                    .Select(surface => (
+                        Surface: surface,
+                        WasShown: shown.Contains(surface)))
+                    .ToArray();
+            }
+            foreach (var (surface, wasShown) in snapshot)
+                CloseSurface(surface, wasShown);
+        }
+
+        void UpdateSelection(PixelPoint current)
+        {
+            lock (sync)
+            {
+                if (closeStarted || anchor is null)
+                    return;
+                selection = SelectionGeometry.FromPoints(
+                    anchor.Value,
+                    current);
+                foreach (var surface in surfaces)
+                {
+                    if (closeStarted)
+                        break;
+                    surface.ShowSelection(selection);
+                }
+            }
+        }
+
+        using var registration =
+            cancellationToken.Register(() => Complete(null));
+        if (completion.Task.IsCompleted)
             return null;
 
         var bitmap = _bitmapFactory(desktop);
@@ -57,105 +127,122 @@ public sealed class RegionSelectionCoordinator
                 ["count"] = monitors.Count,
                 ["frozenBounds"] = desktop.Bounds.ToString()
             });
-        var surfaces = monitors
-            .Select(monitor => _surfaceFactory(
+
+        foreach (var monitor in monitors)
+        {
+            if (completion.Task.IsCompleted)
+                break;
+
+            var surface = _surfaceFactory(
                 monitor,
                 desktop.Bounds,
-                bitmap))
-            .ToArray();
-        if (surfaces.Length == 0)
-            return null;
-
-        var completion = new TaskCompletionSource<PixelRect?>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        PixelPoint? anchor = null;
-        var selection = new PixelRect(0, 0, 0, 0);
-
-        void UpdateSelection(PixelPoint current)
-        {
-            if (anchor is null)
-                return;
-            selection = SelectionGeometry.FromPoints(anchor.Value, current);
-            foreach (var surface in surfaces)
-                surface.ShowSelection(selection);
-        }
-
-        void Complete(PixelRect? result)
-        {
-            if (!completion.TrySetResult(result))
-                return;
-            foreach (var surface in surfaces)
+                bitmap);
+            var closeImmediately = false;
+            lock (sync)
             {
-                surface.Hide();
-                surface.CloseWithoutCancelling();
+                surfaces.Add(surface);
+                closeImmediately =
+                    closeStarted || completion.Task.IsCompleted;
+            }
+            if (closeImmediately)
+            {
+                CloseSurface(surface, false);
+                break;
             }
         }
 
-        foreach (var surface in surfaces)
+        if (completion.Task.IsCompleted || surfaces.Count == 0)
         {
-            surface.DragStarted += point =>
-            {
-                anchor = point;
-                diagnostics?.Invoke(
-                    "capture.region.drag.started",
-                    new Dictionary<string, object?>
-                    {
-                        ["anchor"] = anchor.Value.ToString()
-                    });
-                UpdateSelection(anchor.Value);
-            };
-            surface.DragMoved += UpdateSelection;
-            surface.DragCompleted += point =>
-            {
-                UpdateSelection(point);
-                diagnostics?.Invoke(
-                    "capture.region.drag.completed",
-                    new Dictionary<string, object?>
-                    {
-                        ["selection"] = selection.ToString()
-                    });
-            };
-            surface.CancelRequested += () =>
-            {
-                diagnostics?.Invoke("capture.region.cancelled", null);
-                Complete(null);
-            };
-            surface.ConfirmRequested += () =>
-            {
-                diagnostics?.Invoke(
-                    "capture.region.confirmed",
-                    new Dictionary<string, object?>
-                    {
-                        ["selection"] = selection.ToString(),
-                        ["usable"] = SelectionGeometry.IsUsable(selection)
-                    });
-                if (SelectionGeometry.IsUsable(selection))
-                    Complete(selection);
-            };
-            surface.NudgeRequested += (dx, dy) =>
-            {
-                if (!SelectionGeometry.IsUsable(selection))
-                    return;
-                selection = ApplyNudge(
-                    selection,
-                    desktop.Bounds,
-                    dx,
-                    dy);
-                foreach (var current in surfaces)
-                    current.ShowSelection(selection);
-            };
+            Complete(null);
+            return null;
         }
 
-        using var registration = cancellationToken.Register(() => Complete(null));
-        foreach (var surface in surfaces)
+        lock (sync)
         {
-            surface.Show();
-            surface.PlaceWindow();
+            foreach (var surface in surfaces)
+            {
+                surface.DragStarted += point =>
+                {
+                    lock (sync)
+                    {
+                        if (closeStarted)
+                            return;
+                        anchor = point;
+                    }
+                    diagnostics?.Invoke(
+                        "capture.region.drag.started",
+                        new Dictionary<string, object?>
+                        {
+                            ["anchor"] = point.ToString()
+                        });
+                    UpdateSelection(point);
+                };
+                surface.DragMoved += UpdateSelection;
+                surface.DragCompleted += point =>
+                {
+                    UpdateSelection(point);
+                    diagnostics?.Invoke(
+                        "capture.region.drag.completed",
+                        new Dictionary<string, object?>
+                        {
+                            ["selection"] = selection.ToString()
+                        });
+                };
+                surface.CancelRequested += () =>
+                {
+                    diagnostics?.Invoke("capture.region.cancelled", null);
+                    Complete(null);
+                };
+                surface.ConfirmRequested += () =>
+                {
+                    diagnostics?.Invoke(
+                        "capture.region.confirmed",
+                        new Dictionary<string, object?>
+                        {
+                            ["selection"] = selection.ToString(),
+                            ["usable"] = SelectionGeometry.IsUsable(selection)
+                        });
+                    if (SelectionGeometry.IsUsable(selection))
+                        Complete(selection);
+                };
+                surface.NudgeRequested += (dx, dy) =>
+                {
+                    lock (sync)
+                    {
+                        if (closeStarted ||
+                            !SelectionGeometry.IsUsable(selection))
+                        {
+                            return;
+                        }
+                        selection = ApplyNudge(
+                            selection,
+                            desktop.Bounds,
+                            dx,
+                            dy);
+                        foreach (var current in surfaces)
+                            current.ShowSelection(selection);
+                    }
+                };
+            }
         }
-        if (!completion.Task.IsCompleted)
+
+        lock (sync)
         {
-            surfaces[0].Activate();
-            surfaces[0].Focus();
+            foreach (var surface in surfaces)
+            {
+                if (closeStarted || completion.Task.IsCompleted)
+                    break;
+                shown.Add(surface);
+                surface.Show();
+                if (closeStarted || completion.Task.IsCompleted)
+                    break;
+                surface.PlaceWindow();
+            }
+            if (!closeStarted && !completion.Task.IsCompleted)
+            {
+                surfaces[0].Activate();
+                surfaces[0].Focus();
+            }
         }
         return await completion.Task.ConfigureAwait(true);
     }

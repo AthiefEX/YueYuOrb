@@ -208,6 +208,98 @@ public sealed class WindowsScreenOcrServiceTests
     }
 
     [Fact]
+    public async Task OversizedWidthIsDownscaledToMaxDimensionWithPackedStride()
+    {
+        var engine = new FakeOcrEngine(["scaled"]);
+        var backend = new FakeOcrBackend
+        {
+            MaxImageDimension = 4,
+            ProfileEngine = engine
+        };
+        using var service = new WindowsScreenOcrService(backend);
+        using var frame = Frame(8, 2, 40);
+
+        var result = await service.RecognizeAsync(
+            frame,
+            null,
+            CancellationToken.None);
+
+        Assert.Equal("scaled", result.Text);
+        Assert.NotNull(engine.LastBitmap);
+        Assert.Equal(4, engine.LastBitmap.Width);
+        Assert.Equal(1, engine.LastBitmap.Height);
+        Assert.Equal(4 * 1 * 4, engine.LastBitmap.Bgra32.Length);
+    }
+
+    [Fact]
+    public async Task OversizedHeightIsDownscaledToMaxDimensionWithPackedStride()
+    {
+        var engine = new FakeOcrEngine(["scaled"]);
+        var backend = new FakeOcrBackend
+        {
+            MaxImageDimension = 4,
+            ProfileEngine = engine
+        };
+        using var service = new WindowsScreenOcrService(backend);
+        using var frame = Frame(2, 8, 12);
+
+        var result = await service.RecognizeAsync(
+            frame,
+            null,
+            CancellationToken.None);
+
+        Assert.Equal("scaled", result.Text);
+        Assert.NotNull(engine.LastBitmap);
+        Assert.Equal(1, engine.LastBitmap.Width);
+        Assert.Equal(4, engine.LastBitmap.Height);
+        Assert.Equal(1 * 4 * 4, engine.LastBitmap.Bgra32.Length);
+    }
+
+    [Fact]
+    public async Task FramesAtOrBelowMaxDimensionAreNotUpscaled()
+    {
+        var engine = new FakeOcrEngine(["native"]);
+        var backend = new FakeOcrBackend
+        {
+            MaxImageDimension = 4,
+            ProfileEngine = engine
+        };
+        using var service = new WindowsScreenOcrService(backend);
+        using var frame = Frame(2, 2, 12);
+
+        await service.RecognizeAsync(frame, null, CancellationToken.None);
+
+        Assert.NotNull(engine.LastBitmap);
+        Assert.Equal(2, engine.LastBitmap.Width);
+        Assert.Equal(2, engine.LastBitmap.Height);
+    }
+
+    [Theory]
+    [InlineData(0, 1, 0)]
+    [InlineData(1, 0, 4)]
+    public async Task InvalidDimensionsReturnTypedFailureWithoutCallingBackend(
+        int width,
+        int height,
+        int stride)
+    {
+        var backend = new FakeOcrBackend();
+        using var service = new WindowsScreenOcrService(backend);
+        using var frame = new CaptureFrame(
+            new PixelRect(0, 0, width, height),
+            stride,
+            []);
+
+        var result = await service.RecognizeAsync(
+            frame,
+            null,
+            CancellationToken.None);
+
+        Assert.Equal("OcrFailed", result.ErrorCode);
+        Assert.Null(result.Text);
+        Assert.Equal(0, backend.ProfileCallCount);
+    }
+
+    [Fact]
     public async Task RecognitionFailureDoesNotExposeRecognizedContent()
     {
         var backend = new FakeOcrBackend
@@ -244,14 +336,95 @@ public sealed class WindowsScreenOcrServiceTests
             service.RecognizeAsync(frame, null, cancellation.Token));
     }
 
+    [Fact(Timeout = 10_000)]
+    public async Task ActiveCancellationDoesNotOverlapQueuedRecognition()
+    {
+        var engine = new BlockingOcrEngine();
+        var backend = new FakeOcrBackend { ProfileEngine = engine };
+        using var service = new WindowsScreenOcrService(backend);
+        using var frame = NonBlankFrame();
+        using var cancellation = new CancellationTokenSource();
+
+        var canceledCall = service.RecognizeAsync(
+            frame,
+            null,
+            cancellation.Token);
+        await engine.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => canceledCall);
+
+        var queuedCall = service.RecognizeAsync(
+            frame,
+            null,
+            CancellationToken.None);
+        await Task.Delay(50);
+        Assert.Equal(1, engine.CallCount);
+
+        engine.Release.TrySetResult(["finished"]);
+
+        Assert.Equal(
+            "finished",
+            (await queuedCall.WaitAsync(TimeSpan.FromSeconds(2))).Text);
+        Assert.Equal(2, engine.CallCount);
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task BusyDisposeCompletesActiveAndQueuedCallsWithoutNewWork()
+    {
+        var engine = new BlockingOcrEngine();
+        var backend = new FakeOcrBackend { ProfileEngine = engine };
+        var service = new WindowsScreenOcrService(backend);
+        using var frame = NonBlankFrame();
+
+        var activeCall = service.RecognizeAsync(
+            frame,
+            null,
+            CancellationToken.None);
+        await engine.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var queuedCall = service.RecognizeAsync(
+            frame,
+            null,
+            CancellationToken.None);
+
+        service.Dispose();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => activeCall.WaitAsync(TimeSpan.FromSeconds(2)));
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => queuedCall.WaitAsync(TimeSpan.FromSeconds(2)));
+
+        engine.Release.TrySetResult(["finished"]);
+        await Task.Delay(50);
+
+        Assert.Equal(1, engine.CallCount);
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            service.RecognizeAsync(frame, null, CancellationToken.None));
+    }
+
     private static CaptureFrame NonBlankFrame() =>
         new(
             new PixelRect(0, 0, 1, 1),
             4,
             [1, 2, 3, 255]);
 
+    private static CaptureFrame Frame(int width, int height, int stride)
+    {
+        var pixels = new byte[checked(stride * height)];
+        for (var row = 0; row < height; row++)
+        {
+            pixels[row * stride] = 1;
+            pixels[(row * stride) + 3] = 255;
+        }
+        return new CaptureFrame(
+            new PixelRect(0, 0, width, height),
+            stride,
+            pixels);
+    }
+
     private sealed class FakeOcrBackend : IWindowsOcrBackend
     {
+        public int MaxImageDimension { get; init; } = 4096;
         public IReadOnlyList<OcrLanguageOption> AvailableLanguages { get; init; } = [];
         public IWindowsOcrEngine? ProfileEngine { get; init; }
         public IReadOnlyDictionary<string, FakeOcrEngine> LanguageEngines { get; init; } =
@@ -295,6 +468,28 @@ public sealed class WindowsScreenOcrServiceTests
             return _exception is null
                 ? Task.FromResult(_lines!)
                 : Task.FromException<IReadOnlyList<string>>(_exception);
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class BlockingOcrEngine : IWindowsOcrEngine
+    {
+        public TaskCompletionSource Started { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<IReadOnlyList<string>> Release { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int CallCount { get; private set; }
+
+        public Task<IReadOnlyList<string>> RecognizeLinesAsync(
+            WindowsOcrBitmap bitmap,
+            CancellationToken cancellationToken)
+        {
+            CallCount++;
+            Started.TrySetResult();
+            return Release.Task;
         }
 
         public void Dispose()

@@ -49,13 +49,13 @@ public sealed class CaptureCoordinator : IDisposable
         CaptureMode mode,
         CancellationToken cancellationToken)
     {
-        var entered = false;
         var activeChanged = false;
         try
         {
-            if (!await _sessionGate.EnterAsync(cancellationToken))
+            cancellationToken.ThrowIfCancellationRequested();
+            using var session = _sessionGate.TryEnter();
+            if (session is null)
                 return OperationResult.Fail("CaptureBusy", "已有截图会话正在进行。");
-            entered = true;
             Log(
                 "capture.start",
                 new Dictionary<string, object?> { ["mode"] = mode.ToString() });
@@ -143,8 +143,6 @@ public sealed class CaptureCoordinator : IDisposable
         {
             if (activeChanged)
                 _activeChanged(false);
-            if (entered)
-                _sessionGate.Release();
         }
     }
 

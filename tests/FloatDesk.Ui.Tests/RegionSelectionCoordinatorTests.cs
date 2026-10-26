@@ -100,19 +100,49 @@ public sealed class RegionSelectionCoordinatorTests
         Assert.True(surface.ClosedWithoutCancellation);
     }
 
+    [Fact(Timeout = 10_000)]
+    public async Task CancellationDuringSurfaceCreationNeverShowsClosedSurface()
+    {
+        var surface = new FakeRegionSelectionSurface();
+        using var desktop = DesktopFrame();
+        using var cancellation = new CancellationTokenSource();
+        var monitor = Monitor();
+        var coordinator = new RegionSelectionCoordinator(
+            () => [monitor],
+            _ => null!,
+            (_, _, _) =>
+            {
+                cancellation.Cancel();
+                return surface;
+            });
+
+        var selection = await coordinator.SelectAsync(
+            desktop,
+            null,
+            cancellation.Token).WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Null(selection);
+        Assert.Equal(0, surface.ShowCount);
+        Assert.False(surface.Hidden);
+        Assert.Equal(1, surface.CloseCount);
+    }
+
     private static RegionSelectionCoordinator CreateCoordinator(
         FakeRegionSelectionSurface surface)
     {
-        var monitor = new DisplayMonitor(
-            @"\\.\DISPLAY1",
-            new PixelRect(0, 0, 100, 100),
-            new PixelRect(0, 0, 100, 100),
-            true);
+        var monitor = Monitor();
         return new RegionSelectionCoordinator(
             () => [monitor],
             _ => null!,
             (_, _, _) => surface);
     }
+
+    private static DisplayMonitor Monitor() =>
+        new(
+            @"\\.\DISPLAY1",
+            new PixelRect(0, 0, 100, 100),
+            new PixelRect(0, 0, 100, 100),
+            true);
 
     private static CaptureFrame DesktopFrame() =>
         new(
@@ -134,9 +164,17 @@ public sealed class RegionSelectionCoordinatorTests
         public List<PixelRect> Selections { get; } = [];
         public bool Hidden { get; private set; }
         public bool ClosedWithoutCancellation { get; private set; }
+        public int ShowCount { get; private set; }
+        public int CloseCount { get; private set; }
 
         public void ShowSelection(PixelRect selection) => Selections.Add(selection);
-        public void Show() => Shown.TrySetResult();
+        public void Show()
+        {
+            if (ClosedWithoutCancellation)
+                throw new InvalidOperationException("Cannot show a closed surface.");
+            ShowCount++;
+            Shown.TrySetResult();
+        }
         public void PlaceWindow()
         {
         }
@@ -150,7 +188,11 @@ public sealed class RegionSelectionCoordinatorTests
         }
 
         public void Hide() => Hidden = true;
-        public void CloseWithoutCancelling() => ClosedWithoutCancellation = true;
+        public void CloseWithoutCancelling()
+        {
+            ClosedWithoutCancellation = true;
+            CloseCount++;
+        }
 
         public void RaiseDragStarted(PixelPoint point) => DragStarted?.Invoke(point);
         public void RaiseDragMoved(PixelPoint point) => DragMoved?.Invoke(point);

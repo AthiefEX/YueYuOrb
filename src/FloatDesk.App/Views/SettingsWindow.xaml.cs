@@ -956,8 +956,7 @@ public partial class SettingsWindow : Window
                 return;
             }
             StartupService.SetEnabled(imported.General.StartWithWindows);
-            _viewModel = SettingsViewModel.From(_settings.Current);
-            DataContext = _viewModel;
+            await ReloadViewModelAsync();
             Applied?.Invoke(_settings.Current);
             SaveStatusText.Text = "设置已导入并保存；快捷项未执行。";
         }
@@ -989,8 +988,7 @@ public partial class SettingsWindow : Window
             return;
         }
         StartupService.SetEnabled(false);
-        _viewModel = SettingsViewModel.From(_settings.Current);
-        DataContext = _viewModel;
+        await ReloadViewModelAsync();
         Applied?.Invoke(_settings.Current);
         SaveStatusText.Text = "已恢复默认偏好。";
     }
