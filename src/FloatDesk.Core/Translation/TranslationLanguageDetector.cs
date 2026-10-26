@@ -23,10 +23,10 @@ public static class TranslationLanguageDetector
         if (text.Any(c => c is >= '\u3040' and <= '\u30ff')) return new(TranslationLanguages.Japanese, 0.99);
         if (text.Any(c => c is >= '\uac00' and <= '\ud7af' or >= '\u1100' and <= '\u11ff')) return new(TranslationLanguages.Korean, 0.99);
         if (text.Any(c => c is >= '\u0400' and <= '\u052f')) return new(TranslationLanguages.Russian, 0.98);
-        if (text.Any(c => c is >= '\u0600' and <= '\u06ff')) return new("ar", 0.98);
-        if (text.Any(c => c is >= '\u0590' and <= '\u05ff')) return new("he", 0.98);
-        if (text.Any(c => c is >= '\u0e00' and <= '\u0e7f')) return new("th", 0.98);
-        if (text.Any(c => c is >= '\u0900' and <= '\u097f')) return new("hi", 0.98);
+        if (text.Any(c => c is >= '\u0600' and <= '\u06ff')) return new(TranslationLanguages.Arabic, 0.98);
+        if (text.Any(c => c is >= '\u0590' and <= '\u05ff')) return new(TranslationLanguages.Hebrew, 0.98);
+        if (text.Any(c => c is >= '\u0e00' and <= '\u0e7f')) return new(TranslationLanguages.Thai, 0.98);
+        if (text.Any(c => c is >= '\u0900' and <= '\u097f')) return new(TranslationLanguages.Hindi, 0.98);
         if (text.Any(c => c is >= '\u3400' and <= '\u9fff'))
         {
             var traditional = text.Count(c => TraditionalSignals.Contains(c));

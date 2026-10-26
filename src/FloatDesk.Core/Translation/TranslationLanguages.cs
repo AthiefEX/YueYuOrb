@@ -13,11 +13,15 @@ public static class TranslationLanguages
     public const string Spanish = "es";
     public const string Portuguese = "pt";
     public const string Russian = "ru";
+    public const string Arabic = "ar";
+    public const string Hebrew = "he";
+    public const string Thai = "th";
+    public const string Hindi = "hi";
 
     private static readonly HashSet<string> Known = new(StringComparer.OrdinalIgnoreCase)
     {
         Auto, SimplifiedChinese, TraditionalChinese, English, Japanese, Korean,
-        French, German, Spanish, Portuguese, Russian
+        French, German, Spanish, Portuguese, Russian, Arabic, Hebrew, Thai, Hindi
     };
 
     public static bool IsKnown(string? languageTag) =>

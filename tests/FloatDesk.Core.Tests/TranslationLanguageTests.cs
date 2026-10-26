@@ -22,6 +22,17 @@ public sealed class TranslationLanguageTests
     }
 
     [Theory]
+    [InlineData("مرحبا كيف حالك")]
+    [InlineData("שלום עולם")]
+    [InlineData("สวัสดีครับ")]
+    [InlineData("नमस्ते दुनिया")]
+    public void DetectedScriptLanguageIsAcceptedByCanonicalTagValidation(string text)
+    {
+        var detected = TranslationLanguageDetector.Detect(text);
+        Assert.True(TranslationLanguages.IsKnown(detected.LanguageTag));
+    }
+
+    [Theory]
     [InlineData("Bonjour le monde et les amis", "fr")]
     [InlineData("Hola el mundo y los amigos", "es")]
     [InlineData("Hallo die Welt und das Leben", "de")]
