@@ -16,6 +16,21 @@ using FloatDesk.Windows.Windows;
 
 namespace FloatDesk.App.Views;
 
+/// <summary>
+/// Identifies one overlay operation. Callers must retain the token returned by
+/// <see cref="TranslationOverlayWindow.BeginOperation"/> and pass it to every
+/// status, result, error, and subtitle update belonging to that operation.
+/// </summary>
+public readonly struct TranslationOverlayOperationToken
+{
+    internal TranslationOverlayOperationToken(long generation)
+    {
+        Generation = generation;
+    }
+
+    internal long Generation { get; }
+}
+
 public partial class TranslationOverlayWindow : Window
 {
     private const long WS_EX_TOOLWINDOW = 0x00000080L;
@@ -37,7 +52,8 @@ public partial class TranslationOverlayWindow : Window
     private bool _canReselect;
     private bool _isDragging;
     private bool _dismissed;
-    private long _operationGeneration;
+    private bool _isClosed;
+    private long _activeOperationGeneration;
     private Point _dragPointerOffset;
 
     public TranslationOverlayWindow()
@@ -63,17 +79,29 @@ public partial class TranslationOverlayWindow : Window
 
     public bool IsSubtitleMode => _isSubtitleMode;
     public bool IsDismissed => _dismissed;
-    public long OperationGeneration => _operationGeneration;
     public bool IsCaptureExcluded { get; private set; }
     public string TranslatedText => TranslatedTextBlock.Text;
     public string StatusText => StatusTextBlock.Text;
 
-    public void BeginOperation() =>
+    /// <summary>
+    /// Starts an operation after an earlier result was dismissed. The returned
+    /// token must be carried through all updates for that operation.
+    /// </summary>
+    public TranslationOverlayOperationToken BeginOperation()
+    {
+        var operation = default(TranslationOverlayOperationToken);
         RunOnUiThread(() =>
         {
+            if (_isClosed)
+                return;
+
             _dismissed = false;
-            _operationGeneration++;
+            var generation = NextGeneration(_activeOperationGeneration);
+            _activeOperationGeneration = generation;
+            operation = new TranslationOverlayOperationToken(generation);
         });
+        return operation;
+    }
 
     public void ApplySettings(AppSettings settings)
     {
@@ -111,24 +139,32 @@ public partial class TranslationOverlayWindow : Window
         });
     }
 
-    public void ShowStatus(string status, PixelPoint anchor) =>
+    public void ShowStatus(
+        TranslationOverlayOperationToken operation,
+        string status,
+        PixelPoint anchor) =>
         RunOnUiThread(() =>
         {
-            if (_dismissed)
+            if (!IsCurrentOperation(operation))
                 return;
+
             if (!_isSubtitleMode)
                 ClearTranslationContent();
             StatusTextBlock.Text = status ?? "";
-            ShowAt(anchor, subtitleMode: _isSubtitleMode);
+            ShowAt(operation, anchor, subtitleMode: _isSubtitleMode);
         });
 
-    public void ShowResult(TranslationResponse response, PixelPoint anchor)
+    public void ShowResult(
+        TranslationOverlayOperationToken operation,
+        TranslationResponse response,
+        PixelPoint anchor)
     {
         ArgumentNullException.ThrowIfNull(response);
         RunOnUiThread(() =>
         {
-            if (_dismissed)
+            if (!IsCurrentOperation(operation))
                 return;
+
             OriginalTextBlock.Text = response.OriginalText ?? "";
             OriginalPanel.Visibility =
                 string.IsNullOrWhiteSpace(response.OriginalText)
@@ -152,35 +188,41 @@ public partial class TranslationOverlayWindow : Window
                 CopyButton.IsEnabled = false;
             }
 
-            ShowAt(anchor, subtitleMode: _isSubtitleMode);
+            ShowAt(operation, anchor, subtitleMode: _isSubtitleMode);
         });
     }
 
-    public void ShowError(string message, PixelPoint anchor) =>
+    public void ShowError(
+        TranslationOverlayOperationToken operation,
+        string message,
+        PixelPoint anchor) =>
         RunOnUiThread(() =>
         {
-            if (_dismissed)
+            if (!IsCurrentOperation(operation))
                 return;
+
             if (!_isSubtitleMode)
                 ClearTranslationContent();
             TranslatedTextBlock.Text = "";
             TranslatedPanel.Visibility = Visibility.Collapsed;
             CopyButton.IsEnabled = false;
             StatusTextBlock.Text = message ?? "翻译失败。";
-            ShowAt(anchor, subtitleMode: _isSubtitleMode);
+            ShowAt(operation, anchor, subtitleMode: _isSubtitleMode);
         });
 
     public void SetSubtitleControls(
+        TranslationOverlayOperationToken operation,
         bool active,
         bool paused,
         bool canReselect) =>
         RunOnUiThread(() =>
         {
+            if (!IsCurrentOperation(operation))
+                return;
+
             var enteringSubtitleMode = active && !_isSubtitleMode;
             if (enteringSubtitleMode)
             {
-                _dismissed = false;
-                _operationGeneration++;
                 ClearTranslationContent();
                 StatusTextBlock.Text = "";
             }
@@ -218,10 +260,14 @@ public partial class TranslationOverlayWindow : Window
                 BeginContentTransition(initialReveal: true);
         });
 
-    private void ShowAt(PixelPoint anchor, bool subtitleMode)
+    private void ShowAt(
+        TranslationOverlayOperationToken operation,
+        PixelPoint anchor,
+        bool subtitleMode)
     {
-        if (_dismissed)
+        if (!IsCurrentOperation(operation))
             return;
+
         var reveal = !IsVisible;
         if (reveal)
             PrepareInitialReveal();
@@ -611,7 +657,7 @@ public partial class TranslationOverlayWindow : Window
     private void Dismiss()
     {
         _dismissed = true;
-        _operationGeneration++;
+        InvalidateActiveOperation();
         _isSubtitleMode = false;
         _subtitlePaused = false;
         _canReselect = false;
@@ -721,8 +767,9 @@ public partial class TranslationOverlayWindow : Window
 
     private void OnClosing(object? sender, CancelEventArgs e)
     {
+        _isClosed = true;
         _dismissed = true;
-        _operationGeneration++;
+        InvalidateActiveOperation();
         _isSubtitleMode = false;
         _isDragging = false;
         ClearTranslationContent();
@@ -731,8 +778,27 @@ public partial class TranslationOverlayWindow : Window
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        _isClosed = true;
+        InvalidateActiveOperation();
         ClearTranslationContent();
         StatusTextBlock.Text = "";
+    }
+
+    private bool IsCurrentOperation(
+        TranslationOverlayOperationToken operation) =>
+        !_isClosed &&
+        !_dismissed &&
+        operation.Generation != 0 &&
+        operation.Generation == _activeOperationGeneration;
+
+    private void InvalidateActiveOperation() =>
+        _activeOperationGeneration =
+            NextGeneration(_activeOperationGeneration);
+
+    private static long NextGeneration(long generation)
+    {
+        var next = generation + 1;
+        return next <= 0 ? 1 : next;
     }
 
     private bool RunOnUiThread(Action action)

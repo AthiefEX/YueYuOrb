@@ -27,7 +27,9 @@ public sealed class TranslationOverlayWindowTests
             var window = new TranslationOverlayWindow();
             try
             {
+                var operation = window.BeginOperation();
                 window.ShowResult(
+                    operation,
                     TranslationResponse.Ok(
                         "Hello world",
                         "你好，世界",
@@ -73,14 +75,19 @@ public sealed class TranslationOverlayWindowTests
             var window = new TranslationOverlayWindow();
             try
             {
+                var operation = window.BeginOperation();
                 window.ShowResult(
+                    operation,
                     TranslationResponse.Ok(
                         "Hello",
                         "你好",
                         "en",
                         "MyMemory"),
                     new PixelPoint(40, 40));
-                window.ShowStatus("正在翻译…", new PixelPoint(40, 40));
+                window.ShowStatus(
+                    operation,
+                    "正在翻译…",
+                    new PixelPoint(40, 40));
 
                 Assert.Equal("正在翻译…", window.StatusText);
                 Assert.Equal("", window.TranslatedText);
@@ -92,7 +99,10 @@ public sealed class TranslationOverlayWindowTests
                     Assert.IsType<Button>(
                         window.FindName("CopyButton")).IsEnabled);
 
-                window.ShowError("网络连接不可用。", new PixelPoint(40, 40));
+                window.ShowError(
+                    operation,
+                    "网络连接不可用。",
+                    new PixelPoint(40, 40));
                 Assert.Equal("网络连接不可用。", window.StatusText);
                 Assert.Equal("", window.TranslatedText);
                 Assert.Equal(
@@ -165,8 +175,10 @@ public sealed class TranslationOverlayWindowTests
                 window.PauseResumeRequested += () => pauseCount++;
                 window.ReselectRegionRequested += () => reselectCount++;
                 window.StopSubtitleRequested += () => stopCount++;
+                var operation = window.BeginOperation();
 
                 window.SetSubtitleControls(
+                    operation,
                     active: true,
                     paused: false,
                     canReselect: true);
@@ -196,6 +208,7 @@ public sealed class TranslationOverlayWindowTests
                 Assert.Equal(1, stopCount);
 
                 window.SetSubtitleControls(
+                    operation,
                     active: true,
                     paused: true,
                     canReselect: false);
@@ -203,6 +216,7 @@ public sealed class TranslationOverlayWindowTests
                 Assert.False(reselectButton.IsEnabled);
 
                 window.SetSubtitleControls(
+                    operation,
                     active: false,
                     paused: false,
                     canReselect: false);
@@ -246,7 +260,9 @@ public sealed class TranslationOverlayWindowTests
                     new RoutedEventArgs(Button.ClickEvent));
                 Assert.Equal(0, copyCount);
 
+                var operation = window.BeginOperation();
                 window.ShowResult(
+                    operation,
                     TranslationResponse.Ok(
                         "Hello",
                         "你好",
@@ -295,7 +311,9 @@ public sealed class TranslationOverlayWindowTests
                         }
                     });
 
+                var operation = window.BeginOperation();
                 window.SetSubtitleControls(
+                    operation,
                     active: true,
                     paused: false,
                     canReselect: true);
@@ -327,15 +345,19 @@ public sealed class TranslationOverlayWindowTests
         RunOnSta(() =>
         {
             var window = new TranslationOverlayWindow();
+            var operation = window.BeginOperation();
             window.ShowStatus(
+                operation,
                 "正在准备…",
                 new PixelPoint(int.MinValue, int.MaxValue));
             window.ShowError(
+                operation,
                 "未检测到可翻译文字。",
                 new PixelPoint(int.MaxValue, int.MinValue));
             window.Close();
 
             window.ShowStatus(
+                operation,
                 "已关闭窗口上的状态",
                 new PixelPoint(-1, -1));
         });
@@ -351,14 +373,16 @@ public sealed class TranslationOverlayWindowTests
             {
                 var stopCount = 0;
                 window.StopSubtitleRequested += () => stopCount++;
+                var operation = window.BeginOperation();
                 window.SetSubtitleControls(
+                    operation,
                     active: true,
                     paused: false,
                     canReselect: true);
                 window.ShowStatus(
+                    operation,
                     "正在识别字幕…",
                     new PixelPoint(40, 40));
-                var generationBeforeClose = window.OperationGeneration;
 
                 Assert.IsType<Button>(
                     window.FindName("CloseButton")).RaiseEvent(
@@ -366,12 +390,11 @@ public sealed class TranslationOverlayWindowTests
 
                 Assert.Equal(1, stopCount);
                 Assert.True(window.IsDismissed);
-                Assert.True(
-                    window.OperationGeneration > generationBeforeClose);
                 Assert.False(window.IsSubtitleMode);
                 Assert.False(window.IsVisible);
 
                 window.ShowResult(
+                    operation,
                     TranslationResponse.Ok(
                         "late source",
                         "迟到的结果",
@@ -379,9 +402,11 @@ public sealed class TranslationOverlayWindowTests
                         "MyMemory"),
                     new PixelPoint(40, 40));
                 window.ShowError(
+                    operation,
                     "迟到的错误",
                     new PixelPoint(40, 40));
                 window.ShowStatus(
+                    operation,
                     "迟到的状态",
                     new PixelPoint(40, 40));
 
@@ -389,12 +414,10 @@ public sealed class TranslationOverlayWindowTests
                 Assert.Equal("", window.TranslatedText);
                 Assert.Equal("", window.StatusText);
 
-                var dismissedGeneration = window.OperationGeneration;
-                window.BeginOperation();
+                var nextOperation = window.BeginOperation();
                 Assert.False(window.IsDismissed);
-                Assert.True(
-                    window.OperationGeneration > dismissedGeneration);
                 window.ShowResult(
+                    nextOperation,
                     TranslationResponse.Ok(
                         "next source",
                         "下一次结果",
@@ -422,7 +445,9 @@ public sealed class TranslationOverlayWindowTests
             {
                 var stopCount = 0;
                 window.StopSubtitleRequested += () => stopCount++;
+                var operation = window.BeginOperation();
                 window.ShowResult(
+                    operation,
                     TranslationResponse.Ok(
                         "Hello",
                         "你好",
@@ -437,6 +462,7 @@ public sealed class TranslationOverlayWindowTests
                 Assert.False(window.IsVisible);
 
                 window.ShowResult(
+                    operation,
                     TranslationResponse.Ok(
                         "late",
                         "迟到",
@@ -446,8 +472,9 @@ public sealed class TranslationOverlayWindowTests
                 Assert.False(window.IsVisible);
                 Assert.Equal("", window.TranslatedText);
 
-                window.BeginOperation();
+                var nextOperation = window.BeginOperation();
                 window.ShowStatus(
+                    nextOperation,
                     "下一次操作",
                     new PixelPoint(40, 40));
                 Assert.True(window.IsVisible);
@@ -461,6 +488,151 @@ public sealed class TranslationOverlayWindowTests
     }
 
     [Fact]
+    public void StaleOperationCannotReplaceNewOperationAfterDismissal()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                var operationA = window.BeginOperation();
+                window.ShowStatus(
+                    operationA,
+                    "操作 A",
+                    new PixelPoint(40, 40));
+
+                Assert.IsType<Button>(
+                    window.FindName("CloseButton")).RaiseEvent(
+                    new RoutedEventArgs(Button.ClickEvent));
+
+                var operationB = window.BeginOperation();
+                window.ShowResult(
+                    operationB,
+                    TranslationResponse.Ok(
+                        "source B",
+                        "操作 B 结果",
+                        "en",
+                        "MyMemory"),
+                    new PixelPoint(40, 40));
+
+                window.ShowResult(
+                    operationA,
+                    TranslationResponse.Ok(
+                        "late source A",
+                        "迟到的 A 结果",
+                        "en",
+                        "MyMemory"),
+                    new PixelPoint(40, 40));
+                window.ShowError(
+                    operationA,
+                    "迟到的 A 错误",
+                    new PixelPoint(40, 40));
+                window.ShowStatus(
+                    operationA,
+                    "迟到的 A 状态",
+                    new PixelPoint(40, 40));
+                window.SetSubtitleControls(
+                    operationA,
+                    active: true,
+                    paused: false,
+                    canReselect: true);
+
+                Assert.True(window.IsVisible);
+                Assert.False(window.IsSubtitleMode);
+                Assert.Equal("操作 B 结果", window.TranslatedText);
+                Assert.Equal("翻译完成", window.StatusText);
+                Assert.Equal(
+                    "source B",
+                    Assert.IsType<TextBlock>(
+                        window.FindName("OriginalTextBlock")).Text);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void LateSubtitleControlsDoNotReopenDismissedSubtitleMode()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                var operation = window.BeginOperation();
+                window.SetSubtitleControls(
+                    operation,
+                    active: true,
+                    paused: false,
+                    canReselect: true);
+                Assert.IsType<Button>(
+                    window.FindName("CloseButton")).RaiseEvent(
+                    new RoutedEventArgs(Button.ClickEvent));
+
+                window.SetSubtitleControls(
+                    operation,
+                    active: true,
+                    paused: false,
+                    canReselect: true);
+
+                Assert.True(window.IsDismissed);
+                Assert.False(window.IsSubtitleMode);
+                Assert.False(window.IsVisible);
+                Assert.Equal("", window.StatusText);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void ClosedWindowRejectsNewOperationsWithoutWritingContent()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            window.Close();
+
+            var operation = window.BeginOperation();
+            window.ShowResult(
+                operation,
+                TranslationResponse.Ok(
+                    "sensitive source",
+                    "敏感译文",
+                    "en",
+                    "MyMemory"),
+                new PixelPoint(40, 40));
+            window.ShowStatus(
+                operation,
+                "敏感状态",
+                new PixelPoint(40, 40));
+            window.SetSubtitleControls(
+                operation,
+                active: true,
+                paused: false,
+                canReselect: true);
+
+            Assert.True(window.IsDismissed);
+            Assert.False(window.IsSubtitleMode);
+            Assert.False(window.IsVisible);
+            Assert.Equal("", window.TranslatedText);
+            Assert.Equal("", window.StatusText);
+            Assert.Equal(
+                "",
+                Assert.IsType<TextBlock>(
+                    window.FindName("OriginalTextBlock")).Text);
+            Assert.Equal(
+                "",
+                Assert.IsType<TextBlock>(
+                    window.FindName("MetadataTextBlock")).Text);
+        });
+    }
+
+    [Fact]
     public void VisibleStatusUpdatesDoNotRestartTheRevealTransition()
     {
         RunOnSta(() =>
@@ -468,7 +640,9 @@ public sealed class TranslationOverlayWindowTests
             var window = new TranslationOverlayWindow();
             try
             {
+                var operation = window.BeginOperation();
                 window.ShowStatus(
+                    operation,
                     "第一次状态",
                     new PixelPoint(40, 40));
                 var layer = Assert.IsType<Grid>(
@@ -483,6 +657,7 @@ public sealed class TranslationOverlayWindowTests
                 translate.Y = 5;
 
                 window.ShowStatus(
+                    operation,
                     "第二次状态",
                     new PixelPoint(40, 40));
 
@@ -506,7 +681,9 @@ public sealed class TranslationOverlayWindowTests
             var window = new TranslationOverlayWindow();
             try
             {
+                var operation = window.BeginOperation();
                 window.SetSubtitleControls(
+                    operation,
                     active: true,
                     paused: false,
                     canReselect: true);
@@ -522,6 +699,7 @@ public sealed class TranslationOverlayWindowTests
                 translate.Y = 4;
 
                 window.SetSubtitleControls(
+                    operation,
                     active: true,
                     paused: true,
                     canReselect: false);
@@ -546,7 +724,9 @@ public sealed class TranslationOverlayWindowTests
             var window = new TranslationOverlayWindow();
             try
             {
+                var operation = window.BeginOperation();
                 window.ShowResult(
+                    operation,
                     TranslationResponse.Ok(
                         "old source",
                         "旧译文",
@@ -556,6 +736,7 @@ public sealed class TranslationOverlayWindowTests
                 Assert.NotEqual("", window.TranslatedText);
 
                 window.SetSubtitleControls(
+                    operation,
                     active: true,
                     paused: false,
                     canReselect: true);
@@ -597,7 +778,9 @@ public sealed class TranslationOverlayWindowTests
             var window = new TranslationOverlayWindow();
             try
             {
+                var operation = window.BeginOperation();
                 window.ShowResult(
+                    operation,
                     TranslationResponse.Ok(
                         "old source",
                         "旧译文",
@@ -606,6 +789,7 @@ public sealed class TranslationOverlayWindowTests
                     new PixelPoint(40, 40));
 
                 window.ShowError(
+                    operation,
                     "网络连接不可用。",
                     new PixelPoint(40, 40));
 
@@ -662,11 +846,14 @@ public sealed class TranslationOverlayWindowTests
             try
             {
                 window.ApplySettings(baseSettings);
+                var operation = window.BeginOperation();
                 window.SetSubtitleControls(
+                    operation,
                     active: true,
                     paused: false,
                     canReselect: true);
                 window.ShowResult(
+                    operation,
                     TranslationResponse.Ok(
                         "source",
                         string.Concat(
@@ -719,7 +906,9 @@ public sealed class TranslationOverlayWindowTests
             var window = new TranslationOverlayWindow();
             try
             {
+                var operation = window.BeginOperation();
                 window.ShowStatus(
+                    operation,
                     "native style",
                     new PixelPoint(40, 40));
                 var handle = new WindowInteropHelper(window).Handle;

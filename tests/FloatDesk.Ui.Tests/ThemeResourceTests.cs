@@ -168,7 +168,9 @@ public sealed class ThemeResourceTests
                 {
                     window.Resources["SettingsCardBrush"] =
                         new SolidColorBrush(light);
+                    var operation = window.BeginOperation();
                     window.ShowStatus(
+                        operation,
                         "主题测试",
                         new FloatDesk.Core.Geometry.PixelPoint(20, 20));
                     window.UpdateLayout();
