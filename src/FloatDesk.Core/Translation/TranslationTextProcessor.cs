@@ -30,6 +30,14 @@ public static class TranslationTextProcessor
         var start = 0;
         while (start < text.Length)
         {
+            if (chunks.Count > 0 && text.AsSpan(start).StartsWith("\n\n"))
+            {
+                var previous = chunks[^1];
+                chunks[^1] = previous with { SeparatorAfter = previous.SeparatorAfter + "\n\n" };
+                start += 2;
+                continue;
+            }
+
             var end = start;
             var bytes = 0;
             var characters = 0;
@@ -63,12 +71,15 @@ public static class TranslationTextProcessor
         return string.Join(separator, chunks);
     }
 
+    private static bool IsComparisonCharacter(char c) =>
+        !char.IsWhiteSpace(c) && c is not ('.' or '。' or '!' or '！' or '?' or '？' or ',' or '，');
+
     public static bool IsNearDuplicate(string previous, string current, double threshold = 0.92)
     {
         ArgumentNullException.ThrowIfNull(previous);
         ArgumentNullException.ThrowIfNull(current);
-        var left = new string(Normalize(previous).Where(char.IsLetterOrDigit).ToArray());
-        var right = new string(Normalize(current).Where(char.IsLetterOrDigit).ToArray());
+        var left = new string(Normalize(previous).Where(IsComparisonCharacter).ToArray());
+        var right = new string(Normalize(current).Where(IsComparisonCharacter).ToArray());
         if (left.Length == 0 || right.Length == 0) return left == right;
         var prior = Enumerable.Range(0, right.Length + 1).ToArray();
         var next = new int[right.Length + 1];

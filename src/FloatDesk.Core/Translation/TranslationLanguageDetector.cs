@@ -15,7 +15,7 @@ public static class TranslationLanguageDetector
         (TranslationLanguages.English, ["hello", "the", "and", "is", "are", "with", "this"])
     ];
 
-    private const string TraditionalSignals = "體繁測譯語國學說這個們會對時書車門開關實後發";
+    private const string TraditionalSignals = "體測譯語國學說這個們會對時書車門開關實後發";
 
     public static TranslationLanguageDetection Detect(string text)
     {

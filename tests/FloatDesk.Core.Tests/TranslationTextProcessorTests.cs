@@ -40,6 +40,27 @@ public sealed class TranslationTextProcessorTests
         Assert.All(chunks, chunk => Assert.Equal("😀", chunk.Text));
     }
 
+    [Theory]
+    [InlineData("aaaaa\n\nbbbbb", 2)]
+    [InlineData("aaaaa\n\nbbbbb\n\nccccc", 3)]
+    public void ChunkingAttachesStandaloneParagraphDelimiterToPreviousChunk(string input, int expectedCount)
+    {
+        var chunks = TranslationTextProcessor.Chunk(input, 5, 5);
+        Assert.Equal(expectedCount, chunks.Count);
+        Assert.All(chunks, chunk => Assert.NotEmpty(chunk.Text));
+        Assert.Equal("aaaaa", chunks[0].Text);
+        Assert.Equal("\n\n", chunks[0].SeparatorAfter);
+        Assert.Equal(input, string.Concat(chunks.Select(c => c.Text + c.SeparatorAfter)));
+    }
+
+    [Theory]
+    [InlineData("Pay $100", "Pay €100")]
+    [InlineData("x + y", "x - y")]
+    public void NearDuplicatePreservesMeaningfulSymbols(string previous, string current)
+    {
+        Assert.False(TranslationTextProcessor.IsNearDuplicate(previous, current, threshold: 1));
+    }
+
     [Fact]
     public void JoinUsesLanguageAppropriateSeparator()
     {

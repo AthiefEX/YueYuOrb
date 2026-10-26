@@ -21,6 +21,13 @@ public sealed class TranslationLanguageTests
         Assert.InRange(result.Confidence, 0, 1);
     }
 
+    [Fact]
+    public void RepeatedSharedChineseCharacterDoesNotImplyTraditionalChinese()
+    {
+        var result = TranslationLanguageDetector.Detect("繁忙的城市，繁忙的街道。");
+        Assert.Equal(TranslationLanguages.SimplifiedChinese, result.LanguageTag);
+    }
+
     [Theory]
     [InlineData("مرحبا كيف حالك")]
     [InlineData("שלום עולם")]
