@@ -588,6 +588,9 @@ public sealed class RegionSelectionCoordinator : IDisposable
             await FlushPendingCleanupsForDisposeAsync()
                 .ConfigureAwait(false);
         }
+        catch (Exception)
+        {
+        }
         finally
         {
             barrier.TrySetResult();
@@ -647,6 +650,12 @@ public sealed class RegionSelectionCoordinator : IDisposable
                 completion.TrySetResult(false);
             dispatcher.ShutdownStarted += shutdownStarted;
             var registeredShutdown = shutdownStarted;
+            if (dispatcher.HasShutdownStarted ||
+                dispatcher.HasShutdownFinished)
+            {
+                dispatcher.ShutdownStarted -= registeredShutdown;
+                return Task.FromResult(false);
+            }
             dispatcher.BeginInvoke(
                 DispatcherPriority.Send,
                 new Action(() =>
