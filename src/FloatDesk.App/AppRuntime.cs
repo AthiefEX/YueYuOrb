@@ -32,6 +32,9 @@ internal sealed class AppRuntime : IDisposable
     private readonly WindowsAppLauncher _launcher = new();
     private readonly DpapiTranslationCredentialStore _translationCredentials;
     private readonly TranslationProviderFactory _translationProviders = new();
+    private readonly WindowsScreenOcrService _ocr = new();
+    private readonly CaptureSessionGate _captureSessionGate = new();
+    private readonly RegionSelectionCoordinator _regionSelection = new();
     private readonly DispatcherTimer _inputTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private readonly DispatcherTimer _overlayTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private CancellationTokenSource? _foregroundCts;
@@ -113,7 +116,9 @@ internal sealed class AppRuntime : IDisposable
                 UpdateInputPollingCadence();
             },
             (eventName, properties) =>
-                _ = _logger.WriteAsync(eventName, properties));
+                _ = _logger.WriteAsync(eventName, properties),
+            sessionGate: _captureSessionGate,
+            regionSelection: _regionSelection);
         _coordinator.WindowCreated += ApplyToolSettings;
         _settings.Changed += OnSettingsChanged;
         _input.StatusChanged += OnInputStatusChanged;
@@ -247,6 +252,8 @@ internal sealed class AppRuntime : IDisposable
             }
 
             _captureCoordinator?.Dispose();
+            _captureSessionGate.Dispose();
+            _ocr.Dispose();
             _foreground.Dispose();
             _hotkeys?.Dispose();
             _hotkeys = null;
@@ -277,7 +284,7 @@ internal sealed class AppRuntime : IDisposable
             () => _current.IsOwnInteractive ? _lastExternal?.ExePath : _current.ExePath,
             _translationCredentials,
             _translationProviders,
-            static () => []);
+            () => _ocr.AvailableLanguages);
 
     private AiBrowserWindow CreateAiWindow()
     {
