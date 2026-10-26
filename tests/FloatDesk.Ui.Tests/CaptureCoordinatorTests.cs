@@ -64,4 +64,38 @@ public sealed class CaptureCoordinatorTests
             gate.TryEnter());
         Assert.NotNull(next);
     }
+
+    [Fact]
+    public void DisposeOnlyDisposesRegionSelectionItCreated()
+    {
+        using var firstGate = new CaptureSessionGate();
+        var injected = new RegionSelectionCoordinator();
+        var injectedOwner = new CaptureCoordinator(
+            null!,
+            null!,
+            () => AppSettings.CreateDefault(),
+            static () => 0,
+            static _ => { },
+            sessionGate: firstGate,
+            regionSelection: injected);
+
+        injectedOwner.Dispose();
+
+        Assert.False(injected.IsDisposed);
+        injected.Dispose();
+
+        using var secondGate = new CaptureSessionGate();
+        var ownedOwner = new CaptureCoordinator(
+            null!,
+            null!,
+            () => AppSettings.CreateDefault(),
+            static () => 0,
+            static _ => { },
+            sessionGate: secondGate);
+        var owned = ownedOwner.RegionSelection;
+
+        ownedOwner.Dispose();
+
+        Assert.True(owned.IsDisposed);
+    }
 }

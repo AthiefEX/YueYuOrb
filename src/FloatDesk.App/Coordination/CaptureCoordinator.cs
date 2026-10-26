@@ -22,6 +22,7 @@ public sealed class CaptureCoordinator : IDisposable
     private readonly CaptureSessionGate _sessionGate;
     private readonly RegionSelectionCoordinator _regionSelection;
     private readonly bool _ownsSessionGate;
+    private readonly bool _ownsRegionSelection;
 
     public CaptureCoordinator(
         WindowCoordinator windows,
@@ -41,9 +42,12 @@ public sealed class CaptureCoordinator : IDisposable
         _diagnostics = diagnostics;
         _ownsSessionGate = sessionGate is null;
         _sessionGate = sessionGate ?? new CaptureSessionGate();
+        _ownsRegionSelection = regionSelection is null;
         _regionSelection = regionSelection ?? new RegionSelectionCoordinator();
         _capture = new GdiScreenCapture();
     }
+
+    internal RegionSelectionCoordinator RegionSelection => _regionSelection;
 
     public async Task<OperationResult> StartAsync(
         CaptureMode mode,
@@ -187,6 +191,8 @@ public sealed class CaptureCoordinator : IDisposable
     public void Dispose()
     {
         _capture.Dispose();
+        if (_ownsRegionSelection)
+            _regionSelection.Dispose();
         if (_ownsSessionGate)
             _sessionGate.Dispose();
     }
