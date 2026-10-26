@@ -72,6 +72,44 @@ public sealed class MyMemoryTranslationProviderTests
     }
 
     [Theory]
+    [InlineData("Your monthly quota is 10 GB")]
+    [InlineData("Warning: wet floor")]
+    public async Task OrdinaryTranslatedWordsAreSuccessful(string translatedText)
+    {
+        var payload = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            responseData = new { translatedText },
+            responseStatus = 200
+        });
+        using var http = new HttpClient(new StubHandler(_ => Json(payload)));
+
+        var result = await new MyMemoryTranslationProvider(http).TranslateAsync(Request("Hello"), CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal(translatedText, result.TranslatedText);
+    }
+
+    [Theory]
+    [InlineData('a', 450, true)]
+    [InlineData('a', 451, false)]
+    [InlineData('界', 150, true)]
+    [InlineData('界', 151, false)]
+    public async Task EnforcesUtf8ByteLimitBeforeSending(char character, int count, bool accepted)
+    {
+        var calls = 0;
+        using var http = new HttpClient(new StubHandler(_ =>
+        {
+            calls++;
+            return Json("""{"responseData":{"translatedText":"ok"},"responseStatus":200}""");
+        }));
+
+        var result = await new MyMemoryTranslationProvider(http).TranslateAsync(Request(new string(character, count)), CancellationToken.None);
+
+        Assert.Equal(accepted ? TranslationFailureKind.None : TranslationFailureKind.InvalidRequest, result.FailureKind);
+        Assert.Equal(accepted ? 1 : 0, calls);
+    }
+
+    [Theory]
     [InlineData("not json")]
     [InlineData("{}")]
     [InlineData("""{"responseData":{"translatedText":""},"responseStatus":200}""")]

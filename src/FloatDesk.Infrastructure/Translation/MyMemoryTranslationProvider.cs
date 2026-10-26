@@ -66,9 +66,10 @@ public sealed class MyMemoryTranslationProvider : ITranslationProvider
             var translated = root.TryGetProperty("responseData", out var data) && data.ValueKind == JsonValueKind.Object
                 ? ReadString(data, "translatedText") : null;
 
-            if (status == 429 || IsQuota(details) || IsQuota(translated))
+            var providerWarning = translated?.TrimStart().StartsWith("MYMEMORY WARNING:", StringComparison.OrdinalIgnoreCase) == true;
+            if (status == 429 || IsQuota(details) || (providerWarning && IsQuota(translated)))
                 return TranslationProviderResult.Fail(TranslationFailureKind.Quota);
-            if (status != 200 || string.IsNullOrWhiteSpace(translated) || IsWarning(details) || IsWarning(translated))
+            if (status != 200 || string.IsNullOrWhiteSpace(translated) || IsWarning(details) || providerWarning)
                 return TranslationProviderResult.Fail(TranslationFailureKind.ProviderError);
             return TranslationProviderResult.Ok(WebUtility.HtmlDecode(translated));
         }
