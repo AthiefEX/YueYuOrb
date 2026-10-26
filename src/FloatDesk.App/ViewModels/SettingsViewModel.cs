@@ -1,11 +1,35 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FloatDesk.Core.Models;
+using FloatDesk.Core.Translation;
 
 namespace FloatDesk.App.ViewModels;
 
 public partial class SettingsViewModel : ObservableObject
 {
+    public static IReadOnlyList<TranslationProviderKind> TranslationProviders { get; } =
+        Enum.GetValues<TranslationProviderKind>();
+
+    public static IReadOnlyList<string> TranslationSourceLanguages { get; } =
+    [
+        TranslationLanguages.Auto,
+        TranslationLanguages.SimplifiedChinese,
+        TranslationLanguages.TraditionalChinese,
+        TranslationLanguages.English,
+        TranslationLanguages.Japanese,
+        TranslationLanguages.Korean,
+        TranslationLanguages.French,
+        TranslationLanguages.German,
+        TranslationLanguages.Spanish,
+        TranslationLanguages.Russian,
+        TranslationLanguages.Arabic,
+        TranslationLanguages.Portuguese,
+        "it"
+    ];
+
+    public static IReadOnlyList<string> TranslationTargetLanguages { get; } =
+        TranslationSourceLanguages.Skip(1).ToArray();
+
     private AppSettings _baseline = AppSettings.CreateDefault();
 
     [ObservableProperty] private bool _startWithWindows;
@@ -25,6 +49,9 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _showNotesInWheel = true;
     [ObservableProperty] private bool _showInputLockInWheel = true;
     [ObservableProperty] private bool _showSettingsInWheel = true;
+    [ObservableProperty] private bool _showTranslateSelectionInWheel = true;
+    [ObservableProperty] private bool _showTranslateRegionInWheel = true;
+    [ObservableProperty] private bool _showTranslateSubtitlesInWheel = true;
     [ObservableProperty] private bool _alwaysOnTop;
     [ObservableProperty] private int _fullscreenPolicyIndex;
     [ObservableProperty] private bool _autoInputEnabled;
@@ -44,16 +71,37 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _panelHotkey = "Ctrl+Alt+Space";
     [ObservableProperty] private string _regionCaptureHotkey = "Ctrl+Alt+A";
     [ObservableProperty] private string _pauseHotkey = "Ctrl+Alt+F12";
+    [ObservableProperty] private string _translationSelectionHotkey = "Ctrl+Alt+T";
+    [ObservableProperty] private string _translationRegionHotkey = "Ctrl+Alt+O";
+    [ObservableProperty] private string _subtitlesHotkey = "Ctrl+Alt+L";
+    [ObservableProperty] private int _translationProviderIndex;
+    [ObservableProperty] private int _translationSourceLanguageIndex;
+    [ObservableProperty] private int _translationTargetLanguageIndex;
+    [ObservableProperty] private string _translationEndpoint = "";
+    [ObservableProperty] private string _translationModel = "";
+    [ObservableProperty] private string _translationAzureRegion = "";
+    [ObservableProperty] private int _translationOcrLanguageIndex = -1;
+    [ObservableProperty] private int _subtitleRefreshIntervalMs;
+    [ObservableProperty] private double _subtitleOverlayOpacityPercent;
+    [ObservableProperty] private double _subtitleFontSizeDip;
+    [ObservableProperty] private bool _hasSavedTranslationKey;
+    [ObservableProperty] private bool _clearSavedTranslationKey;
 
     public ObservableCollection<LauncherItem> Launchers { get; } = [];
     public ObservableCollection<AppRule> InputRules { get; } = [];
     public ObservableCollection<BrowserSite> BrowserSites { get; } = [];
+    public ObservableCollection<OcrLanguageOption> OcrLanguages { get; } = [];
     public IReadOnlyList<InputAction> InputActions { get; } =
         [InputAction.LockEnglish, InputAction.Exclude];
 
-    public static SettingsViewModel From(AppSettings settings)
+    public static SettingsViewModel From(
+        AppSettings settings,
+        bool hasSavedTranslationKey = false,
+        IReadOnlyList<OcrLanguageOption>? ocrLanguages = null)
     {
         var wheelActions = settings.WheelActions.ToHashSet();
+        var translation = settings.Translation;
+        var ocrOptions = ocrLanguages ?? [];
         var vm = new SettingsViewModel
         {
             StartWithWindows = settings.General.StartWithWindows,
@@ -80,6 +128,12 @@ public partial class SettingsViewModel : ObservableObject
                 wheelActions.Contains(WheelActionKind.InputLock),
             ShowSettingsInWheel =
                 wheelActions.Contains(WheelActionKind.Settings),
+            ShowTranslateSelectionInWheel =
+                wheelActions.Contains(WheelActionKind.TranslateSelection),
+            ShowTranslateRegionInWheel =
+                wheelActions.Contains(WheelActionKind.TranslateRegion),
+            ShowTranslateSubtitlesInWheel =
+                wheelActions.Contains(WheelActionKind.TranslateSubtitles),
             AlwaysOnTop = settings.Overlay.AlwaysOnTop,
             FullscreenPolicyIndex = (int)settings.Overlay.FullscreenPolicy,
             AutoInputEnabled = settings.InputLock.AutoEnabled,
@@ -95,7 +149,26 @@ public partial class SettingsViewModel : ObservableObject
             CaptureOpenEditor = settings.Capture.OpenEditor,
             AnnotationColor = settings.Capture.AnnotationColor,
             StrokeWidthPx = settings.Capture.StrokeWidthPx,
-            FontSizePx = settings.Capture.FontSizePx
+            FontSizePx = settings.Capture.FontSizePx,
+            TranslationProviderIndex = IndexOf(
+                TranslationProviders,
+                translation.Provider),
+            TranslationSourceLanguageIndex = IndexOf(
+                TranslationSourceLanguages,
+                translation.SourceLanguage),
+            TranslationTargetLanguageIndex = IndexOf(
+                TranslationTargetLanguages,
+                translation.TargetLanguage),
+            TranslationEndpoint = translation.Endpoint,
+            TranslationModel = translation.Model,
+            TranslationAzureRegion = translation.AzureRegion,
+            TranslationOcrLanguageIndex = IndexOfOcrLanguage(
+                ocrOptions,
+                translation.OcrLanguage),
+            SubtitleRefreshIntervalMs = translation.SubtitleRefreshIntervalMs,
+            SubtitleOverlayOpacityPercent = translation.SubtitleOverlayOpacity * 100,
+            SubtitleFontSizeDip = translation.SubtitleFontSizeDip,
+            HasSavedTranslationKey = hasSavedTranslationKey
         };
         foreach (var item in settings.Launchers.OrderBy(item => item.Order))
             vm.Launchers.Add(item);
@@ -103,9 +176,17 @@ public partial class SettingsViewModel : ObservableObject
             vm.InputRules.Add(rule);
         foreach (var site in settings.BrowserSites.OrderBy(site => site.Order))
             vm.BrowserSites.Add(site);
+        foreach (var option in ocrOptions)
+            vm.OcrLanguages.Add(option);
         vm.PanelHotkey = FormatHotkey(settings.Hotkeys.GetValueOrDefault(HotkeyAction.Panel));
         vm.RegionCaptureHotkey = FormatHotkey(settings.Hotkeys.GetValueOrDefault(HotkeyAction.RegionCapture));
         vm.PauseHotkey = FormatHotkey(settings.Hotkeys.GetValueOrDefault(HotkeyAction.PauseInput));
+        vm.TranslationSelectionHotkey =
+            FormatHotkey(settings.Hotkeys.GetValueOrDefault(HotkeyAction.TranslateSelection));
+        vm.TranslationRegionHotkey =
+            FormatHotkey(settings.Hotkeys.GetValueOrDefault(HotkeyAction.TranslateRegion));
+        vm.SubtitlesHotkey =
+            FormatHotkey(settings.Hotkeys.GetValueOrDefault(HotkeyAction.ToggleSubtitles));
         vm._baseline = settings;
         return vm;
     }
@@ -151,6 +232,8 @@ public partial class SettingsViewModel : ObservableObject
         var inputRules = InputRules.ToArray();
         if (!inputRules.SequenceEqual(_baseline.InputLock.Rules))
             inputLock = inputLock with { Rules = inputRules };
+
+        var translation = MergeTranslation(latest.Translation);
 
         var launchers = Launchers
             .Select((item, index) => item with { Order = index })
@@ -222,6 +305,9 @@ public partial class SettingsViewModel : ObservableObject
         MergeHotkey(HotkeyAction.Panel, PanelHotkey);
         MergeHotkey(HotkeyAction.RegionCapture, RegionCaptureHotkey);
         MergeHotkey(HotkeyAction.PauseInput, PauseHotkey);
+        MergeHotkey(HotkeyAction.TranslateSelection, TranslationSelectionHotkey);
+        MergeHotkey(HotkeyAction.TranslateRegion, TranslationRegionHotkey);
+        MergeHotkey(HotkeyAction.ToggleSubtitles, SubtitlesHotkey);
 
         return latest with
         {
@@ -229,6 +315,7 @@ public partial class SettingsViewModel : ObservableObject
             Orb = orb,
             Overlay = overlay,
             InputLock = inputLock,
+            Translation = translation,
             Launchers = launchers,
             BrowserSites = browserSites,
             SelectedBrowserSiteId = selectedBrowserSiteId,
@@ -251,6 +338,125 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
+    private TranslationSettings MergeTranslation(TranslationSettings latest)
+    {
+        var baseline = _baseline.Translation;
+        var translation = latest;
+        var provider = Enum.IsDefined(
+            (TranslationProviderKind)TranslationProviderIndex)
+            ? (TranslationProviderKind)TranslationProviderIndex
+            : baseline.Provider;
+        if (provider != baseline.Provider)
+            translation = translation with { Provider = provider };
+
+        var source = LanguageAt(
+            TranslationSourceLanguages,
+            TranslationSourceLanguageIndex,
+            baseline.SourceLanguage);
+        if (!string.Equals(
+                source,
+                baseline.SourceLanguage,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            translation = translation with { SourceLanguage = source };
+        }
+
+        var target = LanguageAt(
+            TranslationTargetLanguages,
+            TranslationTargetLanguageIndex,
+            baseline.TargetLanguage);
+        if (!string.Equals(
+                target,
+                baseline.TargetLanguage,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            translation = translation with { TargetLanguage = target };
+        }
+
+        var endpoint = TranslationEndpoint ?? "";
+        if (!string.Equals(
+                endpoint,
+                baseline.Endpoint,
+                StringComparison.Ordinal))
+        {
+            translation = translation with { Endpoint = endpoint };
+        }
+
+        var model = TranslationModel ?? "";
+        if (!string.Equals(model, baseline.Model, StringComparison.Ordinal))
+            translation = translation with { Model = model };
+
+        var azureRegion = TranslationAzureRegion ?? "";
+        if (!string.Equals(
+                azureRegion,
+                baseline.AzureRegion,
+                StringComparison.Ordinal))
+        {
+            translation = translation with { AzureRegion = azureRegion };
+        }
+
+        var ocrLanguage = SelectedOcrLanguage();
+        if (!string.Equals(
+                ocrLanguage,
+                BaselineOcrLanguage(),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            translation = translation with { OcrLanguage = ocrLanguage };
+        }
+
+        if (SubtitleRefreshIntervalMs != baseline.SubtitleRefreshIntervalMs)
+        {
+            translation = translation with
+            {
+                SubtitleRefreshIntervalMs = SubtitleRefreshIntervalMs
+            };
+        }
+        if (Math.Abs(
+                SubtitleOverlayOpacityPercent / 100.0 -
+                baseline.SubtitleOverlayOpacity) > 0.0001)
+        {
+            translation = translation with
+            {
+                SubtitleOverlayOpacity = SubtitleOverlayOpacityPercent / 100.0
+            };
+        }
+        if (Math.Abs(SubtitleFontSizeDip - baseline.SubtitleFontSizeDip) > 0.0001)
+        {
+            translation = translation with
+            {
+                SubtitleFontSizeDip = SubtitleFontSizeDip
+            };
+        }
+        return translation;
+    }
+
+    private string? SelectedOcrLanguage()
+    {
+        if (TranslationOcrLanguageIndex >= 0 &&
+            TranslationOcrLanguageIndex < OcrLanguages.Count)
+        {
+            return OcrLanguages[TranslationOcrLanguageIndex].LanguageTag;
+        }
+        if (OcrLanguages.Count > 0)
+            return OcrLanguages[0].LanguageTag;
+        return _baseline.Translation.OcrLanguage;
+    }
+
+    private string? BaselineOcrLanguage()
+    {
+        var saved = _baseline.Translation.OcrLanguage;
+        if (!string.IsNullOrWhiteSpace(saved))
+        {
+            var match = IndexOfOcrLanguage(OcrLanguages, saved);
+            if (match >= 0)
+                return OcrLanguages[match].LanguageTag;
+            if (OcrLanguages.Count > 0)
+                return OcrLanguages[0].LanguageTag;
+            return saved;
+        }
+        return OcrLanguages.FirstOrDefault()?.LanguageTag;
+    }
+
     private WheelActionKind[] BuildWheelActions()
     {
         var actions = new List<WheelActionKind>();
@@ -261,6 +467,9 @@ public partial class SettingsViewModel : ObservableObject
         Add(ShowNotesInWheel, WheelActionKind.Notes);
         Add(ShowInputLockInWheel, WheelActionKind.InputLock);
         Add(ShowSettingsInWheel, WheelActionKind.Settings);
+        Add(ShowTranslateSelectionInWheel, WheelActionKind.TranslateSelection);
+        Add(ShowTranslateRegionInWheel, WheelActionKind.TranslateRegion);
+        Add(ShowTranslateSubtitlesInWheel, WheelActionKind.TranslateSubtitles);
         return actions.ToArray();
 
         void Add(bool enabled, WheelActionKind kind)
@@ -293,6 +502,24 @@ public partial class SettingsViewModel : ObservableObject
             error = "暂停输入规则快捷键格式无效，请使用 Ctrl+Alt+F12 这类格式。";
             return false;
         }
+        if (!TryParseHotkey(TranslationSelectionHotkey, out _))
+        {
+            candidate = latest;
+            error = "翻译选中快捷键格式无效，请使用 Ctrl+Alt+T 这类格式。";
+            return false;
+        }
+        if (!TryParseHotkey(TranslationRegionHotkey, out _))
+        {
+            candidate = latest;
+            error = "框选翻译快捷键格式无效，请使用 Ctrl+Alt+O 这类格式。";
+            return false;
+        }
+        if (!TryParseHotkey(SubtitlesHotkey, out _))
+        {
+            candidate = latest;
+            error = "字幕翻译快捷键格式无效，请使用 Ctrl+Alt+L 这类格式。";
+            return false;
+        }
         if (CaptureAutoSave &&
             (string.IsNullOrWhiteSpace(CaptureSaveDirectory) ||
              !Path.IsPathFullyQualified(CaptureSaveDirectory)))
@@ -305,6 +532,65 @@ public partial class SettingsViewModel : ObservableObject
         error = "";
         return true;
     }
+
+    private static int IndexOf<T>(
+        IReadOnlyList<T> values,
+        T value)
+        where T : notnull
+    {
+        for (var index = 0; index < values.Count; index++)
+        {
+            if (EqualityComparer<T>.Default.Equals(values[index], value))
+                return index;
+        }
+        return values.Count > 0 ? 0 : -1;
+    }
+
+    private static int IndexOf(
+        IReadOnlyList<string> values,
+        string value)
+    {
+        for (var index = 0; index < values.Count; index++)
+        {
+            if (string.Equals(
+                    values[index],
+                    value,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return index;
+            }
+        }
+        return values.Count > 0 ? 0 : -1;
+    }
+
+    private static int IndexOfOcrLanguage(
+        IReadOnlyList<OcrLanguageOption> options,
+        string? languageTag)
+    {
+        if (options.Count == 0)
+            return -1;
+        if (string.IsNullOrWhiteSpace(languageTag))
+            return 0;
+        for (var index = 0; index < options.Count; index++)
+        {
+            if (string.Equals(
+                    options[index].LanguageTag,
+                    languageTag,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return index;
+            }
+        }
+        return 0;
+    }
+
+    private static string LanguageAt(
+        IReadOnlyList<string> languages,
+        int index,
+        string fallback) =>
+        index >= 0 && index < languages.Count
+            ? languages[index]
+            : fallback;
 
     private static bool LaunchersEqual(
         IEnumerable<LauncherItem> left,

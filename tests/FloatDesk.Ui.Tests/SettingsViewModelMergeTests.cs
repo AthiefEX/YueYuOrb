@@ -1,5 +1,6 @@
 using FloatDesk.App.ViewModels;
 using FloatDesk.Core.Models;
+using FloatDesk.Core.Translation;
 
 namespace FloatDesk.Ui.Tests;
 
@@ -171,5 +172,73 @@ public sealed class SettingsViewModelMergeTests
 
         Assert.False(valid);
         Assert.Contains("快捷键", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void UntouchedTranslationPreservesConcurrentProviderChange()
+    {
+        var original = AppSettings.CreateDefault();
+        var viewModel = SettingsViewModel.From(original);
+        var latest = original with
+        {
+            Translation = original.Translation with
+            {
+                Provider = TranslationProviderKind.DeepL
+            }
+        };
+
+        var candidate = viewModel.BuildCandidate(latest);
+
+        Assert.Equal(TranslationProviderKind.DeepL, candidate.Translation.Provider);
+    }
+
+    [Fact]
+    public void EditedTranslationTargetWinsOverConcurrentValue()
+    {
+        var original = AppSettings.CreateDefault();
+        var viewModel = SettingsViewModel.From(original);
+        viewModel.TranslationTargetLanguageIndex =
+            SettingsViewModel.TranslationTargetLanguages.ToList()
+                .IndexOf(TranslationLanguages.English);
+        var latest = original with
+        {
+            Translation = original.Translation with
+            {
+                TargetLanguage = TranslationLanguages.Japanese
+            }
+        };
+
+        var candidate = viewModel.BuildCandidate(latest);
+
+        Assert.Equal(TranslationLanguages.English, candidate.Translation.TargetLanguage);
+    }
+
+    [Fact]
+    public void TranslationHotkeysAndWheelTogglesMerge()
+    {
+        var original = AppSettings.CreateDefault();
+        var viewModel = SettingsViewModel.From(original);
+        viewModel.TranslationSelectionHotkey = "Ctrl+Alt+Y";
+        viewModel.TranslationRegionHotkey = "Ctrl+Shift+U";
+        viewModel.SubtitlesHotkey = "Ctrl+Alt+K";
+        viewModel.ShowTranslateSubtitlesInWheel = false;
+
+        var candidate = viewModel.BuildCandidate(original);
+
+        Assert.Equal(
+            0x59u,
+            candidate.Hotkeys[HotkeyAction.TranslateSelection].VirtualKey);
+        Assert.Equal(
+            0x55u,
+            candidate.Hotkeys[HotkeyAction.TranslateRegion].VirtualKey);
+        Assert.Equal(
+            ShortcutModifiers.Control | ShortcutModifiers.Shift,
+            candidate.Hotkeys[HotkeyAction.TranslateRegion].Modifiers);
+        Assert.Equal(
+            0x4Bu,
+            candidate.Hotkeys[HotkeyAction.ToggleSubtitles].VirtualKey);
+        Assert.DoesNotContain(
+            WheelActionKind.TranslateSubtitles,
+            candidate.WheelActions);
     }
 }
