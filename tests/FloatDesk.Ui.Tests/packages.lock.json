@@ -139,16 +139,6 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
-      "FloatDesk": {
-        "type": "Project",
-        "dependencies": {
-          "CommunityToolkit.Mvvm": "[8.2.2, )",
-          "FloatDesk.Core": "[1.0.0, )",
-          "FloatDesk.Infrastructure": "[1.0.0, )",
-          "FloatDesk.Windows": "[1.0.0, )",
-          "Microsoft.Web.WebView2": "[1.0.4314.35, )"
-        }
-      },
       "floatdesk.core": {
         "type": "Project"
       },
@@ -164,6 +154,16 @@
         "dependencies": {
           "FloatDesk.Core": "[1.0.0, )",
           "System.Drawing.Common": "[10.0.0, )"
+        }
+      },
+      "YueYuOrb": {
+        "type": "Project",
+        "dependencies": {
+          "CommunityToolkit.Mvvm": "[8.2.2, )",
+          "FloatDesk.Core": "[1.0.0, )",
+          "FloatDesk.Infrastructure": "[1.0.0, )",
+          "FloatDesk.Windows": "[1.0.0, )",
+          "Microsoft.Web.WebView2": "[1.0.4314.35, )"
         }
       },
       "CommunityToolkit.Mvvm": {
