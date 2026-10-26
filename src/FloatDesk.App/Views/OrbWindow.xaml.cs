@@ -18,6 +18,8 @@ public partial class OrbWindow : Window
     private const double OrbChromePadding = 20;
     private readonly DispatcherTimer _clockTimer = new();
     private readonly Action _openPanel;
+    private readonly Action<bool>? _panelToggle;
+    private readonly Func<bool>? _panelOpenState;
     private readonly Action<PixelRect> _positionChanged;
     private readonly Action _toggleVisibility;
     private readonly Action _exit;
@@ -29,6 +31,7 @@ public partial class OrbWindow : Window
     private double _sizeDip = 56;
     private bool _snap = true;
     private bool _positionLocked;
+    private bool _panelOpenAtPress;
     private OrbImageShape _imageShape;
     private byte[]? _imageBgra;
     private int _imagePixelWidth;
@@ -44,10 +47,14 @@ public partial class OrbWindow : Window
         Action captureRequested,
         Action toggleVisibility,
         Action exit,
-        string? orbImagePath = null)
+        string? orbImagePath = null,
+        Action<bool>? panelToggle = null,
+        Func<bool>? panelOpenState = null)
     {
         InitializeComponent();
         _openPanel = openPanel;
+        _panelToggle = panelToggle;
+        _panelOpenState = panelOpenState;
         _positionChanged = positionChanged;
         _toggleVisibility = toggleVisibility;
         _exit = exit;
@@ -97,10 +104,11 @@ public partial class OrbWindow : Window
                 _sizeDip / 2,
                 _sizeDip / 2)
             : null;
-        ClockBorder.Visibility = settings.Orb.ShowClock
+        var showClock = settings.Orb.ShowClock;
+        ClockBorder.Visibility = showClock
             ? Visibility.Visible
             : Visibility.Collapsed;
-        if (settings.Orb.ShowClock)
+        if (showClock)
         {
             RefreshClock(settings);
             ScheduleClockTick(settings);
@@ -114,7 +122,9 @@ public partial class OrbWindow : Window
         OrbImage.Source = bitmap;
         OrbImage.Visibility = bitmap is null ? Visibility.Collapsed : Visibility.Visible;
         OrbCircle.Visibility = bitmap is null ? Visibility.Visible : Visibility.Collapsed;
-        FallbackText.Visibility = bitmap is null ? Visibility.Visible : Visibility.Collapsed;
+        FallbackText.Visibility = bitmap is null && !showClock
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         CaptureAlpha(bitmap);
     }
 
@@ -158,6 +168,7 @@ public partial class OrbWindow : Window
 
     private void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        _panelOpenAtPress = _panelOpenState?.Invoke() ?? false;
         if (GetCursorPos(out var cursor))
         {
             var handle = new WindowInteropHelper(this).Handle;
@@ -183,14 +194,15 @@ public partial class OrbWindow : Window
     {
         if (!OrbRoot.IsMouseCaptured || _positionLocked)
             return;
-        if (!GetCursorPos(out var cursor) ||
-            !_dragMotion.TryUpdate(
-                new PixelPoint(cursor.X, cursor.Y),
-                out var target))
+        if (!GetCursorPos(out var cursor))
+            return;
+        var pointer = new PixelPoint(cursor.X, cursor.Y);
+        if (!_dragMotion.TryUpdate(pointer, out var target))
         {
             return;
         }
 
+        target = ConstrainToMonitor(target, pointer);
         if (!_dragFrameSubscribed)
             BeginDragVisuals();
         QueueDragPosition(target);
@@ -201,12 +213,14 @@ public partial class OrbWindow : Window
     {
         if (!OrbRoot.IsMouseCaptured)
             return;
-        if (GetCursorPos(out var cursor) &&
-            _dragMotion.TryUpdate(
-                new PixelPoint(cursor.X, cursor.Y),
-                out var finalTarget))
+        PixelPoint? releasePointer = null;
+        if (GetCursorPos(out var cursor))
         {
-            _pendingDragBounds = finalTarget;
+            releasePointer = new PixelPoint(cursor.X, cursor.Y);
+            if (_dragMotion.TryUpdate(releasePointer.Value, out var finalTarget))
+                _pendingDragBounds = ConstrainToMonitor(
+                    finalTarget,
+                    releasePointer.Value);
         }
         FlushPendingDragMove();
         var wasDragging = _dragMotion.IsDragging;
@@ -216,12 +230,21 @@ public partial class OrbWindow : Window
         _pendingDragBounds = null;
         if (wasDragging)
         {
-            SnapIfNeeded();
+            if (releasePointer is { } pointer)
+            {
+                var bounds = GetPhysicalBounds();
+                var constrained = ConstrainToMonitor(bounds, pointer);
+                if (constrained != bounds)
+                    SetPosition(constrained);
+            }
             _positionChanged(GetPhysicalBounds());
         }
         else
         {
-            _openPanel();
+            if (_panelToggle is null)
+                _openPanel();
+            else
+                _panelToggle(_panelOpenAtPress);
         }
         e.Handled = true;
     }
@@ -295,30 +318,22 @@ public partial class OrbWindow : Window
             }
         };
 
-    private void SnapIfNeeded()
+    private PixelRect ConstrainToMonitor(PixelRect bounds, PixelPoint pointer)
     {
-        if (!_snap)
-            return;
-        var bounds = GetPhysicalBounds();
-        var monitor = DisplayTopology.FromPoint(bounds.Location);
+        var handle = new WindowInteropHelper(this).Handle;
+        var monitor = DisplayTopology.FromPoint(pointer)
+            ?? DisplayTopology.FromWindow(handle);
         if (monitor is null)
-            return;
+            return bounds;
         var scale = DesktopGeometry.GetWindowDpiScale(
-            new WindowInteropHelper(this).Handle);
-        var threshold = Math.Max(1, (int)Math.Round(16 * scale));
-        var left = bounds.Left;
-        var top = bounds.Top;
-        if (Math.Abs(left - monitor.WorkArea.Left) < threshold)
-            left = monitor.WorkArea.Left;
-        if (Math.Abs(monitor.WorkArea.Right - bounds.Right) < threshold)
-            left = monitor.WorkArea.Right - bounds.Width;
-        if (Math.Abs(top - monitor.WorkArea.Top) < threshold)
-            top = monitor.WorkArea.Top;
-        if (Math.Abs(monitor.WorkArea.Bottom - bounds.Bottom) < threshold)
-            top = monitor.WorkArea.Bottom - bounds.Height;
-        SetPosition(OrbPlacement.Clamp(
-            new PixelRect(left, top, bounds.Width, bounds.Height),
-            monitor.WorkArea));
+            handle);
+        var threshold = _snap
+            ? Math.Max(1, (int)Math.Round(16 * scale))
+            : 0;
+        return OrbPlacement.SnapToWorkArea(
+            bounds,
+            monitor.WorkArea,
+            threshold);
     }
 
     private void RefreshClock(AppSettings? settings = null)

@@ -4,12 +4,33 @@ public static class OrbPlacement
 {
     private const int Margin = 12;
 
-    public static PixelRect Clamp(PixelRect orb, PixelRect workArea)
+    public static PixelRect Clamp(PixelRect orb, PixelRect workArea) =>
+        SnapToWorkArea(orb, workArea, 0);
+
+    public static PixelRect SnapToWorkArea(
+        PixelRect orb,
+        PixelRect workArea,
+        int thresholdPixels)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(thresholdPixels);
+
         var width = Math.Min(orb.Width, workArea.Width);
         var height = Math.Min(orb.Height, workArea.Height);
-        var left = Math.Clamp(orb.Left, workArea.Left, checked(workArea.Right - width));
-        var top = Math.Clamp(orb.Top, workArea.Top, checked(workArea.Bottom - height));
+        var maximumLeft = checked(workArea.Right - width);
+        var maximumTop = checked(workArea.Bottom - height);
+        var left = Math.Clamp(orb.Left, workArea.Left, maximumLeft);
+        var top = Math.Clamp(orb.Top, workArea.Top, maximumTop);
+
+        if (left - workArea.Left <= thresholdPixels)
+            left = workArea.Left;
+        else if (maximumLeft - left <= thresholdPixels)
+            left = maximumLeft;
+
+        if (top - workArea.Top <= thresholdPixels)
+            top = workArea.Top;
+        else if (maximumTop - top <= thresholdPixels)
+            top = maximumTop;
+
         return new PixelRect(left, top, width, height);
     }
 

@@ -123,6 +123,59 @@ public sealed class OrbWindowImageTests
             throw new Xunit.Sdk.XunitException(failure.ToString());
     }
 
+    [Fact(Timeout = 10_000)]
+    public async Task ClockIsRenderedInsideOrbAndReplacesFallbackText()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new OrbWindow(
+                    () => { },
+                    _ => { },
+                    () => { },
+                    () => { },
+                    () => { },
+                    () => { },
+                    () => { },
+                    () => { });
+                var defaults = AppSettings.CreateDefault();
+                window.ApplySettings(defaults with
+                {
+                    Orb = defaults.Orb with { ShowClock = true }
+                });
+
+                var orbRoot = Assert.IsType<Grid>(
+                    window.FindName("OrbRoot"));
+                var clockBorder = Assert.IsType<Border>(
+                    window.FindName("ClockBorder"));
+                var fallbackText = Assert.IsType<TextBlock>(
+                    window.FindName("FallbackText"));
+
+                Assert.Same(orbRoot, clockBorder.Parent);
+                Assert.Equal(
+                    Visibility.Visible,
+                    clockBorder.Visibility);
+                Assert.Equal(
+                    Visibility.Collapsed,
+                    fallbackText.Visibility);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
     private static void WriteTransparentPng(string path)
     {
         var bitmap = BitmapSource.Create(

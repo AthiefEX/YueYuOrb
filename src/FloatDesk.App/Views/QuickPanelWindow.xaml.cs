@@ -15,6 +15,10 @@ public partial class QuickPanelWindow : Window
 {
     private const double PanelWidth = 660;
     private const double PanelHeight = 560;
+    private const double GlowSurfaceSize = 236;
+    private const double GlowInset = GlowSurfaceSize / 2;
+    private const double WindowSurfaceWidth = PanelWidth + GlowSurfaceSize;
+    private const double WindowSurfaceHeight = PanelHeight + GlowSurfaceSize;
     private const double WheelViewportWidth = 380;
     private const double WheelViewportHeight = 420;
     private const double WheelButtonWidth = 196;
@@ -35,7 +39,11 @@ public partial class QuickPanelWindow : Window
     private bool _wheelOpensLeft;
     private bool _wheelLayoutReady;
     private bool _updatingWheelLayout;
+    private bool _panelOpen;
     private bool _hideTransitionPending;
+    private RotateTransform? _wheelFanRotation;
+    private TranslateTransform? _wheelFanTranslation;
+    private EventHandler? _entranceFrameHandler;
     private double _smoothWheelTargetOffset;
     private int _smoothWheelAnimationVersion;
     private bool _smoothWheelAnimationActive;
@@ -47,6 +55,8 @@ public partial class QuickPanelWindow : Window
     public event Action? NotesRequested;
     public event Action<FloatDesk.Core.Models.CaptureMode>? CaptureRequested;
 
+    public bool IsPanelOpen => _panelOpen;
+
     public QuickPanelWindow()
     {
         InitializeComponent();
@@ -54,7 +64,6 @@ public partial class QuickPanelWindow : Window
             "MenuActionBeamBrush",
             Color.FromArgb(0x34, 0xFF, 0xFF, 0xFF));
         SourceInitialized += OnSourceInitialized;
-        Closed += (_, _) => AnchorGlowPopup.IsOpen = false;
     }
 
     public void Apply(AppSettings settings, bool manualLockEnabled, string inputStatus)
@@ -148,6 +157,7 @@ public partial class QuickPanelWindow : Window
     {
         CancelPendingHide();
         ApplyFixedSize();
+        PrepareEntranceVisuals();
         if (!IsVisible)
             Show();
         UpdateLayout();
@@ -164,6 +174,13 @@ public partial class QuickPanelWindow : Window
                 (int)Top,
                 Math.Max(1, (int)ActualWidth),
                 Math.Max(1, (int)ActualHeight));
+        var scaleX = pixels.Width / WindowSurfaceWidth;
+        var scaleY = pixels.Height / WindowSurfaceHeight;
+        var insetX = (int)Math.Round(GlowInset * scaleX);
+        var insetY = (int)Math.Round(GlowInset * scaleY);
+        var contentSize = new PixelSize(
+            Math.Max(1, pixels.Width - (insetX * 2)),
+            Math.Max(1, pixels.Height - (insetY * 2)));
         var monitors = DisplayTopology.GetMonitors();
         var monitor = DisplayTopology.FromPoint(orbPixels.Location)
             ?? (monitors.Count > 0 ? monitors[0] : null);
@@ -172,12 +189,12 @@ public partial class QuickPanelWindow : Window
             0,
             GetSystemMetrics(0),
             GetSystemMetrics(1));
-        var point = OrbPlacement.PlaceQuickPanel(orbPixels, pixels.Size, work);
+        var point = OrbPlacement.PlaceQuickPanel(orbPixels, contentSize, work);
         SetWindowPos(
             handle,
             0,
-            point.X,
-            point.Y,
+            point.X - insetX,
+            point.Y - insetY,
             pixels.Width,
             pixels.Height,
             0x0004 | 0x0010);
@@ -186,22 +203,42 @@ public partial class QuickPanelWindow : Window
         var orbCenter = new Point(
             orbPixels.Left + orbPixels.Width / 2.0,
             orbPixels.Top + orbPixels.Height / 2.0);
-        var anchor = PointFromScreen(orbCenter);
+        var windowAnchor = PointFromScreen(orbCenter);
+        var anchor = new Point(
+            windowAnchor.X - GlowInset,
+            windowAnchor.Y - GlowInset);
         ArrangeMenu(anchor, opensLeft: point.X < orbPixels.Left);
+        _panelOpen = true;
         PlayEntranceAnimation();
         Activate();
         Focus();
     }
 
+    public void ToggleNear(Window orb, PixelRect orbPixels) =>
+        ToggleNear(orb, orbPixels, _panelOpen);
+
+    public void ToggleNear(
+        Window orb,
+        PixelRect orbPixels,
+        bool panelWasOpenAtPress)
+    {
+        if (panelWasOpenAtPress || _panelOpen)
+        {
+            HideAnimated();
+            return;
+        }
+
+        ShowNear(orb, orbPixels);
+    }
+
     public void HideAnimated()
     {
-        if (!IsVisible || _hideTransitionPending)
+        CancelQueuedEntranceAnimation();
+        if (!_panelOpen || _hideTransitionPending)
             return;
         if (!SystemParameters.ClientAreaAnimation)
         {
-            AnchorGlowPopup.IsOpen = false;
-            ResetMotionVisuals();
-            Hide();
+            CompleteDismissal();
             return;
         }
 
@@ -212,6 +249,13 @@ public partial class QuickPanelWindow : Window
             EasingMode = EasingMode.EaseIn
         };
         var opacity = new DoubleAnimation
+        {
+            To = 0,
+            Duration = TimeSpan.FromMilliseconds(145),
+            EasingFunction = ease,
+            FillBehavior = FillBehavior.HoldEnd
+        };
+        var glowOpacity = new DoubleAnimation
         {
             To = 0,
             Duration = TimeSpan.FromMilliseconds(145),
@@ -236,12 +280,12 @@ public partial class QuickPanelWindow : Window
         {
             if (!_hideTransitionPending)
                 return;
-            _hideTransitionPending = false;
-            AnchorGlowPopup.IsOpen = false;
-            ResetMotionVisuals();
-            Hide();
+            CompleteDismissal();
         };
         MenuRoot.BeginAnimation(OpacityProperty, opacity);
+        AnchorGlowSurface.BeginAnimation(
+            OpacityProperty,
+            glowOpacity);
         MenuScaleTransform.BeginAnimation(
             ScaleTransform.ScaleXProperty,
             scale);
@@ -253,24 +297,41 @@ public partial class QuickPanelWindow : Window
             translate);
     }
 
+    public void PrepareForScreenCapture()
+    {
+        CancelQueuedEntranceAnimation();
+        _hideTransitionPending = false;
+        _panelOpen = false;
+        IsHitTestVisible = false;
+        PrepareEntranceVisuals();
+    }
+
+    private void CompleteDismissal()
+    {
+        _hideTransitionPending = false;
+        _panelOpen = false;
+        IsHitTestVisible = false;
+        PrepareEntranceVisuals();
+    }
+
     private void CancelPendingHide()
     {
         _hideTransitionPending = false;
         IsHitTestVisible = true;
-        ResetMotionVisuals();
+        ClearMotionAnimations();
     }
 
     public void RefreshVisibility() => ShowNear(Owner ?? this, new PixelRect(
-        (int)Left,
-        (int)Top,
-        (int)Width,
-        (int)Height));
+        (int)(Left + GlowInset),
+        (int)(Top + GlowInset),
+        (int)PanelWidth,
+        (int)PanelHeight));
 
     private void ApplyFixedSize()
     {
         SizeToContent = SizeToContent.Manual;
-        Width = PanelWidth;
-        Height = PanelHeight;
+        Width = WindowSurfaceWidth;
+        Height = WindowSurfaceHeight;
     }
 
     private void ArrangeMenu(Point anchor, bool opensLeft)
@@ -292,6 +353,7 @@ public partial class QuickPanelWindow : Window
                 anchor.Y - (WheelViewportHeight / 2),
                 20,
                 68));
+        UpdateWheelFanOrigin();
 
         LayoutWheelEntries(resetScroll: true);
         ArrangeAnchor(anchor);
@@ -408,13 +470,26 @@ public partial class QuickPanelWindow : Window
 
     private void ArrangeAnchor(Point anchor)
     {
-        AnchorGlowPopup.PlacementTarget = MenuRoot;
-        AnchorGlowPopup.Placement =
-            System.Windows.Controls.Primitives.PlacementMode.Relative;
-        AnchorGlowPopup.HorizontalOffset =
-            anchor.X - (AnchorGlowSurface.Width / 2);
-        AnchorGlowPopup.VerticalOffset =
-            anchor.Y - (AnchorGlowSurface.Height / 2);
+        Canvas.SetLeft(
+            AnchorGlowSurface,
+            GlowInset + anchor.X - (GlowSurfaceSize / 2));
+        Canvas.SetTop(
+            AnchorGlowSurface,
+            GlowInset + anchor.Y - (GlowSurfaceSize / 2));
+    }
+
+    private void UpdateWheelFanOrigin()
+    {
+        var wheelLeft = Canvas.GetLeft(WheelScroller);
+        var wheelTop = Canvas.GetTop(WheelScroller);
+        if (!double.IsFinite(wheelLeft) || !double.IsFinite(wheelTop))
+            return;
+
+        var pivotX = wheelLeft + (WheelViewportWidth / 2);
+        var pivotY = wheelTop + WheelViewportHeight;
+        WheelFanLayer.RenderTransformOrigin = new Point(
+            pivotX / PanelWidth,
+            pivotY / PanelHeight);
     }
 
     private void UpdateFanGeometry(
@@ -585,52 +660,96 @@ public partial class QuickPanelWindow : Window
     private void PlayEntranceAnimation()
     {
         _hideTransitionPending = false;
+        _panelOpen = true;
         IsHitTestVisible = true;
-        AnchorGlowPopup.IsOpen = true;
-        ResetMotionVisuals();
+        PrepareEntranceVisuals();
         if (!SystemParameters.ClientAreaAnimation)
+        {
+            ResetMotionVisuals();
             return;
+        }
 
+        QueueEntranceAnimation();
+    }
+
+    private void QueueEntranceAnimation()
+    {
+        CancelQueuedEntranceAnimation();
+        _entranceFrameHandler = OnEntranceCompositionFrame;
+        CompositionTarget.Rendering += _entranceFrameHandler;
+    }
+
+    private void OnEntranceCompositionFrame(object? sender, EventArgs e)
+    {
+        if (!_panelOpen || !IsVisible || _hideTransitionPending)
+        {
+            CancelQueuedEntranceAnimation();
+            return;
+        }
+
+        CancelQueuedEntranceAnimation();
+        StartEntranceWheelMotion();
+        StartAnchorGlowMotion();
+    }
+
+    private void CancelQueuedEntranceAnimation()
+    {
+        if (_entranceFrameHandler is not null)
+            CompositionTarget.Rendering -= _entranceFrameHandler;
+        _entranceFrameHandler = null;
+    }
+
+    private void StartEntranceWheelMotion()
+    {
         var outEase = new QuinticEase
         {
             EasingMode = EasingMode.EaseOut
         };
-        MenuRoot.Opacity = 0;
-        MenuScaleTransform.ScaleX = 0.975;
-        MenuScaleTransform.ScaleY = 0.975;
-        MenuTranslateTransform.X = _wheelOpensLeft ? 8 : -8;
+        var fanEase = new CubicEase
+        {
+            EasingMode = EasingMode.EaseOut
+        };
         MenuRoot.BeginAnimation(
             OpacityProperty,
-            MotionAnimation(0, 1, 170, 0, outEase));
+            MotionAnimation(0, 1, 160, 0, outEase));
         MenuScaleTransform.BeginAnimation(
             ScaleTransform.ScaleXProperty,
-            MotionAnimation(0.975, 1, 230, 0, outEase));
+            MotionAnimation(0.985, 1, 220, 0, outEase));
         MenuScaleTransform.BeginAnimation(
             ScaleTransform.ScaleYProperty,
-            MotionAnimation(0.975, 1, 230, 0, outEase));
+            MotionAnimation(0.985, 1, 220, 0, outEase));
         MenuTranslateTransform.BeginAnimation(
             TranslateTransform.XProperty,
             MotionAnimation(
-                _wheelOpensLeft ? 8 : -8,
+                _wheelOpensLeft ? 4 : -4,
                 0,
-                220,
+                210,
                 0,
                 outEase));
 
-        ActionBeamsPath.Opacity = 0;
-        ActionBeamsPath.BeginAnimation(
+        WheelScroller.Opacity = 1;
+        WheelFanLayer.BeginAnimation(
             OpacityProperty,
-            MotionAnimation(0, 1, 210, 25, outEase));
-        AnchorHalo.Opacity = 0;
-        AnchorHalo.BeginAnimation(
-            OpacityProperty,
-            MotionAnimation(0, 1, 240, 0, outEase));
-
+            MotionAnimation(0, 1, 150, 12, fanEase));
+        _wheelFanRotation?.BeginAnimation(
+            RotateTransform.AngleProperty,
+            MotionAnimation(
+                _wheelFanRotation.Angle,
+                0,
+                280,
+                12,
+                fanEase));
+        _wheelFanTranslation?.BeginAnimation(
+            TranslateTransform.YProperty,
+            MotionAnimation(
+                _wheelFanTranslation.Y,
+                0,
+                300,
+                12,
+                fanEase));
         if (LauncherDock.Visibility == Visibility.Visible)
         {
-            var dockOffset = new TranslateTransform(0, 9);
-            LauncherDock.RenderTransform = dockOffset;
-            LauncherDock.Opacity = 0;
+            var dockOffset = (TranslateTransform)LauncherDock.RenderTransform;
             LauncherDock.BeginAnimation(
                 OpacityProperty,
                 MotionAnimation(0, 1, 190, 40, outEase));
@@ -643,75 +762,144 @@ public partial class QuickPanelWindow : Window
             .Where(button =>
                 IsInsideWheelViewport(
                     GetWheelButtonMenuBounds(button)))
-            .OrderBy(button =>
+            .OrderByDescending(button =>
             {
                 var bounds = GetWheelButtonMenuBounds(button);
-                var centerY = bounds.Top + (bounds.Height / 2);
-                return Math.Abs(centerY - _wheelAnchor.Y);
+                return bounds.Top + (bounds.Height / 2);
             })
             .Take(10)
             .ToArray();
+        var bottomCenterY = items.Length == 0
+            ? _wheelAnchor.Y
+            : items.Max(button =>
+            {
+                var bounds = GetWheelButtonMenuBounds(button);
+                return bounds.Top + (bounds.Height / 2);
+            });
         for (var index = 0; index < items.Length; index++)
         {
-            var delay = index * 18;
+            var delay = index * 28;
             var button = items[index];
-            var (scale, translate) = ConfigureWheelItemMotion(button);
+            var (scale, rotation, translate) =
+                ConfigureWheelItemMotion(button, bottomCenterY);
             button.BeginAnimation(
                 OpacityProperty,
-                MotionAnimation(0, 1, 175, delay, outEase));
+                MotionAnimation(0, 1, 170, delay, fanEase));
             scale.BeginAnimation(
                 ScaleTransform.ScaleXProperty,
-                MotionAnimation(0.9, 1, 235, delay, outEase));
+                MotionAnimation(0.82, 1, 250, delay, fanEase));
             scale.BeginAnimation(
                 ScaleTransform.ScaleYProperty,
-                MotionAnimation(0.9, 1, 235, delay, outEase));
+                MotionAnimation(0.82, 1, 250, delay, fanEase));
+            rotation.BeginAnimation(
+                RotateTransform.AngleProperty,
+                MotionAnimation(
+                    rotation.Angle,
+                    0,
+                    240,
+                    delay,
+                    fanEase));
             translate.BeginAnimation(
                 TranslateTransform.XProperty,
                 MotionAnimation(
                     translate.X,
                     0,
-                    250,
+                    280,
                     delay,
-                    outEase));
+                    fanEase));
             translate.BeginAnimation(
                 TranslateTransform.YProperty,
                 MotionAnimation(
                     translate.Y,
                     0,
-                    250,
+                    300,
                     delay,
-                    outEase));
+                    fanEase));
+        }
+    }
+
+    private void StartAnchorGlowMotion()
+    {
+        if (!IsVisible)
+            return;
+
+        AnchorGlowSurface.BeginAnimation(
+            OpacityProperty,
+            MotionAnimation(
+                0,
+                1,
+                220,
+                16,
+                new QuinticEase
+                {
+                    EasingMode = EasingMode.EaseOut
+                }));
+    }
+
+    private void PrepareEntranceVisuals()
+    {
+        CancelQueuedEntranceAnimation();
+        ClearMotionAnimations();
+
+        MenuRoot.Opacity = 0;
+        MenuScaleTransform.ScaleX = 0.985;
+        MenuScaleTransform.ScaleY = 0.985;
+        MenuTranslateTransform.X = _wheelOpensLeft ? 4 : -4;
+        ActionBeamsPath.Opacity = 1;
+        AnchorGlowSurface.Opacity = 0;
+        AnchorHalo.Opacity = 1;
+        WheelScroller.Opacity = 0;
+        WheelFanLayer.Opacity = 0;
+        UpdateWheelFanOrigin();
+        _wheelFanRotation = new RotateTransform(_wheelOpensLeft ? -6 : 6);
+        _wheelFanTranslation = new TranslateTransform(0, 18);
+        WheelFanLayer.RenderTransform = new TransformGroup
+        {
+            Children = { _wheelFanRotation, _wheelFanTranslation }
+        };
+        LauncherDock.Opacity = 0;
+        LauncherDock.RenderTransform = new TranslateTransform(0, 9);
+
+        foreach (var button in GetVisibleWheelButtons())
+        {
+            button.Opacity = 0;
+            button.RenderTransformOrigin = new Point(0.5, 0.5);
+            button.RenderTransform = new TransformGroup
+            {
+                Children =
+                {
+                    new ScaleTransform(0.9, 0.9),
+                    new TranslateTransform()
+                }
+            };
         }
     }
 
     private void ResetMotionVisuals()
     {
-        MenuRoot.BeginAnimation(OpacityProperty, null);
-        MenuScaleTransform.BeginAnimation(
-            ScaleTransform.ScaleXProperty,
-            null);
-        MenuScaleTransform.BeginAnimation(
-            ScaleTransform.ScaleYProperty,
-            null);
-        MenuTranslateTransform.BeginAnimation(
-            TranslateTransform.XProperty,
-            null);
-        ActionBeamsPath.BeginAnimation(OpacityProperty, null);
-        AnchorHalo.BeginAnimation(OpacityProperty, null);
-        LauncherDock.BeginAnimation(OpacityProperty, null);
+        ClearMotionAnimations();
 
         MenuRoot.Opacity = 1;
         MenuScaleTransform.ScaleX = 1;
         MenuScaleTransform.ScaleY = 1;
         MenuTranslateTransform.X = 0;
         ActionBeamsPath.Opacity = 1;
+        AnchorGlowSurface.Opacity = 1;
         AnchorHalo.Opacity = 1;
+        WheelScroller.Opacity = 1;
+        WheelFanLayer.Opacity = 1;
+        UpdateWheelFanOrigin();
+        _wheelFanRotation = new RotateTransform();
+        _wheelFanTranslation = new TranslateTransform();
+        WheelFanLayer.RenderTransform = new TransformGroup
+        {
+            Children = { _wheelFanRotation, _wheelFanTranslation }
+        };
         LauncherDock.Opacity = 1;
         LauncherDock.RenderTransform = new TranslateTransform();
 
         foreach (var button in GetVisibleWheelButtons())
         {
-            button.BeginAnimation(OpacityProperty, null);
             button.Opacity = 1;
             button.RenderTransformOrigin = new Point(0.5, 0.5);
             button.RenderTransform = new TransformGroup
@@ -725,32 +913,56 @@ public partial class QuickPanelWindow : Window
         }
     }
 
-    private (ScaleTransform Scale, TranslateTransform Translate)
-        ConfigureWheelItemMotion(Button button)
+    private void ClearMotionAnimations()
+    {
+        MenuRoot.BeginAnimation(OpacityProperty, null);
+        MenuScaleTransform.BeginAnimation(
+            ScaleTransform.ScaleXProperty,
+            null);
+        MenuScaleTransform.BeginAnimation(
+            ScaleTransform.ScaleYProperty,
+            null);
+        MenuTranslateTransform.BeginAnimation(
+            TranslateTransform.XProperty,
+            null);
+        AnchorGlowSurface.BeginAnimation(OpacityProperty, null);
+        AnchorHalo.BeginAnimation(OpacityProperty, null);
+        WheelFanLayer.BeginAnimation(OpacityProperty, null);
+        _wheelFanRotation?.BeginAnimation(
+            RotateTransform.AngleProperty,
+            null);
+        _wheelFanTranslation?.BeginAnimation(
+            TranslateTransform.YProperty,
+            null);
+        LauncherDock.BeginAnimation(OpacityProperty, null);
+
+        foreach (var button in GetVisibleWheelButtons())
+            button.BeginAnimation(OpacityProperty, null);
+    }
+
+    private (ScaleTransform Scale, RotateTransform Rotation,
+        TranslateTransform Translate) ConfigureWheelItemMotion(
+        Button button,
+        double fanBottomY)
     {
         var bounds = GetWheelButtonMenuBounds(button);
-        var centerX = bounds.Left + (bounds.Width / 2);
         var centerY = bounds.Top + (bounds.Height / 2);
-        var towardAnchorX = _wheelAnchor.X - centerX;
-        var towardAnchorY = _wheelAnchor.Y - centerY;
-        var length = Math.Sqrt(
-            (towardAnchorX * towardAnchorX) +
-            (towardAnchorY * towardAnchorY));
-        var startX = length < 0.001
-            ? _wheelOpensLeft ? 14 : -14
-            : (towardAnchorX / length) * 14;
-        var startY = length < 0.001
-            ? 0
-            : (towardAnchorY / length) * 14;
-        var scale = new ScaleTransform(0.9, 0.9);
+        var distanceFromBottom = Math.Max(0, fanBottomY - centerY);
+        var distanceFactor = Math.Clamp(distanceFromBottom / 320, 0, 1);
+        var direction = _wheelOpensLeft ? -1 : 1;
+        var startX = _wheelOpensLeft ? 22 : -22;
+        var startY = 10 + (distanceFromBottom * 0.24);
+        var startAngle = direction * (4.5 + (4.5 * distanceFactor));
+        var scale = new ScaleTransform(0.82, 0.82);
+        var rotation = new RotateTransform(startAngle);
         var translate = new TranslateTransform(startX, startY);
         button.RenderTransformOrigin = new Point(0.5, 0.5);
         button.RenderTransform = new TransformGroup
         {
-            Children = { scale, translate }
+            Children = { scale, rotation, translate }
         };
         button.Opacity = 0;
-        return (scale, translate);
+        return (scale, rotation, translate);
     }
 
     private static DoubleAnimation MotionAnimation(
@@ -1022,6 +1234,10 @@ public partial class QuickPanelWindow : Window
         var hit = InputHitTest(point) as DependencyObject;
         if (hit is null ||
             ReferenceEquals(hit, this) ||
+            ReferenceEquals(hit, WindowSurface) ||
+            ReferenceEquals(hit, GlowLayer) ||
+            ReferenceEquals(hit, WheelFanLayer) ||
+            ReferenceEquals(hit, AnchorGlowSurface) ||
             ReferenceEquals(hit, MenuRoot) ||
             ReferenceEquals(hit, MenuCanvas) ||
             hit is System.Windows.Shapes.Path)
@@ -1034,16 +1250,16 @@ public partial class QuickPanelWindow : Window
 
     private void OnDeactivated(object? sender, EventArgs e)
     {
-        AnchorGlowPopup.IsOpen = false;
-        Hide();
+        CancelQueuedEntranceAnimation();
+        HideAnimated();
     }
 
     private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == Key.Escape)
         {
-            AnchorGlowPopup.IsOpen = false;
-            Hide();
+            CancelQueuedEntranceAnimation();
+            HideAnimated();
             e.Handled = true;
         }
     }

@@ -52,6 +52,14 @@ public static class DisplayTopology
         return FromHandle(monitor);
     }
 
+    public static DisplayMonitor? SelectPrimaryMonitor(
+        IReadOnlyList<DisplayMonitor> monitors)
+    {
+        ArgumentNullException.ThrowIfNull(monitors);
+        return monitors.FirstOrDefault(item => item.IsPrimary)
+            ?? (monitors.Count > 0 ? monitors[0] : null);
+    }
+
     public static DisplayMonitor? FromWindow(nint hwnd)
     {
         var monitor = NativeMethods.MonitorFromWindow(hwnd, MonitorDefaultToNearest);

@@ -40,6 +40,28 @@ public sealed class GeometryTests
     }
 
     [Fact]
+    public void OrbPlacementSnapAlignsNearbyOrbEdgeToWorkArea()
+    {
+        var result = OrbPlacement.SnapToWorkArea(
+            new PixelRect(890, 200, 96, 96),
+            new PixelRect(0, 0, 1000, 800),
+            thresholdPixels: 16);
+
+        Assert.Equal(new PixelRect(904, 200, 96, 96), result);
+    }
+
+    [Fact]
+    public void OrbPlacementSnapClampsOvershotOrbInsideWorkArea()
+    {
+        var result = OrbPlacement.SnapToWorkArea(
+            new PixelRect(1040, 760, 96, 96),
+            new PixelRect(0, 0, 1000, 800),
+            thresholdPixels: 16);
+
+        Assert.Equal(new PixelRect(904, 704, 96, 96), result);
+    }
+
+    [Fact]
     public void QuickPanelFallsBackToLeftWhenRightHasNoRoom()
     {
         var point = OrbPlacement.PlaceQuickPanel(
@@ -91,4 +113,5 @@ public sealed class GeometryTests
             point.X,
             point.X + 660);
     }
+
 }

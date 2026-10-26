@@ -3,7 +3,9 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
 using FloatDesk.App.Views;
+using FloatDesk.Core.Geometry;
 using FloatDesk.Core.Models;
+using FloatDesk.Windows.Windows;
 
 namespace FloatDesk.Ui.Tests;
 
@@ -478,7 +480,7 @@ public sealed class QuickPanelWindowLayoutTests
     }
 
     [Fact(Timeout = 10_000)]
-    public async Task OrbGlowUsesDetachedPopupNearPanelEdge()
+    public async Task OrbGlowSharesTheMainWindowCompositionSurface()
     {
         Exception? failure = null;
         var thread = new Thread(() =>
@@ -496,33 +498,89 @@ public sealed class QuickPanelWindowLayoutTests
                     anchor,
                     opensLeft: false);
 
-                var popup = Assert.IsType<
-                    System.Windows.Controls.Primitives.Popup>(
-                    window.FindName("AnchorGlowPopup"));
-                var surface = Assert.IsType<Grid>(popup.Child);
+                var surface = Assert.IsType<Grid>(
+                    window.FindName("AnchorGlowSurface"));
                 var halo = Assert.IsType<System.Windows.Shapes.Ellipse>(
                     window.FindName("AnchorHalo"));
-                var canvas = Assert.IsType<Canvas>(
-                    window.FindName("MenuCanvas"));
+                var windowSurface = Assert.IsType<Canvas>(
+                    window.FindName("WindowSurface"));
 
                 Assert.True(
                     surface.IsAncestorOf(halo),
-                    "The halo must live inside the detached glow surface.");
-                Assert.False(
-                    canvas.IsAncestorOf(halo),
-                    "The halo must not inherit the quick-panel clip.");
+                    "The halo must live inside the glow surface.");
+                Assert.True(
+                    windowSurface.IsAncestorOf(surface),
+                    "The glow must share the main window composition surface.");
+                Assert.Null(window.FindName("AnchorGlowPopup"));
                 Assert.Equal(236, surface.Width);
                 Assert.Equal(236, surface.Height);
                 Assert.Equal(
-                    anchor.X - (surface.Width / 2),
-                    popup.HorizontalOffset);
+                    anchor.X,
+                    Canvas.GetLeft(surface));
                 Assert.Equal(
-                    anchor.Y - (surface.Height / 2),
-                    popup.VerticalOffset);
+                    anchor.Y,
+                    Canvas.GetTop(surface));
             }
             catch (Exception exception)
             {
                 failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task OrbGlowStaysCenteredOnOrbAtScreenEdge()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            QuickPanelWindow? window = null;
+            try
+            {
+                var workArea = DisplayTopology.GetMonitors()
+                    .First(monitor => monitor.IsPrimary)
+                    .WorkArea;
+                var orb = new PixelRect(
+                    workArea.Right - 56,
+                    workArea.Top + 400,
+                    56,
+                    56);
+                window = new QuickPanelWindow();
+                window.Apply(
+                    AppSettings.CreateDefault(),
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+                window.ShowNear(window, orb);
+                PumpDispatcherFor(TimeSpan.FromMilliseconds(350));
+
+                var surface = Assert.IsType<Grid>(
+                    window.FindName("AnchorGlowSurface"));
+                var actual = surface.PointToScreen(new Point(
+                    surface.Width / 2,
+                    surface.Height / 2));
+                var expected = new Point(
+                    orb.Left + (orb.Width / 2.0),
+                    orb.Top + (orb.Height / 2.0));
+
+                Assert.InRange(Math.Abs(actual.X - expected.X), 0, 2.5);
+                Assert.InRange(Math.Abs(actual.Y - expected.Y), 0, 2.5);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+            finally
+            {
+                window?.Close();
             }
         });
         thread.SetApartmentState(ApartmentState.STA);
@@ -928,8 +986,10 @@ public sealed class QuickPanelWindowLayoutTests
             throw new Xunit.Sdk.XunitException(failure.ToString());
     }
 
-    [Fact(Timeout = 10_000)]
-    public async Task AnimatedCloseFinishesWithoutLeavingThePanelVisible()
+    [Theory(Timeout = 10_000)]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OpeningWheelUsesBottomHingedFanMotion(bool opensLeft)
     {
         Exception? failure = null;
         var thread = new Thread(() =>
@@ -941,15 +1001,460 @@ public sealed class QuickPanelWindowLayoutTests
                     AppSettings.CreateDefault(),
                     manualLockEnabled: false,
                     inputStatus: "等待前台应用");
+                InvokeArrangeMenu(
+                    window,
+                    new Point(opensLeft ? 623 : 37, 280),
+                    opensLeft);
+                InvokePlayEntranceAnimation(window);
+                InvokeStartEntranceWheelMotion(window);
+
+                var scroller = Assert.IsType<ScrollViewer>(
+                    window.FindName("WheelScroller"));
+                var fanLayer = Assert.IsType<Canvas>(
+                    window.FindName("WheelFanLayer"));
+                var beams = Assert.IsType<System.Windows.Shapes.Path>(
+                    window.FindName("ActionBeamsPath"));
+                Assert.True(fanLayer.IsAncestorOf(scroller));
+                Assert.True(
+                    fanLayer.IsAncestorOf(beams),
+                    "Pointer beams must follow the same fan transform.");
+                var fanTransforms = Assert.IsType<TransformGroup>(
+                    fanLayer.RenderTransform);
+                var fanRotation = Assert.Single(
+                    fanTransforms.Children.OfType<RotateTransform>());
+                var fanOffset = Assert.Single(
+                    fanTransforms.Children.OfType<TranslateTransform>());
+                Assert.Equal(opensLeft ? -1 : 1, Math.Sign(fanRotation.Angle));
+                Assert.True(
+                    fanOffset.Y >= 12,
+                    "The folded wheel must start below its final position.");
+
+                var top = Assert.IsType<Button>(
+                    window.FindName("RegionCaptureButton"));
+                var bottom = Assert.IsType<Button>(
+                    window.FindName("SettingsButton"));
+                var topTransforms = Assert.IsType<TransformGroup>(
+                    top.RenderTransform);
+                var bottomTransforms = Assert.IsType<TransformGroup>(
+                    bottom.RenderTransform);
+                var topRotation = Assert.Single(
+                    topTransforms.Children.OfType<RotateTransform>());
+                var bottomRotation = Assert.Single(
+                    bottomTransforms.Children.OfType<RotateTransform>());
+                var topOffset = Assert.Single(
+                    topTransforms.Children.OfType<TranslateTransform>());
+                var bottomOffset = Assert.Single(
+                    bottomTransforms.Children.OfType<TranslateTransform>());
+
+                Assert.NotEqual(0, topRotation.Angle);
+                Assert.NotEqual(0, bottomRotation.Angle);
+                Assert.True(
+                    topOffset.Y > bottomOffset.Y,
+                    "Upper actions must unfold from farther down the fan.");
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task EntranceStartsAllVisualsOnlyAfterFirstComposition()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            QuickPanelWindow? window = null;
+            try
+            {
+                window = new QuickPanelWindow();
+                window.Apply(
+                    AppSettings.CreateDefault(),
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
                 window.Show();
                 window.UpdateLayout();
+                InvokeArrangeMenu(
+                    window,
+                    new Point(37, 280),
+                    opensLeft: false);
+
+                var menuRoot = Assert.IsType<Grid>(
+                    window.FindName("MenuRoot"));
+                var scroller = Assert.IsType<ScrollViewer>(
+                    window.FindName("WheelScroller"));
+                var fanLayer = Assert.IsType<Canvas>(
+                    window.FindName("WheelFanLayer"));
+                var glowSurface = Assert.IsType<Grid>(
+                    window.FindName("AnchorGlowSurface"));
+                var rendered = false;
+                double menuOpacity = -1;
+                double glowOpacity = -1;
+                double scrollerOpacity = -1;
+                double fanOpacity = -1;
+                EventHandler? onRendering = null;
+                onRendering = (_, _) =>
+                {
+                    if (rendered)
+                        return;
+                    rendered = true;
+                    menuOpacity = menuRoot.Opacity;
+                    glowOpacity = glowSurface.Opacity;
+                    scrollerOpacity = scroller.Opacity;
+                    fanOpacity = fanLayer.Opacity;
+                    CompositionTarget.Rendering -= onRendering;
+                };
+                CompositionTarget.Rendering += onRendering;
+
+                InvokePlayEntranceAnimation(window);
+                PumpDispatcherUntil(() => rendered);
+
+                Assert.True(rendered, "The first composition frame was not observed.");
+                Assert.InRange(menuOpacity, 0, 0.01);
+                Assert.InRange(glowOpacity, 0, 0.01);
+                Assert.InRange(scrollerOpacity, 0, 0.01);
+                Assert.InRange(fanOpacity, 0, 0.01);
+
+                PumpDispatcherUntil(() => glowSurface.Opacity > 0.01);
+                Assert.True(
+                    glowSurface.Opacity > 0.01,
+                    "The glow must start only after the first composition frame.");
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+            finally
+            {
+                window?.Close();
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task ReopeningPanelReusesVisibleTransparentComposition()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            QuickPanelWindow? window = null;
+            try
+            {
+                window = new QuickPanelWindow();
+                window.Apply(
+                    AppSettings.CreateDefault(),
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+                var workArea = DisplayTopology.GetMonitors()
+                    .First(monitor => monitor.IsPrimary)
+                    .WorkArea;
+                var orb = new PixelRect(
+                    workArea.Left + 120,
+                    workArea.Top + 320,
+                    56,
+                    56);
+
+                window.ShowNear(window, orb);
+                PumpDispatcherFor(TimeSpan.FromMilliseconds(500));
                 Assert.True(window.IsVisible);
+                Assert.True(window.IsPanelOpen);
 
                 InvokeAnimatedHide(window);
-                PumpDispatcherUntil(() => !window.IsVisible);
+                PumpDispatcherUntil(() => !window.IsPanelOpen);
+                Assert.True(
+                    window.IsVisible,
+                    "The transparent composition surface must stay alive " +
+                    "so DWM cannot replay the previous wheel frame.");
+                Assert.False(window.IsPanelOpen);
+                Assert.False(window.IsHitTestVisible);
+                Assert.InRange(
+                    Assert.IsType<Grid>(window.FindName("MenuRoot")).Opacity,
+                    0,
+                    0.001);
+                Assert.InRange(
+                    Assert.IsType<Grid>(
+                        window.FindName("AnchorGlowSurface")).Opacity,
+                    0,
+                    0.001);
+                Assert.InRange(
+                    Assert.IsType<Canvas>(
+                        window.FindName("WheelFanLayer")).Opacity,
+                    0,
+                    0.001);
+
+                window.ShowNear(window, orb);
+                PumpDispatcherFor(TimeSpan.FromMilliseconds(500));
+                Assert.True(window.IsVisible);
+                Assert.True(window.IsPanelOpen);
+                Assert.True(window.IsHitTestVisible);
+                Assert.InRange(
+                    Assert.IsType<Canvas>(
+                        window.FindName("WheelFanLayer")).Opacity,
+                    0.999,
+                    1);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+            finally
+            {
+                window?.Close();
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task DeactivatedPanelCompletesWithTransparentComposition()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            QuickPanelWindow? window = null;
+            try
+            {
+                window = new QuickPanelWindow();
+                window.Apply(
+                    AppSettings.CreateDefault(),
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+                var workArea = DisplayTopology.GetMonitors()
+                    .First(monitor => monitor.IsPrimary)
+                    .WorkArea;
+                window.ShowNear(
+                    window,
+                    new PixelRect(
+                        workArea.Left + 120,
+                        workArea.Top + 320,
+                        56,
+                        56));
+                PumpDispatcherFor(TimeSpan.FromMilliseconds(500));
+
+                InvokeDeactivated(window);
+                PumpDispatcherUntil(() => !window.IsPanelOpen);
+
+                Assert.True(window.IsVisible);
+                Assert.False(window.IsPanelOpen);
+                Assert.False(window.IsHitTestVisible);
+                Assert.InRange(
+                    Assert.IsType<Grid>(window.FindName("MenuRoot")).Opacity,
+                    0,
+                    0.001);
+                Assert.InRange(
+                    Assert.IsType<Grid>(
+                        window.FindName("AnchorGlowSurface")).Opacity,
+                    0,
+                    0.001);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+            finally
+            {
+                window?.Close();
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task TogglingOpenPanelCollapsesItInsteadOfReplayingEntrance()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            QuickPanelWindow? window = null;
+            try
+            {
+                window = new QuickPanelWindow();
+                window.Apply(
+                    AppSettings.CreateDefault(),
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+                var workArea = DisplayTopology.GetMonitors()
+                    .First(monitor => monitor.IsPrimary)
+                    .WorkArea;
+                var orb = new PixelRect(
+                    workArea.Left + 120,
+                    workArea.Top + 320,
+                    56,
+                    56);
+
+                window.ShowNear(window, orb);
+                PumpDispatcherFor(TimeSpan.FromMilliseconds(500));
+                Assert.True(window.IsPanelOpen);
+
+                window.ToggleNear(window, orb);
+                PumpDispatcherUntil(() => !window.IsPanelOpen);
+
+                Assert.False(window.IsPanelOpen);
+                Assert.InRange(
+                    Assert.IsType<Canvas>(
+                        window.FindName("WheelFanLayer")).Opacity,
+                    0,
+                    0.001);
+
+                window.ToggleNear(window, orb);
+                PumpDispatcherFor(TimeSpan.FromMilliseconds(500));
+                Assert.True(window.IsPanelOpen);
+                Assert.InRange(
+                    Assert.IsType<Canvas>(
+                        window.FindName("WheelFanLayer")).Opacity,
+                    0.999,
+                    1);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+            finally
+            {
+                window?.Close();
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task ToggleStartedWhileOpenDoesNotReopenAfterDeactivation()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            QuickPanelWindow? window = null;
+            try
+            {
+                window = new QuickPanelWindow();
+                window.Apply(
+                    AppSettings.CreateDefault(),
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+                var workArea = DisplayTopology.GetMonitors()
+                    .First(monitor => monitor.IsPrimary)
+                    .WorkArea;
+                var orb = new PixelRect(
+                    workArea.Left + 120,
+                    workArea.Top + 320,
+                    56,
+                    56);
+
+                window.ShowNear(window, orb);
+                PumpDispatcherFor(TimeSpan.FromMilliseconds(500));
+                Assert.True(window.IsPanelOpen);
+
+                InvokeDeactivated(window);
+                PumpDispatcherUntil(() => !window.IsPanelOpen);
+                Assert.False(window.IsPanelOpen);
+
+                window.ToggleNear(
+                    window,
+                    orb,
+                    panelWasOpenAtPress: true);
+                PumpDispatcherFor(TimeSpan.FromMilliseconds(350));
 
                 Assert.False(
-                    window.IsVisible,
+                    window.IsPanelOpen,
+                    "The release must honor the state captured on mouse-down.");
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+            finally
+            {
+                window?.Close();
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task AnimatedCloseLeavesOnlyATransparentCompositionSurface()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new QuickPanelWindow();
+                window.Apply(
+                    AppSettings.CreateDefault(),
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+                var workArea = DisplayTopology.GetMonitors()
+                    .First(monitor => monitor.IsPrimary)
+                    .WorkArea;
+                window.ShowNear(
+                    window,
+                    new PixelRect(
+                        workArea.Left + 120,
+                        workArea.Top + 320,
+                        56,
+                        56));
+                PumpDispatcherFor(TimeSpan.FromMilliseconds(500));
+                Assert.True(window.IsVisible);
+                Assert.True(window.IsPanelOpen);
+
+                InvokeAnimatedHide(window);
+                PumpDispatcherUntil(() => !window.IsPanelOpen);
+
+                Assert.True(window.IsVisible);
+                Assert.False(window.IsPanelOpen);
+                Assert.False(
+                    window.IsHitTestVisible,
                     "The quick panel must leave hit testing after its " +
                     "closing transition completes.");
             }
@@ -995,6 +1500,18 @@ public sealed class QuickPanelWindowLayoutTests
         method.Invoke(window, null);
     }
 
+    private static void InvokeStartEntranceWheelMotion(
+        QuickPanelWindow window)
+    {
+        var method = typeof(QuickPanelWindow).GetMethod(
+            "StartEntranceWheelMotion",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(
+                "StartEntranceWheelMotion was not found.");
+        method.Invoke(window, null);
+    }
+
     private static void InvokeAnimatedHide(QuickPanelWindow window)
     {
         var method = typeof(QuickPanelWindow).GetMethod(
@@ -1004,6 +1521,20 @@ public sealed class QuickPanelWindowLayoutTests
             ?? throw new InvalidOperationException(
                 "HideAnimated was not found.");
         method.Invoke(window, null);
+    }
+
+    private static void InvokeDeactivated(QuickPanelWindow window)
+    {
+        var method = typeof(QuickPanelWindow).GetMethod(
+            "OnDeactivated",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic,
+            binder: null,
+            types: [typeof(object), typeof(EventArgs)],
+            modifiers: null)
+            ?? throw new InvalidOperationException(
+                "OnDeactivated was not found.");
+        method.Invoke(window, [window, EventArgs.Empty]);
     }
 
     private static void InvokeSmoothWheelScroll(

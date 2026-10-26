@@ -32,6 +32,11 @@ public sealed class WindowCoordinator : IWindowCoordinator
             foreach (var window in EnumerateWindows())
             {
                 _captureVisibility[window] = window.IsVisible;
+                if (window is FloatDesk.App.Views.QuickPanelWindow panel)
+                {
+                    panel.PrepareForScreenCapture();
+                    continue;
+                }
                 window.Hide();
             }
             System.Windows.Application.Current.MainWindow = _orb;
