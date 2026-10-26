@@ -1,101 +1,104 @@
-# FloatDesk
+<div align="center">
 
-FloatDesk 是面向 Windows 10/11 x64 的桌面悬浮助手。它以后台进程和托盘方式运行，提供悬浮球、二级快捷面板、英文输入规则、AI 网页小窗、本地记事本以及区域/窗口/屏幕截图与中文标注。
+# 月语悬浮球
 
-当前版本：`1.0.0`
+**把快捷启动、AI 网页、记事本、截图和键盘布局规则留在桌面指尖。**
 
-> 本文档描述已经实现的产品与自动化验证结果。真实输入法、AI 登录问答、游戏全屏、混合 DPI 和 Windows 11 仍需按 [手工验收表](docs/manual-tests.md) 在目标机器验证，因此在完成这些项目前应标为“待发布验收”。
+<img src="assets/banner.webp" alt="月语悬浮球 — 把常用工具留在指尖" width="100%">
 
-## 功能
+[![License: GPL-3.0-only](https://img.shields.io/badge/License-GPLv3-c9a961.svg)](./LICENSE)
+[![Windows 10/11 x64](https://img.shields.io/badge/Windows-10%20%2F%2011%20x64-2b7a78.svg)](#系统要求)
+[![Release v1.0.0](https://img.shields.io/badge/Release-v1.0.0-d8b46a.svg)](https://github.com/AthiefEX/YueYuOrb/releases/tag/v1.0.0)
 
-- 悬浮球支持单击展开二级面板、拖动、边缘吸附、位置锁定、时间显示和自定义 PNG/JPEG/BMP 图片。
-- 悬浮球支持普通置顶，以及全屏时“跟随置顶”“自动隐藏”“尽力保持置顶”三种策略。
-- 快捷面板可启动 exe、快捷方式和文件夹，参数与工作目录可编辑，最多 48 项并支持滚动。
-- 可手动或按 exe 路径自动请求英语（美国）非 IME 布局。界面只把目标线程实际读回的结果标记为“已验证”。
-- AI 网页窗口按需创建 WebView2，支持自定义 HTTPS 站点、DeepSeek 默认站点、导航、缩放、固定和独立登录 profile。
-- SQLite 记事本支持 500 ms 自动保存、正文搜索、回收站、恢复和 TXT 导出。
-- 截图支持框选、当前窗口和当前屏幕，0/3/5 秒倒计时、矩形/箭头/中文文字标注、撤销重做、PNG/JPEG、剪贴板和自动另存。
-- 当前用户单实例、跨会话数据锁、托盘、可配置热键、开机启动、配置备份与未来 schema 只读保护。
+</div>
+
+## 这是什么
+
+月语悬浮球是一个面向 Windows 10/11 x64 的桌面悬浮助手。它常驻托盘，用一个可拖动的悬浮球组织高频工具，并把 AI 网页、本地笔记、截图标注和英文键盘布局规则收进同一个轻量入口。
+
+它解决的不是“再打开一个管理后台”，而是减少窗口切换：需要启动、记录、截图或切换到专注网页时，操作从一个始终可触达的悬浮球开始，结束时仍回到原来的工作现场。
+
+## 你会得到什么
+
+<img src="assets/features.webp" alt="月语悬浮球核心体验：随手展开、专注网页、本地记录" width="100%">
+
+点击悬浮球后，轮盘菜单自下而上扇形展开，常用应用与内置工具在同一个可滚动轮盘中访问。AI 网页在独立 WebView2 窗口中运行，可跟随月语悬浮球的浅色或深色外观。笔记、截图、自定义悬浮球图片和窗口规则默认保存在本机，不要求注册账号。
+
+> 上方为品牌概念图，实际界面以当前发布包为准。
+
+## 快速开始
+
+前往 [GitHub Releases](https://github.com/AthiefEX/YueYuOrb/releases/tag/v1.0.0) 下载：
+
+| 方式 | 文件 | 使用说明 |
+|---|---|---|
+| 便携版 | [YueYuOrb-1.0.0-win-x64-portable.zip](https://github.com/AthiefEX/YueYuOrb/releases/download/v1.0.0/YueYuOrb-1.0.0-win-x64-portable.zip) | 解压后运行 `YueYuOrb.exe`，不需要安装 |
+| 安装版 | [YueYuOrb-1.0.0-win-x64-setup.exe](https://github.com/AthiefEX/YueYuOrb/releases/download/v1.0.0/YueYuOrb-1.0.0-win-x64-setup.exe) | 当前用户安装，包含开始菜单入口和可选桌面快捷方式 |
+| 校验值 | [SHA256SUMS.txt](https://github.com/AthiefEX/YueYuOrb/releases/download/v1.0.0/SHA256SUMS.txt) | 下载后核对便携包和安装包 |
+
+发行包为 .NET 10 self-contained，不要求目标机器安装 .NET SDK 或 .NET Desktop Runtime。安装包尚未进行代码签名，Windows SmartScreen 可能显示“未知发布者”警告。
+
+## 主要能力
+
+- **悬浮球与轮盘**：启动时回到主屏幕工作区，支持拖动、边缘吸附、位置锁定、时间显示、自定义 PNG/JPEG/BMP 图片和自下而上的扇形展开动画。
+- **快捷启动**：添加 exe、快捷方式或文件夹，设置参数与工作目录；统一轮盘支持滚轮浏览，不使用固定数量上限。
+- **AI 网页**：独立 WebView2 窗口，支持自定义 HTTPS 站点、DeepSeek、浅色/深色/跟随应用、缩放、固定、外部浏览器打开和登录 profile 保留。
+- **本地记事本**：SQLite 存储、500 ms 自动保存、正文搜索、回收站与恢复、TXT 导出。
+- **截图与中文标注**：框选、当前窗口、当前屏幕、倒计时、矩形/箭头/中文文字、撤销重做、PNG/JPEG、剪贴板和自动另存。
+- **键盘布局规则**：按应用将前台窗口请求切换到已安装的英文非 IME 键盘，拦截常见切换快捷键，并在停止锁定或离开目标应用后恢复原布局。
+- **桌面集成**：托盘、可配置热键、开机启动、单实例、跨会话数据锁和设置备份。
 
 ## 系统要求
 
 - Windows 10 21H2/22H2 或 Windows 11，x64。
-- Microsoft Edge WebView2 Runtime。缺失时仅 AI 网页不可用，悬浮球、笔记和截图继续工作。
-- 发布包为 .NET 10 self-contained，不要求目标机器安装 .NET SDK 或 .NET Desktop Runtime。
-- 首版以普通用户运行；提权应用、锁屏/UAC 安全桌面、受保护内容和独占全屏游戏不承诺控制或覆盖。
-
-## 运行
-
-开发构建：
-
-```powershell
-dotnet restore FloatDesk.sln --locked-mode
-dotnet build FloatDesk.sln -c Debug --no-restore
-dotnet run --project src/FloatDesk.App/FloatDesk.App.csproj
-```
-
-生成自包含发布包：
-
-```powershell
-.\scripts\publish.ps1
-```
-
-产物写入 `artifacts/`：
-
-- `publish/win-x64/FloatDesk.exe`
-- `FloatDesk-1.0.0-win-x64.zip`
-- `SHA256SUMS.txt`
-
-Inno Setup 定义位于 `installer/FloatDesk.iss`。当前构建机器没有安装 `iscc`，因此默认不伪造安装包；安装 Inno Setup 6 后可运行：
-
-```powershell
-iscc /DAppVersion=1.0.0 installer\FloatDesk.iss
-```
+- 普通用户权限即可启动；不承诺控制提权应用、UAC/锁屏安全桌面或受保护内容。
+- AI 网页需要 Microsoft Edge WebView2 Runtime。缺失时，悬浮球、笔记、截图和其他本地功能仍可使用。
 
 ## 数据与隐私
 
-用户数据保存在 `%LOCALAPPDATA%\FloatDesk`：
+用户数据保存在 `%LOCALAPPDATA%\FloatDesk`，这是为兼容旧版本保留的固定数据目录：
 
-- `settings.json` 与备份 `settings.json.bak`
-- `data/notes.db` SQLite 笔记
-- `assets/orb.png` 自定义悬浮球图片
-- `WebView2/` AI 网页独立 profile
-- `logs/` 启动与故障日志；不记录笔记正文、截图、按键、Cookie 或完整网页查询
-
-设置页支持导入/导出偏好。导入不会执行任何快捷项。更高 schema 版本的设置会被识别为只读，当前版本拒绝覆盖。
-
-## 快捷键
-
-默认值如下；冲突时原绑定保持不变，托盘仍提供所有主要入口。
-
-| 功能 | 默认快捷键 |
-|---|---|
-| 快捷面板 | `Ctrl+Alt+Space` |
-| 框选截图 | `Ctrl+Alt+A` |
-| 暂停/恢复英文规则 | `Ctrl+Alt+F12` |
-
-可在“设置 > 常规”修改格式合法的快捷键。初始注册发生冲突时应用继续启动，并在日志写入 `hotkey.initial.failed`。
-
-## 验证
-
-自动化测试：
-
-```powershell
-.\scripts\test.ps1
+```text
+settings.json / settings.json.bak
+data/notes.db
+assets/orb.png
+WebView2/
+logs/
 ```
 
-进程冒烟：
+设置页支持导入与导出偏好，导入不会运行任何快捷项。日志不记录笔记正文、截图内容、按键、Cookie 或完整网页查询。月语悬浮球不会把本地数据自动上传到自己的服务器。
+
+## 从源码构建
+
+需要 .NET SDK `10.0.400`：
 
 ```powershell
-.\scripts\smoke.ps1
+git clone https://github.com/AthiefEX/YueYuOrb.git
+cd YueYuOrb
+dotnet restore FloatDesk.sln --locked-mode
+dotnet build FloatDesk.sln -c Release --no-restore
+.\scripts\test.ps1 -Configuration Release
+.\scripts\publish.ps1 -Version 1.0.0
 ```
 
-详细用法见 [用户手册](docs/user-guide.md)，验收状态见 [手工验收表](docs/manual-tests.md) 与 [发布检查表](docs/release-checklist.md)。
+项目内部保留 `FloatDesk.*` 命名空间和解决方案名以兼容现有代码与设置，正式产品名、程序集和可执行文件为月语悬浮球、`YueYuOrb.dll` 和 `YueYuOrb.exe`。
 
-## 已知限制
+## 验证与已知边界
 
-- 只控制 Windows 键盘布局；不承诺第三方 IME 内部“中/英”状态。
-- 应用必须在目标窗口实际接收 `WM_INPUTLANGCHANGEREQUEST` 后才显示已验证；提权应用和无英语布局会显示对应失败原因。
-- 全屏覆盖、游戏反作弊、受保护内容、HDR 和多显示器混合 DPI 的实际表现依设备而异。
-- WebView2 登录能力取决于目标网站；站点拒绝登录或网络不可用时可用默认浏览器回退。
-- 当前未在 Windows 11、Windows 10 21H2、标准用户干净 VM、多屏混合 DPI 或无 WebView2 Runtime 机器上完成人工验收。
+当前 Release 自动化测试为 **189/189 通过**，并在 Windows 10 22H2 x64 上完成自包含发布包启动与单实例冒烟。以下项目仍需在对应设备上人工验收：
+
+- Windows 11、Windows 10 21H2、标准用户干净虚拟机。
+- 真实第三方输入法、自定义切换快捷键与提权目标窗口。
+- DeepSeek 登录与完整问答流程。
+- 混合 DPI、多屏旋转、HDR、独占全屏和游戏覆盖。
+- 未签名安装包的长期升级与 SmartScreen 体验。
+
+详细说明见 [用户手册](docs/user-guide.md)、[架构说明](docs/architecture.md)、[兼容性报告](docs/compatibility.md) 和 [手工验收记录](docs/manual-tests.md)。
+
+## 开源许可
+
+月语悬浮球使用 [GNU General Public License v3.0 only](./LICENSE) 开源。
+
+作者：**七月风语**<br>
+GitHub：[AthiefEX](https://github.com/AthiefEX)<br>
+项目：[AthiefEX/YueYuOrb](https://github.com/AthiefEX/YueYuOrb)
