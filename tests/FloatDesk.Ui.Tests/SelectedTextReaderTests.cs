@@ -1,4 +1,7 @@
 using System.Reflection;
+using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using FloatDesk.App.Translation;
 using FloatDesk.Core.Models;
 
@@ -7,11 +10,26 @@ namespace FloatDesk.Ui.Tests;
 public sealed class SelectedTextReaderTests
 {
     private static readonly string[] OldFileDrop = { "old.txt" };
+    private static readonly string[] RestoredFileDrop =
+        { @"C:\old.txt" };
+    private static readonly SendInputEvent[] ExpectedCopyEvents =
+    {
+        new(0x11, 0),
+        new(0x43, 0),
+        new(0x43, 0x0002),
+        new(0x11, 0x0002)
+    };
+    private static readonly SendInputEvent[] ExpectedCompensationEvents =
+    {
+        new(0x43, 0x0002),
+        new(0x11, 0x0002)
+    };
 
     [Fact]
     public async Task ReaderWaitsForHotkeyModifiersBeforeSendingCopy()
     {
         var order = new List<string>();
+        var clipboardCaptured = false;
         var activator = new FakeActivator
         {
             OnCapture = () => order.Add("identity"),
@@ -20,14 +38,24 @@ public sealed class SelectedTextReaderTests
         var modifiers = new FakeModifiers
         {
             ReleaseAfterPolls = 2,
-            OnPoll = () => order.Add("poll")
+            OnPoll = () =>
+            {
+                if (!clipboardCaptured)
+                    order.Add("poll");
+            }
         };
         var clipboard = new FakeClipboardSession
         {
-            OnCapture = () => order.Add("clipboard"),
-            TextResult = ClipboardTextReadResult.WithText("selected text"),
+            TextResult = ClipboardTextReadResult.WithText(
+                "selected text",
+                11),
             OnWait = () => order.Add("wait"),
             OnRestore = () => order.Add("restore")
+        };
+        clipboard.OnAfterCapture = () =>
+        {
+            clipboardCaptured = true;
+            order.Add("clipboard");
         };
         var sender = new FakeCopySender
         {
@@ -65,7 +93,9 @@ public sealed class SelectedTextReaderTests
         var clipboard = new FakeClipboardSession
         {
             CaptureResult = snapshot,
-            TextResult = ClipboardTextReadResult.WithText("new selection")
+            TextResult = ClipboardTextReadResult.WithText(
+                "new selection",
+                42)
         };
         var reader = CreateReader(
             clipboard,
@@ -88,10 +118,8 @@ public sealed class SelectedTextReaderTests
     {
         var clipboard = new FakeClipboardSession
         {
-            TextResult = new ClipboardTextReadResult(
-                Denied: false,
-                SequenceChanged: false,
-                Text: "old clipboard text")
+            TextResult = ClipboardTextReadResult.WithoutText(
+                observedSequenceNumber: null)
         };
         var reader = CreateReader(
             clipboard,
@@ -111,10 +139,7 @@ public sealed class SelectedTextReaderTests
     {
         var clipboard = new FakeClipboardSession
         {
-            TextResult = new ClipboardTextReadResult(
-                Denied: false,
-                SequenceChanged: true,
-                Text: null)
+            TextResult = ClipboardTextReadResult.WithoutText(11)
         };
         var reader = CreateReader(
             clipboard,
@@ -168,7 +193,7 @@ public sealed class SelectedTextReaderTests
         };
         var clipboard = new FakeClipboardSession
         {
-            TextResult = ClipboardTextReadResult.WithText("selection")
+            TextResult = ClipboardTextReadResult.WithText("selection", 11)
         };
         var reader = CreateReader(
             clipboard,
@@ -210,6 +235,33 @@ public sealed class SelectedTextReaderTests
     }
 
     [Fact]
+    public async Task ReaderAbortsWhenFocusedControlChangesAfterSnapshot()
+    {
+        var activator = new FakeActivator();
+        var clipboard = new FakeClipboardSession
+        {
+            OnAfterCapture = () =>
+                activator.FocusedControlHwnd = new nint(0x9999),
+            TextResult = ClipboardTextReadResult.WithText(
+                "must not be read",
+                11)
+        };
+        var sender = new FakeCopySender();
+        var reader = CreateReader(
+            clipboard,
+            sender,
+            new FakeModifiers(),
+            activator);
+
+        var result = await reader.ReadAsync(Target(), CancellationToken.None);
+
+        Assert.Equal("TargetNotForeground", result.ErrorCode);
+        Assert.Equal(0, sender.Count);
+        Assert.Equal(0, clipboard.WaitCount);
+        Assert.Equal(1, clipboard.RestoreCount);
+    }
+
+    [Fact]
     public async Task ReaderReturnsModifiersHeldWithoutTouchingClipboard()
     {
         var clipboard = new FakeClipboardSession();
@@ -231,6 +283,76 @@ public sealed class SelectedTextReaderTests
             TimeSpan.FromMilliseconds(1025));
         Assert.Equal(0, clipboard.CaptureCount);
         Assert.Equal(0, sender.Count);
+    }
+
+    [Fact]
+    public async Task ReaderAbortsWhenModifierIsPressedDuringClipboardCapture()
+    {
+        var modifiers = new FakeModifiers();
+        var clipboard = new FakeClipboardSession
+        {
+            OnAfterCapture = () => modifiers.AlwaysHeld = true
+        };
+        var sender = new FakeCopySender();
+        var reader = CreateReader(
+            clipboard,
+            sender,
+            modifiers,
+            new FakeActivator());
+
+        var result = await reader.ReadAsync(Target(), CancellationToken.None);
+
+        Assert.Equal("ModifiersHeld", result.ErrorCode);
+        Assert.Equal(0, sender.Count);
+        Assert.Equal(0, clipboard.WaitCount);
+        Assert.Equal(1, clipboard.RestoreCount);
+    }
+
+    [Fact]
+    public async Task ExternalChangeBeforeInjectionAbortsWithoutRestoringNewerClipboard()
+    {
+        var clipboard = new FakeClipboardSession();
+        clipboard.OnAfterCapture =
+            () => clipboard.CurrentSequenceNumber = 11;
+        var sender = new FakeCopySender();
+        var reader = CreateReader(
+            clipboard,
+            sender,
+            new FakeModifiers(),
+            new FakeActivator());
+
+        var result = await reader.ReadAsync(Target(), CancellationToken.None);
+
+        Assert.Equal("ClipboardDenied", result.ErrorCode);
+        Assert.Equal(0, sender.Count);
+        Assert.Equal(0, clipboard.RestoreAttemptCount);
+        Assert.Equal(11u, clipboard.CurrentSequenceNumber);
+    }
+
+    [Fact]
+    public async Task ExternalChangeAfterObservedCopyIsNeverOverwritten()
+    {
+        var clipboard = new FakeClipboardSession
+        {
+            TextResult = ClipboardTextReadResult.WithText(
+                "stale selection",
+                11)
+        };
+        clipboard.OnAfterWait =
+            () => clipboard.CurrentSequenceNumber = 12;
+        var sender = new FakeCopySender();
+        var reader = CreateReader(
+            clipboard,
+            sender,
+            new FakeModifiers(),
+            new FakeActivator());
+
+        var result = await reader.ReadAsync(Target(), CancellationToken.None);
+
+        Assert.Equal("ClipboardDenied", result.ErrorCode);
+        Assert.Null(result.Text);
+        Assert.Equal(0, clipboard.RestoreAttemptCount);
+        Assert.Equal(12u, clipboard.CurrentSequenceNumber);
     }
 
     [Fact]
@@ -277,6 +399,49 @@ public sealed class SelectedTextReaderTests
 
         Assert.Equal(1, sender.Count);
         Assert.Equal(1, clipboard.RestoreCount);
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task DisposeAsyncCancelsActiveAndQueuedReadsBeforeDisposingGate()
+    {
+        var waitStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var clipboard = new FakeClipboardSession
+        {
+            WaitFactory = async (_, _, cancellationToken) =>
+            {
+                waitStarted.TrySetResult();
+                await Task.Delay(
+                        Timeout.InfiniteTimeSpan,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                throw new InvalidOperationException(
+                    "The wait should have been cancelled.");
+            }
+        };
+        var reader = CreateReader(
+            clipboard,
+            new FakeCopySender(),
+            new FakeModifiers(),
+            new FakeActivator());
+
+        var active = reader.ReadAsync(Target(), CancellationToken.None);
+        await waitStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var queued = reader.ReadAsync(Target(), CancellationToken.None);
+        Assert.Equal(2, reader.ActiveReadCount);
+
+        var disposal = reader.DisposeAsync().AsTask();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => active.WaitAsync(TimeSpan.FromSeconds(2)));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => queued.WaitAsync(TimeSpan.FromSeconds(2)));
+        await disposal.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(0, reader.ActiveReadCount);
+        Assert.Equal(1, clipboard.RestoreCount);
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => reader.ReadAsync(Target(), CancellationToken.None));
     }
 
     [Fact]
@@ -374,7 +539,11 @@ public sealed class SelectedTextReaderTests
         var clipboard = new FakeClipboardSession();
         var sender = new FakeCopySender
         {
-            Succeeds = false
+            Result = new CopyShortcutSendResult(
+                RequestedCount: 4,
+                InsertedCount: 2,
+                CompensationRequestedCount: 2,
+                CompensationInsertedCount: 2)
         };
         var reader = CreateReader(
             clipboard,
@@ -389,12 +558,174 @@ public sealed class SelectedTextReaderTests
         Assert.Equal(1, clipboard.RestoreCount);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public void CopySenderUsesStableEventOrderAndCompensatesPartials(
+        int insertedCount)
+    {
+        var backend = new FakeSendInputBackend(
+            insertedCount,
+            compensationInsertedCount: insertedCount is > 0 and < 4
+                ? 2
+                : 0);
+        var sender = new Win32CopyShortcutSender(backend);
+
+        var result = sender.SendCopy();
+
+        Assert.Equal(4, result.RequestedCount);
+        Assert.Equal(insertedCount, result.InsertedCount);
+        Assert.Equal(
+            ExpectedCopyEvents,
+            backend.Batches[0]);
+
+        if (insertedCount is > 0 and < 4)
+        {
+            Assert.Equal(2, backend.Batches.Count);
+            Assert.Equal(
+                ExpectedCompensationEvents,
+                backend.Batches[1]);
+            Assert.Equal(2, result.CompensationRequestedCount);
+            Assert.Equal(2, result.CompensationInsertedCount);
+            Assert.False(result.Succeeded);
+        }
+        else
+        {
+            Assert.Single(backend.Batches);
+            Assert.Equal(0, result.CompensationRequestedCount);
+            Assert.Equal(0, result.CompensationInsertedCount);
+            Assert.Equal(insertedCount == 4, result.Succeeded);
+        }
+    }
+
+    [Fact]
+    public void CopySenderReportsPartialCompensationFailure()
+    {
+        var backend = new FakeSendInputBackend(
+            insertedCount: 2,
+            compensationInsertedCount: 1);
+        var sender = new Win32CopyShortcutSender(backend);
+
+        var result = sender.SendCopy();
+
+        Assert.Equal(
+            new CopyShortcutSendResult(
+                RequestedCount: 4,
+                InsertedCount: 2,
+                CompensationRequestedCount: 2,
+                CompensationInsertedCount: 1),
+            result);
+        Assert.False(result.Succeeded);
+    }
+
+    [Fact]
+    public void ClipboardSnapshotMaterializerClonesMutablePayloads()
+    {
+        RunOnSta(() =>
+        {
+            var bytes = new byte[] { 1, 2, 3 };
+            var (byteClone, byteOwnsData) =
+                ClipboardSnapshotMaterializer.CloneValue(bytes);
+            var clonedBytes = Assert.IsType<byte[]>(byteClone);
+            Assert.NotSame(bytes, clonedBytes);
+            Assert.Equal(bytes, clonedBytes);
+            Assert.False(byteOwnsData);
+
+            var stream = new MemoryStream(bytes)
+            {
+                Position = 2
+            };
+            var (streamClone, streamOwnsData) =
+                ClipboardSnapshotMaterializer.CloneValue(stream);
+            var clonedStream = Assert.IsType<MemoryStream>(streamClone);
+            Assert.True(streamOwnsData);
+            Assert.Equal(2, clonedStream.Position);
+            Assert.Equal(2, stream.Position);
+            clonedStream.Position = 0;
+            using var copied = new MemoryStream();
+            clonedStream.CopyTo(copied);
+            Assert.Equal(bytes, copied.ToArray());
+            clonedStream.Dispose();
+
+            var bitmap = BitmapSource.Create(
+                1,
+                1,
+                96,
+                96,
+                PixelFormats.Bgra32,
+                null,
+                new byte[] { 1, 2, 3, 4 },
+                4);
+            var (bitmapClone, bitmapOwnsData) =
+                ClipboardSnapshotMaterializer.CloneValue(bitmap);
+            var clonedBitmap =
+                Assert.IsAssignableFrom<BitmapSource>(bitmapClone);
+            Assert.NotSame(bitmap, clonedBitmap);
+            Assert.False(bitmapOwnsData);
+        });
+    }
+
+    [Fact]
+    public void ClipboardSnapshotMaterializerBuildsRestorableDataObject()
+    {
+        RunOnSta(() =>
+        {
+            var snapshot = new ClipboardSessionSnapshot(
+                5,
+                new[]
+                {
+                    new ClipboardFormatSnapshot(
+                        DataFormats.UnicodeText,
+                        "old text"),
+                    new ClipboardFormatSnapshot(
+                        "Bytes",
+                        new byte[] { 4, 5, 6 }),
+                    new ClipboardFormatSnapshot(
+                        "Stream",
+                        new MemoryStream(new byte[] { 7, 8 })),
+                    new ClipboardFormatSnapshot(
+                        DataFormats.FileDrop,
+                        RestoredFileDrop)
+                });
+            try
+            {
+                var dataObject =
+                    ClipboardSnapshotMaterializer.CreateDataObject(snapshot);
+
+                Assert.Equal(
+                    "old text",
+                    dataObject.GetData(DataFormats.UnicodeText));
+                Assert.Equal(
+                    new byte[] { 4, 5, 6 },
+                    Assert.IsType<byte[]>(
+                        dataObject.GetData("Bytes")));
+                var stream = Assert.IsAssignableFrom<Stream>(
+                    dataObject.GetData("Stream"));
+                stream.Position = 0;
+                using var copied = new MemoryStream();
+                stream.CopyTo(copied);
+                Assert.Equal(new byte[] { 7, 8 }, copied.ToArray());
+                Assert.Equal(
+                    RestoredFileDrop,
+                    Assert.IsType<string[]>(
+                        dataObject.GetData(DataFormats.FileDrop)));
+            }
+            finally
+            {
+                snapshot.Dispose();
+            }
+        });
+    }
+
     [Fact]
     public async Task RestoreFailureDoesNotReplaceSuccessfulText()
     {
         var clipboard = new FakeClipboardSession
         {
-            TextResult = ClipboardTextReadResult.WithText("selection"),
+            TextResult = ClipboardTextReadResult.WithText("selection", 11),
             RestoreException = new InvalidOperationException(
                 "restore-secret")
         };
@@ -451,16 +782,13 @@ public sealed class SelectedTextReaderTests
             new FakeActivator());
 
         clipboard.TextResults.Enqueue(
-            ClipboardTextReadResult.WithText("first"));
+            ClipboardTextReadResult.WithText("first", 11));
         var first = await reader.ReadAsync(Target(), CancellationToken.None);
         clipboard.TextResults.Enqueue(
-            ClipboardTextReadResult.WithText("second"));
+            ClipboardTextReadResult.WithText("second", 11));
         var second = await reader.ReadAsync(Target(), CancellationToken.None);
         clipboard.TextResults.Enqueue(
-            new ClipboardTextReadResult(
-                Denied: false,
-                SequenceChanged: true,
-                Text: null));
+            ClipboardTextReadResult.WithoutText(11));
         var third = await reader.ReadAsync(Target(), CancellationToken.None);
 
         Assert.Equal("first", first.Text);
@@ -495,6 +823,29 @@ public sealed class SelectedTextReaderTests
             pollInterval: TimeSpan.FromMilliseconds(25),
             polling: polling ?? new FakePolling());
 
+    private static void RunOnSta(Action action)
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                action();
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        if (failure is not null)
+            throw failure;
+    }
+
     private static ForegroundSnapshot Target() =>
         new(
             Epoch: 7,
@@ -526,22 +877,37 @@ public sealed class SelectedTextReaderTests
 
         public Exception? CaptureException { get; set; }
         public ClipboardTextReadResult TextResult { get; set; } =
-            ClipboardTextReadResult.WithText("fallback");
+            ClipboardTextReadResult.WithText("fallback", 11);
         public Queue<ClipboardTextReadResult> TextResults { get; } = new();
+        public Func<
+            uint,
+            TimeSpan,
+            CancellationToken,
+            Task<ClipboardTextReadResult>>? WaitFactory
+        {
+            get;
+            set;
+        }
         public Exception? WaitException { get; set; }
         public Exception? RestoreException { get; set; }
         public Action? OnCapture { get; set; }
+        public Action? OnAfterCapture { get; set; }
         public Action? OnWait { get; set; }
+        public Action? OnAfterWait { get; set; }
         public Action? OnRestore { get; set; }
         public int CaptureCount { get; private set; }
         public int WaitCount { get; private set; }
+        public int SequenceCheckCount { get; private set; }
+        public int RestoreAttemptCount { get; private set; }
         public int RestoreCount { get; private set; }
         public uint LastSequenceNumber { get; private set; }
+        public uint? LastRestoreExpectedSequence { get; private set; }
         public TimeSpan? LastWaitTimeout { get; private set; }
+        public uint CurrentSequenceNumber { get; set; } = 10;
         public List<ClipboardSessionSnapshot> RestoredSnapshots { get; } =
             new();
 
-        public Task<ClipboardSessionSnapshot?> CaptureAsync(
+        public async Task<ClipboardSessionSnapshot?> CaptureAsync(
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -549,10 +915,23 @@ public sealed class SelectedTextReaderTests
             OnCapture?.Invoke();
             if (CaptureException is not null)
                 throw CaptureException;
-            return CaptureFactory(cancellationToken);
+            var snapshot = await CaptureFactory(cancellationToken)
+                .ConfigureAwait(false);
+            if (snapshot is not null)
+                CurrentSequenceNumber = snapshot.SequenceNumber;
+            OnAfterCapture?.Invoke();
+            return snapshot;
         }
 
-        public Task<ClipboardTextReadResult> WaitForTextAsync(
+        public Task<uint> GetSequenceNumberAsync(
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            SequenceCheckCount++;
+            return Task.FromResult(CurrentSequenceNumber);
+        }
+
+        public async Task<ClipboardTextReadResult> WaitForTextAsync(
             uint baselineSequenceNumber,
             TimeSpan timeout,
             CancellationToken cancellationToken)
@@ -564,34 +943,74 @@ public sealed class SelectedTextReaderTests
             OnWait?.Invoke();
             if (WaitException is not null)
                 throw WaitException;
-            return Task.FromResult(
-                TextResults.Count > 0
+            var result = WaitFactory is not null
+                ? await WaitFactory(
+                        baselineSequenceNumber,
+                        timeout,
+                        cancellationToken)
+                    .ConfigureAwait(false)
+                : TextResults.Count > 0
                     ? TextResults.Dequeue()
-                    : TextResult);
+                    : TextResult;
+            if (result.ObservedSequenceNumber is uint observedSequence)
+                CurrentSequenceNumber = observedSequence;
+            OnAfterWait?.Invoke();
+            return result;
         }
 
-        public Task RestoreAsync(ClipboardSessionSnapshot snapshot)
+        public Task<bool> RestoreIfSequenceAsync(
+            ClipboardSessionSnapshot snapshot,
+            uint expectedSequenceNumber)
         {
+            RestoreAttemptCount++;
+            LastRestoreExpectedSequence = expectedSequenceNumber;
+            if (CurrentSequenceNumber != expectedSequenceNumber)
+                return Task.FromResult(false);
             RestoreCount++;
             RestoredSnapshots.Add(snapshot);
             OnRestore?.Invoke();
             if (RestoreException is not null)
                 throw RestoreException;
-            return Task.CompletedTask;
+            return Task.FromResult(true);
         }
     }
 
     private sealed class FakeCopySender : ICopyShortcutSender
     {
-        public bool Succeeds { get; set; } = true;
+        public CopyShortcutSendResult Result { get; set; } =
+            CopyShortcutSendResult.Complete(4);
         public int Count { get; private set; }
         public Action? OnSend { get; set; }
 
-        public bool TrySendCopy()
+        public CopyShortcutSendResult SendCopy()
         {
             Count++;
             OnSend?.Invoke();
-            return Succeeds;
+            return Result;
+        }
+    }
+
+    private sealed class FakeSendInputBackend : ISendInputBackend
+    {
+        private int _mainInsertedCount;
+        private int _compensationInsertedCount;
+
+        public FakeSendInputBackend(
+            int insertedCount,
+            int compensationInsertedCount)
+        {
+            _mainInsertedCount = insertedCount;
+            _compensationInsertedCount = compensationInsertedCount;
+        }
+
+        public List<IReadOnlyList<SendInputEvent>> Batches { get; } = new();
+
+        public int SendInput(IReadOnlyList<SendInputEvent> events)
+        {
+            Batches.Add(events.ToArray());
+            return Batches.Count == 1
+                ? _mainInsertedCount
+                : _compensationInsertedCount;
         }
     }
 
@@ -618,6 +1037,9 @@ public sealed class SelectedTextReaderTests
     private sealed class FakeActivator : IForegroundActivator
     {
         public bool IsForeground { get; set; } = true;
+        public nint ForegroundTopLevelHwnd { get; set; } =
+            new(0x1234);
+        public nint FocusedControlHwnd { get; set; } = new(0x1235);
         public bool ActivationSucceeds { get; set; } = true;
         public bool IdentityIsValid { get; set; } = true;
         public int CaptureCount { get; private set; }
@@ -634,6 +1056,7 @@ public sealed class SelectedTextReaderTests
                 return null;
             return new ForegroundTargetIdentity(
                 target.TopLevelHwnd,
+                target.FocusHwnd,
                 target.ProcessId,
                 target.ThreadId,
                 target.ProcessStartUtc,
@@ -644,7 +1067,10 @@ public sealed class SelectedTextReaderTests
         public bool IsTargetForeground(ForegroundTargetIdentity identity)
         {
             OnCheckForeground?.Invoke();
-            return IdentityIsValid && IsForeground;
+            return IdentityIsValid &&
+                IsForeground &&
+                identity.TopLevelHwnd == ForegroundTopLevelHwnd &&
+                identity.FocusHwnd == FocusedControlHwnd;
         }
 
         public Task<bool> TryActivateAsync(
@@ -653,9 +1079,11 @@ public sealed class SelectedTextReaderTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             ActivationCount++;
-            if (!ActivationSucceeds)
+            if (!ActivationSucceeds ||
+                identity.FocusHwnd != FocusedControlHwnd)
                 return Task.FromResult(false);
             IsForeground = true;
+            ForegroundTopLevelHwnd = identity.TopLevelHwnd;
             return Task.FromResult(true);
         }
     }

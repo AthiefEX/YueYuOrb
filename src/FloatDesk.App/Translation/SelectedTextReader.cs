@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media.Imaging;
@@ -30,7 +31,10 @@ public interface ISelectedTextReader
         CancellationToken cancellationToken);
 }
 
-public sealed class SelectedTextReader : ISelectedTextReader, IDisposable
+public sealed class SelectedTextReader :
+    ISelectedTextReader,
+    IDisposable,
+    IAsyncDisposable
 {
     private static readonly TimeSpan DefaultCopyWaitTimeout =
         TimeSpan.FromMilliseconds(800);
@@ -48,7 +52,13 @@ public sealed class SelectedTextReader : ISelectedTextReader, IDisposable
     private readonly TimeSpan _pollInterval;
     private readonly ISelectedTextPolling _polling;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
-    private int _disposed;
+    private readonly CancellationTokenSource _lifetimeCancellation = new();
+    private readonly TaskCompletionSource _drained =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _disposeCompletion =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private int _activeReadCount;
+    private int _disposeState;
 
     public SelectedTextReader()
         : this(
@@ -97,151 +107,270 @@ public sealed class SelectedTextReader : ISelectedTextReader, IDisposable
             throw new ArgumentOutOfRangeException(nameof(pollInterval));
     }
 
+    internal int ActiveReadCount => Volatile.Read(ref _activeReadCount);
+
     public async Task<SelectedTextReadResult> ReadAsync(
         ForegroundSnapshot target,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(target);
-        ObjectDisposedException.ThrowIf(
-            Volatile.Read(ref _disposed) != 0,
-            this);
-        await _operationGate.WaitAsync(cancellationToken)
-            .ConfigureAwait(false);
+        ThrowIfDisposed();
+        Interlocked.Increment(ref _activeReadCount);
+        if (Volatile.Read(ref _disposeState) != 0)
+        {
+            EndRead();
+            ThrowDisposed(this);
+        }
+
+        CancellationTokenSource? linkedCancellation = null;
         try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var identity = CaptureTargetIdentity(target);
-            if (identity is null)
-                return TargetNotForeground();
-
-            if (!IsForeground(identity))
-            {
-                if (!await TryActivateAsync(
-                        identity,
-                        cancellationToken)
-                    .ConfigureAwait(false))
-                {
-                    return TargetNotForeground();
-                }
-                if (!IsForeground(identity))
-                    return TargetNotForeground();
-            }
-
-            if (!await WaitForModifierReleaseAsync(cancellationToken)
-                    .ConfigureAwait(false))
-            {
-                return ModifiersHeld();
-            }
-
-            if (!IsForeground(identity))
-            {
-                if (!await TryActivateAsync(
-                        identity,
-                        cancellationToken)
-                    .ConfigureAwait(false))
-                {
-                    return TargetNotForeground();
-                }
-                if (!IsForeground(identity))
-                    return TargetNotForeground();
-            }
-
-            ClipboardSessionSnapshot? snapshot = null;
+            linkedCancellation =
+                CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken,
+                    _lifetimeCancellation.Token);
+            var token = linkedCancellation.Token;
+            await _operationGate.WaitAsync(token).ConfigureAwait(false);
             try
             {
-                try
-                {
-                    snapshot = await _clipboard.CaptureAsync(
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch
-                {
-                    return ClipboardDenied();
-                }
-
-                if (snapshot is null)
-                    return ClipboardDenied();
-
-                cancellationToken.ThrowIfCancellationRequested();
-                if (!IsForeground(identity))
-                {
-                    if (!await TryActivateAsync(
-                            identity,
-                            cancellationToken)
-                        .ConfigureAwait(false))
-                    {
-                        return TargetNotForeground();
-                    }
-                    if (!IsForeground(identity))
-                        return TargetNotForeground();
-                }
-
-                cancellationToken.ThrowIfCancellationRequested();
-                if (!TrySendCopy())
-                    return NoSelectedText();
-
-                ClipboardTextReadResult readResult;
-                try
-                {
-                    readResult = await _clipboard.WaitForTextAsync(
-                            snapshot.SequenceNumber,
-                            _copyWaitTimeout,
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch
-                {
-                    return ClipboardDenied();
-                }
-
-                if (readResult.Denied)
-                    return ClipboardDenied();
-                if (!readResult.SequenceChanged ||
-                    string.IsNullOrWhiteSpace(readResult.Text))
-                {
-                    return NoSelectedText();
-                }
-
-                return SelectedTextReadResult.Ok(readResult.Text);
+                return await ReadCoreAsync(target, token)
+                    .ConfigureAwait(false);
             }
             finally
             {
-                if (snapshot is not null)
-                {
-                    try
-                    {
-                        await _clipboard.RestoreAsync(snapshot)
-                            .ConfigureAwait(false);
-                    }
-                    catch
-                    {
-                        // Restoration is best-effort and cannot replace a
-                        // successfully read selection or leak details.
-                    }
-
-                    try
-                    {
-                        snapshot.Dispose();
-                    }
-                    catch
-                    {
-                        // Clipboard payload cleanup is best-effort.
-                    }
-                }
+                _operationGate.Release();
             }
         }
         finally
         {
-            _operationGate.Release();
+            linkedCancellation?.Dispose();
+            EndRead();
+        }
+    }
+
+    private async Task<SelectedTextReadResult> ReadCoreAsync(
+        ForegroundSnapshot target,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var identity = CaptureTargetIdentity(target);
+        if (identity is null)
+            return TargetNotForeground();
+
+        if (!await EnsureForegroundAsync(identity, cancellationToken)
+                .ConfigureAwait(false))
+        {
+            return TargetNotForeground();
+        }
+
+        if (!await WaitForModifierReleaseAsync(cancellationToken)
+                .ConfigureAwait(false))
+        {
+            return ModifiersHeld();
+        }
+
+        if (!await EnsureForegroundAsync(identity, cancellationToken)
+                .ConfigureAwait(false))
+        {
+            return TargetNotForeground();
+        }
+
+        ClipboardSessionSnapshot? snapshot = null;
+        uint? expectedRestoreSequence = null;
+        try
+        {
+            try
+            {
+                snapshot = await _clipboard.CaptureAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                return ClipboardDenied();
+            }
+
+            if (snapshot is null)
+                return ClipboardDenied();
+
+            expectedRestoreSequence = snapshot.SequenceNumber;
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!await EnsureForegroundAsync(identity, cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                return TargetNotForeground();
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!AreModifiersReleased())
+                return ModifiersHeld();
+
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!await EnsureForegroundAsync(identity, cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                return TargetNotForeground();
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            uint sequenceBeforeInjection;
+            try
+            {
+                sequenceBeforeInjection =
+                    await _clipboard.GetSequenceNumberAsync(
+                            cancellationToken)
+                        .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                expectedRestoreSequence = null;
+                return ClipboardDenied();
+            }
+
+            if (sequenceBeforeInjection != snapshot.SequenceNumber)
+            {
+                expectedRestoreSequence = null;
+                return ClipboardDenied();
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            CopyShortcutSendResult sendResult;
+            try
+            {
+                sendResult = _sender.SendCopy();
+            }
+            catch
+            {
+                return NoSelectedText();
+            }
+
+            if (!sendResult.Succeeded)
+                return NoSelectedText();
+
+            ClipboardTextReadResult readResult;
+            try
+            {
+                readResult = await _clipboard.WaitForTextAsync(
+                        snapshot.SequenceNumber,
+                        _copyWaitTimeout,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                return ClipboardDenied();
+            }
+
+            return await InterpretReadResultAsync(
+                    readResult,
+                    snapshot.SequenceNumber,
+                    sequence => expectedRestoreSequence = sequence)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            if (snapshot is not null)
+            {
+                await RestoreSnapshotAsync(
+                        snapshot,
+                        expectedRestoreSequence)
+                    .ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async Task<SelectedTextReadResult> InterpretReadResultAsync(
+        ClipboardTextReadResult readResult,
+        uint snapshotSequenceNumber,
+        Action<uint?> setExpectedRestoreSequence)
+    {
+        uint currentSequenceNumber;
+        try
+        {
+            currentSequenceNumber =
+                await _clipboard.GetSequenceNumberAsync(
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+        }
+        catch
+        {
+            setExpectedRestoreSequence(null);
+            return ClipboardDenied();
+        }
+
+        if (readResult.ObservedSequenceNumber is not uint observedSequence)
+        {
+            if (currentSequenceNumber != snapshotSequenceNumber)
+            {
+                setExpectedRestoreSequence(null);
+                return ClipboardDenied();
+            }
+
+            setExpectedRestoreSequence(snapshotSequenceNumber);
+            return readResult.Denied
+                ? ClipboardDenied()
+                : NoSelectedText();
+        }
+
+        if (currentSequenceNumber != observedSequence)
+        {
+            setExpectedRestoreSequence(null);
+            return ClipboardDenied();
+        }
+
+        setExpectedRestoreSequence(observedSequence);
+        if (readResult.Denied ||
+            observedSequence == snapshotSequenceNumber)
+        {
+            return ClipboardDenied();
+        }
+
+        if (string.IsNullOrWhiteSpace(readResult.Text))
+            return NoSelectedText();
+
+        return SelectedTextReadResult.Ok(readResult.Text);
+    }
+
+    private async Task RestoreSnapshotAsync(
+        ClipboardSessionSnapshot snapshot,
+        uint? expectedSequenceNumber)
+    {
+        try
+        {
+            if (expectedSequenceNumber is uint expectedSequence)
+            {
+                await _clipboard.RestoreIfSequenceAsync(
+                        snapshot,
+                        expectedSequence)
+                    .ConfigureAwait(false);
+            }
+        }
+        catch
+        {
+            // Restoration is best-effort and cannot leak clipboard details.
+        }
+        finally
+        {
+            try
+            {
+                snapshot.Dispose();
+            }
+            catch
+            {
+                // Snapshot payload cleanup is best-effort.
+            }
         }
     }
 
@@ -270,16 +399,22 @@ public sealed class SelectedTextReader : ISelectedTextReader, IDisposable
         }
     }
 
-    private async Task<bool> TryActivateAsync(
+    private async Task<bool> EnsureForegroundAsync(
         ForegroundTargetIdentity identity,
         CancellationToken cancellationToken)
     {
+        if (IsForeground(identity))
+            return true;
+
         try
         {
-            return await _foreground.TryActivateAsync(
+            if (!await _foreground.TryActivateAsync(
                     identity,
                     cancellationToken)
-                .ConfigureAwait(false);
+                .ConfigureAwait(false))
+            {
+                return false;
+            }
         }
         catch (OperationCanceledException)
         {
@@ -289,13 +424,15 @@ public sealed class SelectedTextReader : ISelectedTextReader, IDisposable
         {
             return false;
         }
+
+        return IsForeground(identity);
     }
 
-    private bool TrySendCopy()
+    private bool AreModifiersReleased()
     {
         try
         {
-            return _sender.TrySendCopy();
+            return !_modifiers.AreAnyModifiersHeld();
         }
         catch
         {
@@ -356,11 +493,82 @@ public sealed class SelectedTextReader : ISelectedTextReader, IDisposable
             "TargetNotForeground",
             "目标窗口已变化或无法切换至前台。");
 
+    private void ThrowIfDisposed()
+    {
+        ObjectDisposedException.ThrowIf(
+            Volatile.Read(ref _disposeState) != 0,
+            this);
+    }
+
+    [DoesNotReturn]
+    private static void ThrowDisposed(SelectedTextReader reader)
+    {
+        ObjectDisposedException.ThrowIf(true, reader);
+    }
+
+    private void EndRead()
+    {
+        if (Interlocked.Decrement(ref _activeReadCount) == 0 &&
+            Volatile.Read(ref _disposeState) != 0)
+        {
+            _drained.TrySetResult();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.CompareExchange(
+                ref _disposeState,
+                1,
+                0) != 0)
+        {
+            await _disposeCompletion.Task.ConfigureAwait(false);
+            return;
+        }
+
+        _lifetimeCancellation.Cancel();
+        if (Volatile.Read(ref _activeReadCount) == 0)
+            _drained.TrySetResult();
+
+        try
+        {
+            await _drained.Task.ConfigureAwait(false);
+            await DisposeClipboardSessionAsync().ConfigureAwait(false);
+            _operationGate.Dispose();
+            _lifetimeCancellation.Dispose();
+        }
+        finally
+        {
+            Volatile.Write(ref _disposeState, 2);
+            _disposeCompletion.TrySetResult();
+        }
+
+        GC.SuppressFinalize(this);
+    }
+
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
-            return;
-        _operationGate.Dispose();
+        DisposeAsync().AsTask().GetAwaiter().GetResult();
+        GC.SuppressFinalize(this);
+    }
+
+    private async ValueTask DisposeClipboardSessionAsync()
+    {
+        try
+        {
+            if (_clipboard is IAsyncDisposable asyncDisposable)
+            {
+                await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+            }
+            else if (_clipboard is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+        }
+        catch
+        {
+            // A clipboard adapter cannot block reader disposal.
+        }
     }
 }
 
@@ -386,7 +594,8 @@ internal sealed class SystemSelectedTextPolling : ISelectedTextPolling
 }
 
 internal sealed record ForegroundTargetIdentity(
-    nint Hwnd,
+    nint TopLevelHwnd,
+    nint FocusHwnd,
     uint ProcessId,
     uint ThreadId,
     DateTimeOffset? ProcessStartUtc,
@@ -411,9 +620,32 @@ internal interface IHotkeyModifierState
     bool AreAnyModifiersHeld();
 }
 
+internal sealed record SendInputEvent(
+    ushort VirtualKey,
+    ushort Flags);
+
+internal interface ISendInputBackend
+{
+    int SendInput(IReadOnlyList<SendInputEvent> events);
+}
+
+internal readonly record struct CopyShortcutSendResult(
+    int RequestedCount,
+    int InsertedCount,
+    int CompensationRequestedCount,
+    int CompensationInsertedCount)
+{
+    public bool Succeeded =>
+        InsertedCount == RequestedCount &&
+        CompensationInsertedCount == CompensationRequestedCount;
+
+    public static CopyShortcutSendResult Complete(int requestedCount) =>
+        new(requestedCount, requestedCount, 0, 0);
+}
+
 internal interface ICopyShortcutSender
 {
-    bool TrySendCopy();
+    CopyShortcutSendResult SendCopy();
 }
 
 internal sealed record ClipboardFormatSnapshot(
@@ -441,39 +673,27 @@ internal sealed class ClipboardSessionSnapshot : IDisposable
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
-        foreach (var format in Formats)
-        {
-            if (!format.OwnsData ||
-                format.Data is not IDisposable disposable)
-            {
-                continue;
-            }
-
-            try
-            {
-                disposable.Dispose();
-            }
-            catch
-            {
-                // Snapshot disposal is best-effort.
-            }
-        }
+        ClipboardSnapshotMaterializer.DisposeFormats(Formats);
     }
 }
 
 internal readonly record struct ClipboardTextReadResult(
     bool Denied,
-    bool SequenceChanged,
+    uint? ObservedSequenceNumber,
     string? Text)
 {
-    public static ClipboardTextReadResult WithText(string text) =>
-        new(false, true, text);
+    public static ClipboardTextReadResult WithText(
+        string text,
+        uint observedSequenceNumber) =>
+        new(false, observedSequenceNumber, text);
 
-    public static ClipboardTextReadResult WithoutText(bool sequenceChanged) =>
-        new(false, sequenceChanged, null);
+    public static ClipboardTextReadResult WithoutText(
+        uint? observedSequenceNumber) =>
+        new(false, observedSequenceNumber, null);
 
-    public static ClipboardTextReadResult AccessDenied() =>
-        new(true, false, null);
+    public static ClipboardTextReadResult AccessDenied(
+        uint? observedSequenceNumber = null) =>
+        new(true, observedSequenceNumber, null);
 }
 
 internal interface IClipboardSession
@@ -481,163 +701,26 @@ internal interface IClipboardSession
     Task<ClipboardSessionSnapshot?> CaptureAsync(
         CancellationToken cancellationToken);
 
+    Task<uint> GetSequenceNumberAsync(
+        CancellationToken cancellationToken);
+
     Task<ClipboardTextReadResult> WaitForTextAsync(
         uint baselineSequenceNumber,
         TimeSpan timeout,
         CancellationToken cancellationToken);
 
-    Task RestoreAsync(ClipboardSessionSnapshot snapshot);
+    Task<bool> RestoreIfSequenceAsync(
+        ClipboardSessionSnapshot snapshot,
+        uint expectedSequenceNumber);
 }
 
-internal sealed class WpfClipboardSession : IClipboardSession
+internal static class ClipboardSnapshotMaterializer
 {
-    private static readonly TimeSpan PollInterval =
-        TimeSpan.FromMilliseconds(25);
-    private static readonly TimeSpan CaptureRetryDelay =
-        TimeSpan.FromMilliseconds(15);
-    private const int CaptureAttempts = 3;
-
-    private readonly object _sync = new();
-    private ClipboardStaWorker? _worker;
-
-    public async Task<ClipboardSessionSnapshot?> CaptureAsync(
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        var worker = EnsureWorker();
-        try
-        {
-            var snapshot = await worker.InvokeAsync(
-                    () => CaptureOnSta(cancellationToken),
-                    cancellationToken)
-                .ConfigureAwait(false);
-            if (snapshot is null)
-                StopWorker(worker);
-            return snapshot;
-        }
-        catch
-        {
-            StopWorker(worker);
-            throw;
-        }
-    }
-
-    public async Task<ClipboardTextReadResult> WaitForTextAsync(
-        uint baselineSequenceNumber,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        var worker = EnsureWorker();
-        return await worker.InvokeAsync(
-                () => WaitForTextOnSta(
-                    baselineSequenceNumber,
-                    timeout,
-                    cancellationToken),
-                cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    public async Task RestoreAsync(ClipboardSessionSnapshot snapshot)
-    {
-        ArgumentNullException.ThrowIfNull(snapshot);
-        ClipboardStaWorker? worker;
-        lock (_sync)
-        {
-            worker = _worker;
-            _worker = null;
-        }
-
-        worker ??= new ClipboardStaWorker();
-        try
-        {
-            await worker.InvokeAsync(
-                    () =>
-                    {
-                        RestoreOnSta(snapshot);
-                        return true;
-                    },
-                    CancellationToken.None)
-                .ConfigureAwait(false);
-        }
-        finally
-        {
-            worker.Stop();
-        }
-    }
-
-    private ClipboardStaWorker EnsureWorker()
-    {
-        lock (_sync)
-        {
-            return _worker ??= new ClipboardStaWorker();
-        }
-    }
-
-    private void StopWorker(ClipboardStaWorker worker)
-    {
-        lock (_sync)
-        {
-            if (ReferenceEquals(_worker, worker))
-                _worker = null;
-        }
-        worker.Stop();
-    }
-
-    private static ClipboardSessionSnapshot? CaptureOnSta(
-        CancellationToken cancellationToken)
-    {
-        for (var attempt = 0; attempt < CaptureAttempts; attempt++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            uint sequenceBefore;
-            try
-            {
-                sequenceBefore = GetClipboardSequenceNumber();
-            }
-            catch
-            {
-                return null;
-            }
-
-            List<ClipboardFormatSnapshot>? formats = null;
-            try
-            {
-                var dataObject = Clipboard.GetDataObject();
-                formats = dataObject is null
-                    ? new List<ClipboardFormatSnapshot>()
-                    : CaptureFormats(dataObject, cancellationToken);
-                cancellationToken.ThrowIfCancellationRequested();
-                var sequenceAfter = GetClipboardSequenceNumber();
-                if (sequenceBefore == sequenceAfter)
-                {
-                    return new ClipboardSessionSnapshot(
-                        sequenceAfter,
-                        formats);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                DisposeFormats(formats);
-                throw;
-            }
-            catch
-            {
-                DisposeFormats(formats);
-                return null;
-            }
-
-            DisposeFormats(formats);
-            if (attempt + 1 < CaptureAttempts)
-                Thread.Sleep(CaptureRetryDelay);
-        }
-
-        return null;
-    }
-
-    private static List<ClipboardFormatSnapshot> CaptureFormats(
+    public static IReadOnlyList<ClipboardFormatSnapshot> CaptureFormats(
         IDataObject dataObject,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(dataObject);
         var formatNames = new SortedSet<string>(
             StringComparer.Ordinal);
         Exception? formatsFailure = null;
@@ -673,8 +756,7 @@ internal sealed class WpfClipboardSession : IClipboardSession
                 if (!dataObject.GetDataPresent(format, true))
                     continue;
                 var value = dataObject.GetData(format, true);
-                var (snapshotValue, ownsData) =
-                    CloneClipboardValue(value);
+                var (snapshotValue, ownsData) = CloneValue(value);
                 formats.Add(new ClipboardFormatSnapshot(
                     format,
                     snapshotValue,
@@ -682,6 +764,7 @@ internal sealed class WpfClipboardSession : IClipboardSession
             }
             catch (OperationCanceledException)
             {
+                DisposeFormats(formats);
                 throw;
             }
             catch
@@ -699,8 +782,7 @@ internal sealed class WpfClipboardSession : IClipboardSession
         return formats;
     }
 
-    private static (object? Value, bool OwnsData) CloneClipboardValue(
-        object? value)
+    public static (object? Value, bool OwnsData) CloneValue(object? value)
     {
         if (value is null ||
             value is string ||
@@ -737,87 +819,10 @@ internal sealed class WpfClipboardSession : IClipboardSession
         return (value, false);
     }
 
-    private static MemoryStream CloneStream(Stream stream)
-    {
-        var originalPosition = stream.CanSeek ? stream.Position : 0;
-        try
-        {
-            if (stream.CanSeek)
-                stream.Position = 0;
-            var copy = new MemoryStream();
-            stream.CopyTo(copy);
-            copy.Position = stream.CanSeek &&
-                originalPosition <= copy.Length
-                ? originalPosition
-                : 0;
-            return copy;
-        }
-        finally
-        {
-            if (stream.CanSeek)
-                stream.Position = originalPosition;
-        }
-    }
-
-    private static ClipboardTextReadResult WaitForTextOnSta(
-        uint baselineSequenceNumber,
-        TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        var startedAt = Stopwatch.GetTimestamp();
-        var sequenceChanged = false;
-        while (true)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            try
-            {
-                var sequence = GetClipboardSequenceNumber();
-                if (sequence != baselineSequenceNumber)
-                {
-                    sequenceChanged = true;
-                    var text = ReadUnicodeText();
-                    if (!string.IsNullOrWhiteSpace(text))
-                    {
-                        return ClipboardTextReadResult.WithText(text);
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch
-            {
-                return ClipboardTextReadResult.AccessDenied();
-            }
-
-            var elapsed = Stopwatch.GetElapsedTime(startedAt);
-            if (elapsed >= timeout)
-                return ClipboardTextReadResult.WithoutText(sequenceChanged);
-
-            var remaining = timeout - elapsed;
-            var delay = remaining < PollInterval
-                ? remaining
-                : PollInterval;
-            var milliseconds = Math.Max(
-                1,
-                (int)Math.Ceiling(delay.TotalMilliseconds));
-            Thread.Sleep(milliseconds);
-        }
-    }
-
-    private static string? ReadUnicodeText() =>
-        Clipboard.GetText(TextDataFormat.UnicodeText);
-
-    private static void RestoreOnSta(
+    public static DataObject CreateDataObject(
         ClipboardSessionSnapshot snapshot)
     {
-        if (snapshot.Formats.Count == 0)
-        {
-            Clipboard.Clear();
-            return;
-        }
-
+        ArgumentNullException.ThrowIfNull(snapshot);
         var dataObject = new DataObject();
         foreach (var format in snapshot.Formats)
         {
@@ -840,10 +845,10 @@ internal sealed class WpfClipboardSession : IClipboardSession
                 "No clipboard formats could be restored.");
         }
 
-        Clipboard.SetDataObject(dataObject, copy: true);
+        return dataObject;
     }
 
-    private static void DisposeFormats(
+    public static void DisposeFormats(
         IEnumerable<ClipboardFormatSnapshot>? formats)
     {
         if (formats is null)
@@ -862,15 +867,318 @@ internal sealed class WpfClipboardSession : IClipboardSession
             }
             catch
             {
-                // Clipboard payload cleanup is best-effort.
+                // Snapshot payload cleanup is best-effort.
             }
         }
     }
+
+    private static MemoryStream CloneStream(Stream stream)
+    {
+        var originalPosition = stream.CanSeek ? stream.Position : 0;
+        try
+        {
+            if (stream.CanSeek)
+                stream.Position = 0;
+            var copy = new MemoryStream();
+            stream.CopyTo(copy);
+            copy.Position = stream.CanSeek &&
+                originalPosition <= copy.Length
+                ? originalPosition
+                : 0;
+            return copy;
+        }
+        finally
+        {
+            if (stream.CanSeek)
+                stream.Position = originalPosition;
+        }
+    }
+}
+
+internal sealed class WpfClipboardSession :
+    IClipboardSession,
+    IDisposable,
+    IAsyncDisposable
+{
+    private static readonly TimeSpan PollInterval =
+        TimeSpan.FromMilliseconds(25);
+    private static readonly TimeSpan CaptureRetryDelay =
+        TimeSpan.FromMilliseconds(15);
+    private const int CaptureAttempts = 3;
+
+    private readonly object _sync = new();
+    private ClipboardStaWorker? _worker;
+    private Task? _disposeTask;
+    private int _disposed;
+
+    public async Task<ClipboardSessionSnapshot?> CaptureAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var worker = EnsureWorker();
+        try
+        {
+            var snapshot = await worker.InvokeAsync(
+                    () => CaptureOnSta(cancellationToken),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (snapshot is null)
+                await StopWorkerAsync(worker).ConfigureAwait(false);
+            return snapshot;
+        }
+        catch
+        {
+            await StopWorkerAsync(worker).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    public Task<uint> GetSequenceNumberAsync(
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ThrowIfDisposed();
+        return Task.FromResult(
+            NativeClipboard.GetClipboardSequenceNumber());
+    }
+
+    public Task<ClipboardTextReadResult> WaitForTextAsync(
+        uint baselineSequenceNumber,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var worker = EnsureWorker();
+        return worker.InvokeAsync(
+            () => WaitForTextOnSta(
+                baselineSequenceNumber,
+                timeout,
+                cancellationToken),
+            cancellationToken);
+    }
+
+    public async Task<bool> RestoreIfSequenceAsync(
+        ClipboardSessionSnapshot snapshot,
+        uint expectedSequenceNumber)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ClipboardStaWorker? worker;
+        lock (_sync)
+        {
+            worker = _worker;
+            _worker = null;
+        }
+
+        worker ??= new ClipboardStaWorker();
+        try
+        {
+            return await worker.InvokeAsync(
+                    () => RestoreIfSequenceOnSta(
+                        snapshot,
+                        expectedSequenceNumber),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            await worker.StopAndWaitAsync().ConfigureAwait(false);
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        lock (_sync)
+        {
+            return new ValueTask(
+                _disposeTask ??= DisposeCoreAsync());
+        }
+    }
+
+    public void Dispose()
+    {
+        DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    private async Task DisposeCoreAsync()
+    {
+        Volatile.Write(ref _disposed, 1);
+        ClipboardStaWorker? worker;
+        lock (_sync)
+        {
+            worker = _worker;
+            _worker = null;
+        }
+
+        if (worker is not null)
+            await worker.StopAndWaitAsync().ConfigureAwait(false);
+    }
+
+    private ClipboardStaWorker EnsureWorker()
+    {
+        ThrowIfDisposed();
+        lock (_sync)
+        {
+            return _worker ??= new ClipboardStaWorker();
+        }
+    }
+
+    private async Task StopWorkerAsync(ClipboardStaWorker worker)
+    {
+        lock (_sync)
+        {
+            if (ReferenceEquals(_worker, worker))
+                _worker = null;
+        }
+
+        await worker.StopAndWaitAsync().ConfigureAwait(false);
+    }
+
+    private void ThrowIfDisposed()
+    {
+        ObjectDisposedException.ThrowIf(
+            Volatile.Read(ref _disposed) != 0,
+            this);
+    }
+
+    private static ClipboardSessionSnapshot? CaptureOnSta(
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < CaptureAttempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            uint sequenceBefore;
+            try
+            {
+                sequenceBefore =
+                    NativeClipboard.GetClipboardSequenceNumber();
+            }
+            catch
+            {
+                return null;
+            }
+
+            IReadOnlyList<ClipboardFormatSnapshot>? formats = null;
+            try
+            {
+                var dataObject = Clipboard.GetDataObject();
+                formats = dataObject is null
+                    ? Array.Empty<ClipboardFormatSnapshot>()
+                    : ClipboardSnapshotMaterializer.CaptureFormats(
+                        dataObject,
+                        cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                var sequenceAfter =
+                    NativeClipboard.GetClipboardSequenceNumber();
+                if (sequenceBefore == sequenceAfter)
+                {
+                    return new ClipboardSessionSnapshot(
+                        sequenceAfter,
+                        formats);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                ClipboardSnapshotMaterializer.DisposeFormats(formats);
+                throw;
+            }
+            catch
+            {
+                ClipboardSnapshotMaterializer.DisposeFormats(formats);
+                return null;
+            }
+
+            ClipboardSnapshotMaterializer.DisposeFormats(formats);
+            if (attempt + 1 < CaptureAttempts)
+                Thread.Sleep(CaptureRetryDelay);
+        }
+
+        return null;
+    }
+
+    private static ClipboardTextReadResult WaitForTextOnSta(
+        uint baselineSequenceNumber,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var startedAt = Stopwatch.GetTimestamp();
+        uint? observedSequenceNumber = null;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var sequence =
+                    NativeClipboard.GetClipboardSequenceNumber();
+                if (sequence != baselineSequenceNumber)
+                {
+                    observedSequenceNumber = sequence;
+                    var text = ReadUnicodeText();
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        return ClipboardTextReadResult.WithText(
+                            text,
+                            sequence);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                return ClipboardTextReadResult.AccessDenied(
+                    observedSequenceNumber);
+            }
+
+            var elapsed = Stopwatch.GetElapsedTime(startedAt);
+            if (elapsed >= timeout)
+            {
+                return ClipboardTextReadResult.WithoutText(
+                    observedSequenceNumber);
+            }
+
+            var remaining = timeout - elapsed;
+            var delay = remaining < PollInterval
+                ? remaining
+                : PollInterval;
+            var milliseconds = Math.Max(
+                1,
+                (int)Math.Ceiling(delay.TotalMilliseconds));
+            Thread.Sleep(milliseconds);
+        }
+    }
+
+    private static bool RestoreIfSequenceOnSta(
+        ClipboardSessionSnapshot snapshot,
+        uint expectedSequenceNumber)
+    {
+        if (NativeClipboard.GetClipboardSequenceNumber() !=
+            expectedSequenceNumber)
+        {
+            return false;
+        }
+
+        if (snapshot.Formats.Count == 0)
+        {
+            Clipboard.Clear();
+            return true;
+        }
+
+        var dataObject =
+            ClipboardSnapshotMaterializer.CreateDataObject(snapshot);
+        Clipboard.SetDataObject(dataObject, copy: true);
+        return true;
+    }
+
+    private static string? ReadUnicodeText() =>
+        Clipboard.GetText(TextDataFormat.UnicodeText);
 
     private sealed class ClipboardStaWorker : IDisposable
     {
         private readonly BlockingCollection<Action> _queue = new();
         private readonly Thread _thread;
+        private readonly TaskCompletionSource _exit =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _stopped;
 
         public ClipboardStaWorker()
@@ -918,6 +1226,10 @@ internal sealed class WpfClipboardSession : IClipboardSession
                     },
                     cancellationToken);
             }
+            catch (OperationCanceledException)
+            {
+                completion.TrySetCanceled(cancellationToken);
+            }
             catch (Exception exception)
                 when (exception is InvalidOperationException or
                     ObjectDisposedException)
@@ -930,13 +1242,17 @@ internal sealed class WpfClipboardSession : IClipboardSession
             return completion.Task;
         }
 
-        public void Stop()
+        public Task StopAndWaitAsync()
         {
             if (Interlocked.Exchange(ref _stopped, 1) == 0)
                 _queue.CompleteAdding();
+            return _exit.Task;
         }
 
-        public void Dispose() => Stop();
+        public void Dispose()
+        {
+            StopAndWaitAsync().GetAwaiter().GetResult();
+        }
 
         private void Run()
         {
@@ -948,12 +1264,16 @@ internal sealed class WpfClipboardSession : IClipboardSession
             finally
             {
                 _queue.Dispose();
+                _exit.TrySetResult();
             }
         }
     }
+}
 
+internal static class NativeClipboard
+{
     [DllImport("user32.dll")]
-    private static extern uint GetClipboardSequenceNumber();
+    internal static extern uint GetClipboardSequenceNumber();
 }
 
 internal sealed class Win32HotkeyModifierState : IHotkeyModifierState
@@ -993,42 +1313,103 @@ internal sealed class Win32HotkeyModifierState : IHotkeyModifierState
 
 internal sealed class Win32CopyShortcutSender : ICopyShortcutSender
 {
-    private const uint InputKeyboard = 1;
     private const ushort KeyEventKeyUp = 0x0002;
     private const ushort VirtualKeyControl = 0x11;
     private const ushort VirtualKeyC = 0x43;
 
-    public bool TrySendCopy()
+    private static readonly SendInputEvent[] CopyEvents =
     {
-        var inputs = new[]
+        new(VirtualKeyControl, 0),
+        new(VirtualKeyC, 0),
+        new(VirtualKeyC, KeyEventKeyUp),
+        new(VirtualKeyControl, KeyEventKeyUp)
+    };
+
+    private static readonly SendInputEvent[] CompensationEvents =
+    {
+        new(VirtualKeyC, KeyEventKeyUp),
+        new(VirtualKeyControl, KeyEventKeyUp)
+    };
+
+    private readonly ISendInputBackend _backend;
+
+    public Win32CopyShortcutSender()
+        : this(new Win32SendInputBackend())
+    {
+    }
+
+    internal Win32CopyShortcutSender(ISendInputBackend backend)
+    {
+        _backend = backend ??
+            throw new ArgumentNullException(nameof(backend));
+    }
+
+    public CopyShortcutSendResult SendCopy()
+    {
+        var insertedCount = Math.Clamp(
+            _backend.SendInput(CopyEvents),
+            0,
+            CopyEvents.Length);
+        if (insertedCount == CopyEvents.Length)
+            return CopyShortcutSendResult.Complete(CopyEvents.Length);
+
+        if (insertedCount == 0)
         {
-            KeyboardInput(VirtualKeyControl, 0),
-            KeyboardInput(VirtualKeyC, 0),
-            KeyboardInput(VirtualKeyC, KeyEventKeyUp),
-            KeyboardInput(VirtualKeyControl, KeyEventKeyUp)
-        };
+            return new CopyShortcutSendResult(
+                CopyEvents.Length,
+                insertedCount,
+                0,
+                0);
+        }
+
+        var compensationInsertedCount = Math.Clamp(
+            _backend.SendInput(CompensationEvents),
+            0,
+            CompensationEvents.Length);
+        return new CopyShortcutSendResult(
+            CopyEvents.Length,
+            insertedCount,
+            CompensationEvents.Length,
+            compensationInsertedCount);
+    }
+}
+
+internal sealed class Win32SendInputBackend : ISendInputBackend
+{
+    private const uint InputKeyboard = 1;
+
+    public int SendInput(IReadOnlyList<SendInputEvent> events)
+    {
+        ArgumentNullException.ThrowIfNull(events);
+        if (events.Count == 0)
+            return 0;
+
+        var inputs = new NativeInput.Input[events.Count];
+        for (var index = 0; index < events.Count; index++)
+        {
+            var inputEvent = events[index];
+            inputs[index] = new NativeInput.Input
+            {
+                Type = InputKeyboard,
+                Union = new NativeInput.InputUnion
+                {
+                    Keyboard = new NativeInput.KeyboardInput
+                    {
+                        VirtualKey = inputEvent.VirtualKey,
+                        Flags = inputEvent.Flags
+                    }
+                }
+            };
+        }
+
         var inserted = NativeInput.SendInput(
             (uint)inputs.Length,
             inputs,
             Marshal.SizeOf<NativeInput.Input>());
-        return inserted == (uint)inputs.Length;
+        return inserted > int.MaxValue
+            ? int.MaxValue
+            : (int)inserted;
     }
-
-    private static NativeInput.Input KeyboardInput(
-        ushort virtualKey,
-        ushort flags) =>
-        new()
-        {
-            Type = InputKeyboard,
-            Union = new NativeInput.InputUnion
-            {
-                Keyboard = new NativeInput.KeyboardInput
-                {
-                    VirtualKey = virtualKey,
-                    Flags = flags
-                }
-            }
-        };
 
     private static class NativeInput
     {
@@ -1091,6 +1472,7 @@ internal sealed class Win32CopyShortcutSender : ICopyShortcutSender
 
 internal sealed class Win32ForegroundActivator : IForegroundActivator
 {
+    private const uint GetAncestorRoot = 2;
     private static readonly TimeSpan ActivationTimeout =
         TimeSpan.FromMilliseconds(400);
     private static readonly TimeSpan ActivationPollInterval =
@@ -1105,6 +1487,7 @@ internal sealed class Win32ForegroundActivator : IForegroundActivator
         try
         {
             if (target.TopLevelHwnd == 0 ||
+                target.FocusHwnd == 0 ||
                 !NativeForeground.IsWindow(target.TopLevelHwnd))
             {
                 return null;
@@ -1118,6 +1501,16 @@ internal sealed class Win32ForegroundActivator : IForegroundActivator
                 processId != target.ProcessId ||
                 (target.ThreadId != 0 &&
                  threadId != target.ThreadId))
+            {
+                return null;
+            }
+
+            var focusHwnd = ReadFocusHwnd(threadId);
+            if (focusHwnd == 0 ||
+                focusHwnd != target.FocusHwnd ||
+                NativeForeground.GetAncestor(
+                    focusHwnd,
+                    GetAncestorRoot) != target.TopLevelHwnd)
             {
                 return null;
             }
@@ -1176,6 +1569,7 @@ internal sealed class Win32ForegroundActivator : IForegroundActivator
 
             return new ForegroundTargetIdentity(
                 target.TopLevelHwnd,
+                focusHwnd,
                 processId,
                 threadId,
                 processStart,
@@ -1194,8 +1588,9 @@ internal sealed class Win32ForegroundActivator : IForegroundActivator
         try
         {
             return NativeForeground.GetForegroundWindow() ==
-                    identity.Hwnd &&
-                IdentityMatches(identity);
+                    identity.TopLevelHwnd &&
+                FocusMatches(identity) &&
+                TopLevelMatches(identity);
         }
         catch
         {
@@ -1208,15 +1603,23 @@ internal sealed class Win32ForegroundActivator : IForegroundActivator
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (NativeForeground.GetForegroundWindow() == identity.Hwnd)
-            return IdentityMatches(identity);
-        if (!IdentityMatches(identity))
+        if (!TopLevelMatches(identity))
             return false;
+
+        if (NativeForeground.GetForegroundWindow() ==
+                identity.TopLevelHwnd &&
+            FocusMatches(identity))
+        {
+            return true;
+        }
 
         try
         {
-            if (!NativeForeground.SetForegroundWindow(identity.Hwnd))
+            if (!NativeForeground.SetForegroundWindow(
+                    identity.TopLevelHwnd))
+            {
                 return false;
+            }
         }
         catch
         {
@@ -1228,8 +1631,9 @@ internal sealed class Win32ForegroundActivator : IForegroundActivator
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (NativeForeground.GetForegroundWindow() ==
-                    identity.Hwnd &&
-                IdentityMatches(identity))
+                    identity.TopLevelHwnd &&
+                FocusMatches(identity) &&
+                TopLevelMatches(identity))
             {
                 return true;
             }
@@ -1243,13 +1647,24 @@ internal sealed class Win32ForegroundActivator : IForegroundActivator
         return false;
     }
 
-    private static bool IdentityMatches(
+    private static bool FocusMatches(
         ForegroundTargetIdentity identity)
     {
-        if (identity.Hwnd == 0 ||
-            !NativeForeground.IsWindow(identity.Hwnd) ||
+        var focusHwnd = ReadFocusHwnd(identity.ThreadId);
+        return focusHwnd != 0 &&
+            focusHwnd == identity.FocusHwnd &&
+            NativeForeground.GetAncestor(
+                focusHwnd,
+                GetAncestorRoot) == identity.TopLevelHwnd;
+    }
+
+    private static bool TopLevelMatches(
+        ForegroundTargetIdentity identity)
+    {
+        if (identity.TopLevelHwnd == 0 ||
+            !NativeForeground.IsWindow(identity.TopLevelHwnd) ||
             !string.Equals(
-                ReadWindowTitle(identity.Hwnd),
+                ReadWindowTitle(identity.TopLevelHwnd),
                 identity.Title,
                 StringComparison.Ordinal))
         {
@@ -1257,7 +1672,7 @@ internal sealed class Win32ForegroundActivator : IForegroundActivator
         }
 
         var threadId = NativeForeground.GetWindowThreadProcessId(
-            identity.Hwnd,
+            identity.TopLevelHwnd,
             out var processId);
         if (threadId == 0 ||
             processId != identity.ProcessId ||
@@ -1298,6 +1713,19 @@ internal sealed class Win32ForegroundActivator : IForegroundActivator
         return true;
     }
 
+    private static nint ReadFocusHwnd(uint threadId)
+    {
+        if (threadId == 0)
+            return 0;
+        var info = new NativeForeground.GuiThreadInfo
+        {
+            Size = Marshal.SizeOf<NativeForeground.GuiThreadInfo>()
+        };
+        return NativeForeground.GetGUIThreadInfo(threadId, ref info)
+            ? info.FocusWindow
+            : 0;
+    }
+
     private static bool StartsMatch(
         DateTimeOffset expected,
         DateTimeOffset actual) =>
@@ -1319,6 +1747,29 @@ internal sealed class Win32ForegroundActivator : IForegroundActivator
 
     private static class NativeForeground
     {
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct NativeRect
+        {
+            internal int Left;
+            internal int Top;
+            internal int Right;
+            internal int Bottom;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct GuiThreadInfo
+        {
+            internal int Size;
+            internal uint Flags;
+            internal nint ActiveWindow;
+            internal nint FocusWindow;
+            internal nint CaptureWindow;
+            internal nint MenuOwnerWindow;
+            internal nint MoveSizeWindow;
+            internal nint CaretWindow;
+            internal NativeRect CaretRect;
+        }
+
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool IsWindow(nint hwnd);
@@ -1334,6 +1785,17 @@ internal sealed class Win32ForegroundActivator : IForegroundActivator
         internal static extern uint GetWindowThreadProcessId(
             nint hwnd,
             out uint processId);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool GetGUIThreadInfo(
+            uint threadId,
+            ref GuiThreadInfo info);
+
+        [DllImport("user32.dll")]
+        internal static extern nint GetAncestor(
+            nint hwnd,
+            uint flags);
 
         [DllImport(
             "user32.dll",
