@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using FloatDesk.Core.Models;
+using FloatDesk.Core.Translation;
 
 namespace FloatDesk.Infrastructure.Settings;
 
@@ -53,8 +54,50 @@ public static partial class SettingsValidator
         {
             errors.Add("WheelActions contain invalid or duplicate actions.");
         }
+        var translation = value.Translation;
+        if (translation is null)
+        {
+            errors.Add("Translation settings are required.");
+            return errors;
+        }
+        if (!Enum.IsDefined(translation.Provider))
+            errors.Add("Translation.Provider is invalid.");
+        if (!TranslationLanguages.IsKnown(translation.SourceLanguage))
+            errors.Add("Translation.SourceLanguage must be a known language tag.");
+        if (!TranslationLanguages.IsKnown(translation.TargetLanguage) ||
+            translation.TargetLanguage.Equals(TranslationLanguages.Auto, StringComparison.OrdinalIgnoreCase))
+            errors.Add("Translation.TargetLanguage must be a known target language.");
+        if (translation.SubtitleRefreshIntervalMs is < 300 or > 1500)
+            errors.Add("Translation.SubtitleRefreshIntervalMs must be between 300 and 1500.");
+        if (!double.IsFinite(translation.SubtitleOverlayOpacity) ||
+            translation.SubtitleOverlayOpacity is < 0.6 or > 1.0)
+            errors.Add("Translation.SubtitleOverlayOpacity must be between 0.60 and 1.00.");
+        if (!double.IsFinite(translation.SubtitleFontSizeDip) ||
+            translation.SubtitleFontSizeDip is < 14 or > 36)
+            errors.Add("Translation.SubtitleFontSizeDip must be between 14 and 36.");
+        if (translation.Provider is not TranslationProviderKind.MyMemory &&
+            !TranslationEndpointPolicy.TryNormalizeHttps(translation.Endpoint, out _, out var endpointError))
+            errors.Add($"Translation.Endpoint: {endpointError}");
+        if (translation.Provider is TranslationProviderKind.OpenAiCompatible &&
+            string.IsNullOrWhiteSpace(translation.Model))
+            errors.Add("Translation.Model is required.");
+        if (translation.SubtitleRegion is { } region &&
+            (string.IsNullOrWhiteSpace(region.MonitorId) ||
+             !IsRelative(region.RelativeX) || !IsRelative(region.RelativeY) ||
+             !IsRelative(region.RelativeWidth) || !IsRelative(region.RelativeHeight) ||
+             region.RelativeWidth == 0 || region.RelativeHeight == 0 ||
+             region.RelativeX + region.RelativeWidth > 1 ||
+             region.RelativeY + region.RelativeHeight > 1))
+            errors.Add("Translation.SubtitleRegion has invalid coordinates.");
+        if (translation.SubtitleOverlayPlacement is { } placement &&
+            (string.IsNullOrWhiteSpace(placement.MonitorId) ||
+             !IsRelative(placement.RelativeX) || !IsRelative(placement.RelativeY)))
+            errors.Add("Translation.SubtitleOverlayPlacement has invalid coordinates.");
         return errors;
     }
+
+    private static bool IsRelative(double value) =>
+        double.IsFinite(value) && value is >= 0 and <= 1;
 
     [GeneratedRegex("^[0-9A-Fa-f]{8}$", RegexOptions.CultureInvariant)]
     private static partial Regex KlidPattern();

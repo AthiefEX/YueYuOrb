@@ -183,6 +183,29 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task TranslationSettingsRoundTripWithoutSchemaChange()
+    {
+        using var store = new JsonSettingsStore(_root);
+        var original = AppSettings.CreateDefault();
+        var expected = original with
+        {
+            Translation = original.Translation with
+            {
+                SourceLanguage = "en",
+                TargetLanguage = "ja",
+                SubtitleRegion = new TranslationCaptureRegion("monitor-1", 0.1, 0.2, 0.5, 0.4),
+                SubtitleOverlayPlacement = new TranslationOverlayPlacement("monitor-1", 0.2, 0.7)
+            }
+        };
+
+        await store.SaveAsync(expected, CancellationToken.None);
+        var loaded = await store.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(1, loaded.SchemaVersion);
+        Assert.Equal(expected.Translation, loaded.Translation);
+    }
+
+    [Fact]
     public void ValidatorRejectsUndefinedBrowserTheme()
     {
         var settings = AppSettings.CreateDefault() with

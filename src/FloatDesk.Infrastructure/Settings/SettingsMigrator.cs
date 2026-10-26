@@ -22,6 +22,18 @@ public static class SettingsMigrator
 
         var result = JsonSerializer.Deserialize<AppSettings>(json, options)
             ?? throw new InvalidDataException("Settings JSON was empty.");
+        var hotkeys = new Dictionary<HotkeyAction, HotkeyChord>(result.Hotkeys);
+        var defaultHotkeys = AppSettings.CreateDefault().Hotkeys;
+        foreach (var action in new[]
+                 {
+                     HotkeyAction.TranslateSelection,
+                     HotkeyAction.TranslateRegion,
+                     HotkeyAction.ToggleSubtitles
+                 })
+        {
+            hotkeys.TryAdd(action, defaultHotkeys[action]);
+        }
+        result = result with { Hotkeys = hotkeys };
         var errors = SettingsValidator.Validate(result);
         if (errors.Count > 0)
             throw new InvalidDataException(string.Join(" ", errors));

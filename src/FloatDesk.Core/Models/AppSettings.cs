@@ -5,7 +5,7 @@ public enum OrbImageShape { Circle, Contour }
 public enum FullscreenPolicy { FollowAlwaysOnTop, AutoHide, KeepTopmost }
 public enum CaptureMode { Region, ActiveWindow, CurrentMonitor }
 public enum ImageFormat { Png, Jpeg }
-public enum HotkeyAction { Panel, RegionCapture, WindowCapture, MonitorCapture, PauseInput, AiBrowser, Notes }
+public enum HotkeyAction { Panel, RegionCapture, WindowCapture, MonitorCapture, PauseInput, AiBrowser, Notes, TranslateSelection, TranslateRegion, ToggleSubtitles }
 public readonly record struct HotkeyChord(ShortcutModifiers Modifiers, uint VirtualKey);
 
 public sealed record GeneralSettings(bool StartWithWindows, AppTheme Theme);
@@ -62,7 +62,10 @@ public sealed record AppSettings(
         WheelActionKind.AiBrowser,
         WheelActionKind.Notes,
         WheelActionKind.InputLock,
-        WheelActionKind.Settings
+        WheelActionKind.Settings,
+        WheelActionKind.TranslateSelection,
+        WheelActionKind.TranslateRegion,
+        WheelActionKind.TranslateSubtitles
     ];
 
     public IReadOnlyList<WheelActionKind> WheelActions { get; init; } =
@@ -70,6 +73,9 @@ public sealed record AppSettings(
 
     public BrowserThemeMode BrowserTheme { get; init; } =
         BrowserThemeMode.FollowApp;
+
+    public TranslationSettings Translation { get; init; } =
+        TranslationSettings.CreateDefault();
 
     public static AppSettings CreateDefault(string? picturesDirectory = null)
     {
@@ -105,7 +111,10 @@ public sealed record AppSettings(
             {
                 [HotkeyAction.Panel] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x20),
                 [HotkeyAction.RegionCapture] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x41),
-                [HotkeyAction.PauseInput] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x7B)
+                [HotkeyAction.PauseInput] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x7B),
+                [HotkeyAction.TranslateSelection] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x54),
+                [HotkeyAction.TranslateRegion] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x4F),
+                [HotkeyAction.ToggleSubtitles] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x4C)
             },
             []);
     }

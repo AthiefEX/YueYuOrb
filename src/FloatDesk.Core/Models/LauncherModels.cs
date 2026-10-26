@@ -9,7 +9,10 @@ public enum WheelActionKind
     AiBrowser,
     Notes,
     InputLock,
-    Settings
+    Settings,
+    TranslateSelection,
+    TranslateRegion,
+    TranslateSubtitles
 }
 
 public sealed record LauncherItem(
