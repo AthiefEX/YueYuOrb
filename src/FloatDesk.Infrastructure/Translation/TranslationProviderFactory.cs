@@ -8,7 +8,9 @@ public static class TranslationEndpointDefaults
     public static string For(TranslationProviderKind kind) => kind switch
     {
         TranslationProviderKind.MyMemory => "https://api.mymemory.translated.net/get",
-        _ => throw new TranslationProviderConfigurationException($"Provider {kind} is not implemented.")
+        TranslationProviderKind.AzureTranslator => "https://api.cognitive.microsofttranslator.com",
+        TranslationProviderKind.DeepL => "https://api-free.deepl.com",
+        _ => throw new TranslationProviderConfigurationException($"Provider {kind} requires an endpoint.")
     };
 }
 
@@ -28,10 +30,26 @@ public sealed class TranslationProviderFactory : ITranslationProviderFactory, ID
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(settings);
+        if (settings.Provider == TranslationProviderKind.MyMemory)
+            return new MyMemoryTranslationProvider(_httpClient);
+
+        var endpoint = string.IsNullOrWhiteSpace(settings.Endpoint)
+            ? settings.Provider switch
+            {
+                TranslationProviderKind.AzureTranslator or TranslationProviderKind.DeepL => TranslationEndpointDefaults.For(settings.Provider),
+                _ => throw new TranslationProviderConfigurationException("Endpoint is required.")
+            }
+            : settings.Endpoint;
+        if (!TranslationEndpointPolicy.TryNormalizeHttps(endpoint, out var normalized, out _))
+            throw new TranslationProviderConfigurationException("Endpoint must be a valid HTTPS URL.");
+        var uri = new Uri(normalized!);
         return settings.Provider switch
         {
-            TranslationProviderKind.MyMemory => new MyMemoryTranslationProvider(_httpClient),
-            _ => throw new TranslationProviderConfigurationException($"Provider {settings.Provider} is not implemented.")
+            TranslationProviderKind.AzureTranslator => new AzureTranslatorProvider(_httpClient, uri, CustomProviderHttp.Required(apiKey, "API key"), settings.AzureRegion),
+            TranslationProviderKind.DeepL => new DeepLTranslationProvider(_httpClient, uri, CustomProviderHttp.Required(apiKey, "API key")),
+            TranslationProviderKind.LibreTranslate => new LibreTranslateProvider(_httpClient, uri, apiKey),
+            TranslationProviderKind.OpenAiCompatible => new OpenAiCompatibleTranslationProvider(_httpClient, uri, settings.Model, CustomProviderHttp.Required(apiKey, "API key")),
+            _ => throw new TranslationProviderConfigurationException("Unknown translation provider.")
         };
     }
 

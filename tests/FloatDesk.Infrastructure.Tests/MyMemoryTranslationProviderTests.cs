@@ -121,15 +121,14 @@ public sealed class MyMemoryTranslationProviderTests
     }
 
     [Fact]
-    public void FactoryCreatesMyMemoryAndRejectsUnimplementedKinds()
+    public void FactoryCreatesMyMemoryAndExposesCustomDefaults()
     {
         using var http = new HttpClient(new StubHandler(_ => Json("{}")));
         using var factory = new TranslationProviderFactory(http);
         Assert.IsType<MyMemoryTranslationProvider>(factory.Create(TranslationSettings.CreateDefault(), null));
-        Assert.Throws<TranslationProviderConfigurationException>(() =>
-            factory.Create(TranslationSettings.CreateDefault() with { Provider = TranslationProviderKind.DeepL }, "key"));
+        Assert.IsType<DeepLTranslationProvider>(factory.Create(TranslationSettings.CreateDefault() with { Provider = TranslationProviderKind.DeepL }, "key"));
         Assert.Equal("https://api.mymemory.translated.net/get", TranslationEndpointDefaults.For(TranslationProviderKind.MyMemory));
-        Assert.Throws<TranslationProviderConfigurationException>(() => TranslationEndpointDefaults.For(TranslationProviderKind.DeepL));
+        Assert.Equal("https://api-free.deepl.com", TranslationEndpointDefaults.For(TranslationProviderKind.DeepL));
     }
 
     [Fact]
