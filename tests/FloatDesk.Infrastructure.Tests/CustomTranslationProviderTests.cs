@@ -43,7 +43,7 @@ public sealed class CustomTranslationProviderTests
     }
 
     [Fact]
-    public async Task LibreUsesAutoSourceAndKeepsOptionalKeyOutOfBody()
+    public async Task LibreSendsOptionalKeyInJsonBodyWithoutAuthorizationHeader()
     {
         var handler = new RecordingHandler("""{"translatedText":"你好","detectedLanguage":{"language":"en"}}""");
         using var http = new HttpClient(handler);
@@ -54,7 +54,19 @@ public sealed class CustomTranslationProviderTests
         Assert.Equal("auto", body.GetProperty("source").GetString());
         Assert.Equal("zh", body.GetProperty("target").GetString());
         Assert.Equal(Input, body.GetProperty("q").GetString());
-        Assert.DoesNotContain(Secret, handler.Body);
+        Assert.Equal(Secret, body.GetProperty("api_key").GetString());
+        Assert.False(handler.Headers!.ContainsKey("Authorization"));
+    }
+
+    [Fact]
+    public async Task LibreOmitsApiKeyWhenNotConfigured()
+    {
+        var handler = new RecordingHandler("""{"translatedText":"你好"}""");
+        using var http = new HttpClient(handler);
+        var result = await new LibreTranslateProvider(http, new Uri("https://example.com"), " ").TranslateAsync(Auto, CancellationToken.None);
+        Assert.True(result.Success);
+        Assert.False(JsonDocument.Parse(handler.Body!).RootElement.TryGetProperty("api_key", out _));
+        Assert.False(handler.Headers!.ContainsKey("Authorization"));
     }
 
     [Fact]

@@ -25,14 +25,15 @@ public sealed class LibreTranslateProvider : ITranslationProvider
         ArgumentNullException.ThrowIfNull(request);
         var invalid = CustomProviderHttp.Validate(request, Capabilities);
         if (invalid is not null) return Task.FromResult(invalid);
-        var message = CustomProviderHttp.JsonPost(CustomProviderHttp.AppendPath(_endpoint, "/translate"), new
+        var payload = new Dictionary<string, string>
         {
-            q = request.Text,
-            source = request.SourceLanguage.Equals("auto", StringComparison.OrdinalIgnoreCase) ? "auto" : TranslationLanguageMapper.ToLibre(request.SourceLanguage),
-            target = TranslationLanguageMapper.ToLibre(request.TargetLanguage),
-            format = "text"
-        });
-        if (!string.IsNullOrWhiteSpace(_apiKey)) message.Headers.TryAddWithoutValidation("Authorization", "Bearer " + _apiKey);
+            ["q"] = request.Text,
+            ["source"] = request.SourceLanguage.Equals("auto", StringComparison.OrdinalIgnoreCase) ? "auto" : TranslationLanguageMapper.ToLibre(request.SourceLanguage),
+            ["target"] = TranslationLanguageMapper.ToLibre(request.TargetLanguage),
+            ["format"] = "text"
+        };
+        if (!string.IsNullOrWhiteSpace(_apiKey)) payload["api_key"] = _apiKey;
+        var message = CustomProviderHttp.JsonPost(CustomProviderHttp.AppendPath(_endpoint, "/translate"), payload);
         return CustomProviderHttp.SendAsync(_http, message, Parse, cancellationToken);
     }
 
