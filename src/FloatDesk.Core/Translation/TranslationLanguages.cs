@@ -26,4 +26,7 @@ public static class TranslationLanguages
 
     public static bool IsKnown(string? languageTag) =>
         languageTag is not null && Known.Contains(languageTag);
+
+    public static bool IsTranslationLanguage(string? languageTag) =>
+        IsKnown(languageTag) && !languageTag!.Equals(Auto, StringComparison.OrdinalIgnoreCase);
 }
