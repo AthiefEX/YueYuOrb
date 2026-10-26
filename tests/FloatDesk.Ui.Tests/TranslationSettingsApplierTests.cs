@@ -665,6 +665,127 @@ public sealed class TranslationSettingsApplierTests
     }
 
     [Fact]
+    public void ActiveTestIdentityChangeReplacesLoadingAndRejectsStaleResult()
+    {
+        var operations = new TranslationConnectionTestState();
+        var status = new TranslationConnectionTestStatusState(operations);
+        var deepLTarget = TranslationCredentialTarget.From(
+            TranslationProviderKind.DeepL,
+            "https://api-free.deepl.com");
+        var azureTarget = TranslationCredentialTarget.From(
+            TranslationProviderKind.AzureTranslator,
+            "https://api.cognitive.microsofttranslator.com");
+        var staleOperation = operations.Start(deepLTarget);
+
+        Assert.True(status.Show(
+            staleOperation,
+            deepLTarget,
+            "正在测试连接…"));
+        Assert.True(status.ResetForIdentityChange(azureTarget));
+        Assert.Equal(
+            TranslationConnectionTestStatusState.CancelledStatus,
+            status.Text);
+        Assert.True(staleOperation.Token.IsCancellationRequested);
+
+        Assert.False(status.Show(
+            staleOperation,
+            azureTarget,
+            "连接成功。"));
+        Assert.Equal(
+            TranslationConnectionTestStatusState.CancelledStatus,
+            status.Text);
+    }
+
+    [Fact]
+    public void StaleResultBeforeIdentityResetReplacesLoadingWithSafeStatus()
+    {
+        var operations = new TranslationConnectionTestState();
+        var status = new TranslationConnectionTestStatusState(operations);
+        var deepLTarget = TranslationCredentialTarget.From(
+            TranslationProviderKind.DeepL,
+            "https://api-free.deepl.com");
+        var azureTarget = TranslationCredentialTarget.From(
+            TranslationProviderKind.AzureTranslator,
+            "https://api.cognitive.microsofttranslator.com");
+        var staleOperation = operations.Start(deepLTarget);
+
+        Assert.True(status.Show(
+            staleOperation,
+            deepLTarget,
+            "正在测试连接…"));
+        Assert.False(status.Show(
+            staleOperation,
+            azureTarget,
+            "连接成功。"));
+        Assert.Equal(
+            TranslationConnectionTestStatusState.IdentityChangedStatus,
+            status.Text);
+
+        var completion = operations.Complete(
+            staleOperation,
+            azureTarget);
+        Assert.True(completion.WasActive);
+        Assert.False(completion.IdentityMatches);
+        Assert.True(completion.ShouldReenableControls);
+        Assert.Null(Record.Exception(operations.Cancel));
+    }
+
+    [Fact]
+    public void CompletedTestIdentityChangeClearsOldResult()
+    {
+        var operations = new TranslationConnectionTestState();
+        var status = new TranslationConnectionTestStatusState(operations);
+        var deepLTarget = TranslationCredentialTarget.From(
+            TranslationProviderKind.DeepL,
+            "https://api-free.deepl.com");
+        var azureTarget = TranslationCredentialTarget.From(
+            TranslationProviderKind.AzureTranslator,
+            "https://api.cognitive.microsofttranslator.com");
+        var operation = operations.Start(deepLTarget);
+
+        Assert.True(status.Show(operation, deepLTarget, "连接成功。"));
+        Assert.True(operations.Complete(operation, deepLTarget).WasActive);
+        Assert.True(status.ResetForIdentityChange(azureTarget));
+        Assert.Equal(string.Empty, status.Text);
+        Assert.False(status.Show(operation, azureTarget, "连接成功。"));
+        Assert.Equal(string.Empty, status.Text);
+    }
+
+    [Fact]
+    public void StaleStatusCannotOverwriteNewerOperationStatus()
+    {
+        var operations = new TranslationConnectionTestState();
+        var status = new TranslationConnectionTestStatusState(operations);
+        var deepLTarget = TranslationCredentialTarget.From(
+            TranslationProviderKind.DeepL,
+            "https://api-free.deepl.com");
+        var azureTarget = TranslationCredentialTarget.From(
+            TranslationProviderKind.AzureTranslator,
+            "https://api.cognitive.microsofttranslator.com");
+        var staleOperation = operations.Start(deepLTarget);
+
+        Assert.True(status.Show(staleOperation, deepLTarget, "连接成功。"));
+        Assert.True(operations.Complete(staleOperation, deepLTarget).WasActive);
+        Assert.True(status.ResetForIdentityChange(azureTarget));
+
+        var currentOperation = operations.Start(azureTarget);
+        Assert.True(status.Show(
+            currentOperation,
+            azureTarget,
+            "正在测试连接…"));
+        Assert.False(status.Show(
+            staleOperation,
+            azureTarget,
+            "连接成功。"));
+        Assert.Equal("正在测试连接…", status.Text);
+        Assert.True(status.Show(
+            currentOperation,
+            azureTarget,
+            "连接成功。"));
+        Assert.Equal("连接成功。", status.Text);
+    }
+
+    [Fact]
     public void TranslationPageExposesProviderLanguageSecretOcrAndSubtitleFields()
     {
         var document = XDocument.Load(FindRepoFile(

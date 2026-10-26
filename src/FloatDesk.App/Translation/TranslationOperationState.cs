@@ -216,6 +216,7 @@ public sealed class TranslationConnectionTestState
     private readonly object _sync = new();
     private readonly TranslationOperationGate _gate = new();
     private CancellationTokenSource? _cancellation;
+    private string? _observedIdentity;
 
     public TranslationConnectionTestOperation Start(
         TranslationCredentialTarget target)
@@ -232,6 +233,22 @@ public sealed class TranslationConnectionTestState
         return new TranslationConnectionTestOperation(
             gateToken,
             cancellation);
+    }
+
+    public bool ObserveIdentityChange(TranslationCredentialTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        lock (_sync)
+        {
+            var changed =
+                _observedIdentity is not null &&
+                !string.Equals(
+                    _observedIdentity,
+                    target.Identity,
+                    StringComparison.Ordinal);
+            _observedIdentity = target.Identity;
+            return changed;
+        }
     }
 
     public bool IsCurrent(
@@ -311,5 +328,60 @@ public sealed class TranslationConnectionTestState
         {
             cancellation.Dispose();
         }
+    }
+}
+
+public sealed class TranslationConnectionTestStatusState
+{
+    public const string IdentityChangedStatus =
+        "翻译服务或接口已变化，请重新测试连接。";
+    public const string CancelledStatus = "连接测试已取消。";
+
+    private readonly TranslationConnectionTestState _operations;
+
+    public TranslationConnectionTestStatusState(
+        TranslationConnectionTestState operations)
+    {
+        _operations = operations ??
+            throw new ArgumentNullException(nameof(operations));
+    }
+
+    public string Text { get; private set; } = "";
+
+    public bool Show(
+        TranslationConnectionTestOperation operation,
+        TranslationCredentialTarget currentTarget,
+        string status)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+        ArgumentNullException.ThrowIfNull(currentTarget);
+        ArgumentNullException.ThrowIfNull(status);
+
+        var identityChanged =
+            _operations.ObserveIdentityChange(currentTarget);
+        if (!_operations.IsCurrent(operation, currentTarget))
+        {
+            if (identityChanged)
+                Text = IdentityChangedStatus;
+            return false;
+        }
+
+        Text = status;
+        return true;
+    }
+
+    public bool ResetForIdentityChange(
+        TranslationCredentialTarget currentTarget)
+    {
+        ArgumentNullException.ThrowIfNull(currentTarget);
+        var identityChanged =
+            _operations.ObserveIdentityChange(currentTarget);
+        var cancelled =
+            _operations.InvalidateIfIdentityChanged(currentTarget);
+        if (!identityChanged && !cancelled)
+            return false;
+
+        Text = cancelled ? CancelledStatus : "";
+        return true;
     }
 }

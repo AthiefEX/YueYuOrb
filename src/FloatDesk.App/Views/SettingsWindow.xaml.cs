@@ -37,6 +37,7 @@ public partial class SettingsWindow : Window
     private readonly Func<IReadOnlyList<OcrLanguageOption>> _getOcrLanguages;
     private readonly TranslationCredentialIntentState _translationCredentialIntent = new();
     private readonly TranslationConnectionTestState _translationTestState = new();
+    private readonly TranslationConnectionTestStatusState _translationTestStatus;
     private SettingsViewModel _viewModel;
     private bool _applyInProgress;
 
@@ -65,6 +66,8 @@ public partial class SettingsWindow : Window
             translationCredentials,
             translationProviders ??
                 throw new ArgumentNullException(nameof(translationProviders)));
+        _translationTestStatus = new TranslationConnectionTestStatusState(
+            _translationTestState);
         _viewModel = SettingsViewModel.From(
             settings.Current,
             ocrLanguages: getOcrLanguages());
@@ -424,12 +427,13 @@ public partial class SettingsWindow : Window
         TranslationConnectionTestOperation operation,
         string status)
     {
-        if (_translationTestState.IsCurrent(
-                operation,
-                CurrentTranslationCredentialTarget()) &&
-            TranslationTestStatusText is not null)
+        _translationTestStatus.Show(
+            operation,
+            CurrentTranslationCredentialTarget(),
+            status);
+        if (TranslationTestStatusText is not null)
         {
-            TranslationTestStatusText.Text = status;
+            TranslationTestStatusText.Text = _translationTestStatus.Text;
         }
     }
 
@@ -588,8 +592,10 @@ public partial class SettingsWindow : Window
             return;
         }
         var currentTarget = CurrentTranslationCredentialTarget();
-        if (_translationTestState.InvalidateIfIdentityChanged(currentTarget))
+        if (_translationTestStatus.ResetForIdentityChange(currentTarget))
         {
+            if (TranslationTestStatusText is not null)
+                TranslationTestStatusText.Text = _translationTestStatus.Text;
             EnableTranslationTestButton();
         }
         if (_translationCredentialIntent.ResetIfIdentityChanged(
