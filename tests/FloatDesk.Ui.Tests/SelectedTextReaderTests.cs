@@ -19,11 +19,8 @@ public sealed class SelectedTextReaderTests
         new(0x43, 0x0002),
         new(0x11, 0x0002)
     };
-    private static readonly SendInputEvent[] ExpectedCompensationEvents =
-    {
-        new(0x43, 0x0002),
-        new(0x11, 0x0002)
-    };
+    private static readonly SendInputEvent ControlKeyUp = new(0x11, 0x0002);
+    private static readonly SendInputEvent CKeyUp = new(0x43, 0x0002);
 
     [Fact]
     public async Task ReaderWaitsForHotkeyModifiersBeforeSendingCopy()
@@ -309,6 +306,48 @@ public sealed class SelectedTextReaderTests
     }
 
     [Fact]
+    public async Task ReaderRechecksModifierAfterFinalForegroundActivation()
+    {
+        var modifiers = new FakeModifiers();
+        var activator = new FakeActivator();
+        var clipboardCaptured = false;
+        var foregroundCleared = false;
+        modifiers.OnPoll = () =>
+        {
+            if (!clipboardCaptured || foregroundCleared)
+                return;
+            foregroundCleared = true;
+            activator.IsForeground = false;
+        };
+        activator.OnActivateAsync = async _ =>
+        {
+            modifiers.AlwaysHeld = true;
+            await Task.Yield();
+        };
+        var clipboard = new FakeClipboardSession
+        {
+            TextResult = ClipboardTextReadResult.WithText(
+                "must not be read",
+                11)
+        };
+        clipboard.OnAfterCapture = () => clipboardCaptured = true;
+        var sender = new FakeCopySender();
+        var reader = CreateReader(
+            clipboard,
+            sender,
+            modifiers,
+            activator);
+
+        var result = await reader.ReadAsync(Target(), CancellationToken.None);
+
+        Assert.Equal("ModifiersHeld", result.ErrorCode);
+        Assert.Equal(1, activator.ActivationCount);
+        Assert.Equal(0, sender.Count);
+        Assert.Equal(0, clipboard.WaitCount);
+        Assert.Equal(1, clipboard.RestoreCount);
+    }
+
+    [Fact]
     public async Task ExternalChangeBeforeInjectionAbortsWithoutRestoringNewerClipboard()
     {
         var clipboard = new FakeClipboardSession();
@@ -558,6 +597,31 @@ public sealed class SelectedTextReaderTests
         Assert.Equal(1, clipboard.RestoreCount);
     }
 
+    [Fact]
+    public async Task ReaderFailsSafeWhenCompensationRemainsIncomplete()
+    {
+        var clipboard = new FakeClipboardSession();
+        var sender = new FakeCopySender
+        {
+            Result = new CopyShortcutSendResult(
+                RequestedCount: 4,
+                InsertedCount: 2,
+                CompensationRequestedCount: 2,
+                CompensationInsertedCount: 1)
+        };
+        var reader = CreateReader(
+            clipboard,
+            sender,
+            new FakeModifiers(),
+            new FakeActivator());
+
+        var result = await reader.ReadAsync(Target(), CancellationToken.None);
+
+        Assert.Equal("NoSelectedText", result.ErrorCode);
+        Assert.Equal(0, clipboard.WaitCount);
+        Assert.Equal(1, clipboard.RestoreCount);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(1)]
@@ -567,11 +631,15 @@ public sealed class SelectedTextReaderTests
     public void CopySenderUsesStableEventOrderAndCompensatesPartials(
         int insertedCount)
     {
+        var requiredKeyUps = insertedCount switch
+        {
+            1 or 3 => new[] { ControlKeyUp },
+            2 => new[] { ControlKeyUp, CKeyUp },
+            _ => Array.Empty<SendInputEvent>()
+        };
         var backend = new FakeSendInputBackend(
             insertedCount,
-            compensationInsertedCount: insertedCount is > 0 and < 4
-                ? 2
-                : 0);
+            requiredKeyUps.Select(_ => 1).ToArray());
         var sender = new Win32CopyShortcutSender(backend);
 
         var result = sender.SendCopy();
@@ -584,12 +652,22 @@ public sealed class SelectedTextReaderTests
 
         if (insertedCount is > 0 and < 4)
         {
-            Assert.Equal(2, backend.Batches.Count);
             Assert.Equal(
-                ExpectedCompensationEvents,
-                backend.Batches[1]);
-            Assert.Equal(2, result.CompensationRequestedCount);
-            Assert.Equal(2, result.CompensationInsertedCount);
+                requiredKeyUps.Length + 1,
+                backend.Batches.Count);
+            for (var index = 0; index < requiredKeyUps.Length; index++)
+            {
+                Assert.Equal(
+                    new[] { requiredKeyUps[index] },
+                    backend.Batches[index + 1]);
+            }
+            Assert.Equal(
+                requiredKeyUps.Length,
+                result.CompensationRequestedCount);
+            Assert.Equal(
+                requiredKeyUps.Length,
+                result.CompensationInsertedCount);
+            Assert.True(result.CompensationComplete);
             Assert.False(result.Succeeded);
         }
         else
@@ -597,16 +675,27 @@ public sealed class SelectedTextReaderTests
             Assert.Single(backend.Batches);
             Assert.Equal(0, result.CompensationRequestedCount);
             Assert.Equal(0, result.CompensationInsertedCount);
+            Assert.True(result.CompensationComplete);
             Assert.Equal(insertedCount == 4, result.Succeeded);
         }
     }
 
-    [Fact]
-    public void CopySenderReportsPartialCompensationFailure()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void CopySenderReportsAcceptedCompensationKeyUps(
+        int acceptedCount)
     {
+        var responses = acceptedCount switch
+        {
+            0 => new[] { 0, 0, 0, 0, 0, 0 },
+            1 => new[] { 1, 0, 0, 0 },
+            _ => new[] { 1, 1 }
+        };
         var backend = new FakeSendInputBackend(
             insertedCount: 2,
-            compensationInsertedCount: 1);
+            responses);
         var sender = new Win32CopyShortcutSender(backend);
 
         var result = sender.SendCopy();
@@ -616,9 +705,59 @@ public sealed class SelectedTextReaderTests
                 RequestedCount: 4,
                 InsertedCount: 2,
                 CompensationRequestedCount: 2,
-                CompensationInsertedCount: 1),
+                CompensationInsertedCount: acceptedCount),
             result);
+        Assert.Equal(acceptedCount == 2, result.CompensationComplete);
         Assert.False(result.Succeeded);
+        var expectedCompensationAttempts = acceptedCount switch
+        {
+            0 => 6,
+            1 => 4,
+            _ => 2
+        };
+        Assert.Equal(
+            expectedCompensationAttempts + 1,
+            backend.Batches.Count);
+        Assert.All(
+            backend.Batches.Skip(1),
+            batch => Assert.Single(batch));
+        Assert.Contains(
+            backend.Batches.Skip(1),
+            batch =>
+                batch.Count == 1 &&
+                batch[0] == ControlKeyUp);
+        Assert.Contains(
+            backend.Batches.Skip(1),
+            batch =>
+                batch.Count == 1 &&
+                batch[0] == CKeyUp);
+    }
+
+    [Fact]
+    public void CopySenderRetriesTransientCompensationFailures()
+    {
+        var responses = new[] { 0, 1, 0, 1 };
+        var backend = new FakeSendInputBackend(
+            insertedCount: 2,
+            compensationResponses: responses);
+        var sender = new Win32CopyShortcutSender(backend);
+
+        var result = sender.SendCopy();
+
+        Assert.Equal(
+            new CopyShortcutSendResult(
+                RequestedCount: 4,
+                InsertedCount: 2,
+                CompensationRequestedCount: 2,
+                CompensationInsertedCount: 2),
+            result);
+        Assert.True(result.CompensationComplete);
+        Assert.False(result.Succeeded);
+        Assert.Equal(5, backend.Batches.Count);
+        Assert.Equal(new[] { ControlKeyUp }, backend.Batches[1]);
+        Assert.Equal(new[] { ControlKeyUp }, backend.Batches[2]);
+        Assert.Equal(new[] { CKeyUp }, backend.Batches[3]);
+        Assert.Equal(new[] { CKeyUp }, backend.Batches[4]);
     }
 
     [Fact]
@@ -992,15 +1131,16 @@ public sealed class SelectedTextReaderTests
 
     private sealed class FakeSendInputBackend : ISendInputBackend
     {
-        private int _mainInsertedCount;
-        private int _compensationInsertedCount;
+        private readonly int _mainInsertedCount;
+        private readonly Queue<int> _compensationResponses;
 
         public FakeSendInputBackend(
             int insertedCount,
-            int compensationInsertedCount)
+            params int[] compensationResponses)
         {
             _mainInsertedCount = insertedCount;
-            _compensationInsertedCount = compensationInsertedCount;
+            _compensationResponses = new Queue<int>(
+                compensationResponses);
         }
 
         public List<IReadOnlyList<SendInputEvent>> Batches { get; } = new();
@@ -1010,7 +1150,9 @@ public sealed class SelectedTextReaderTests
             Batches.Add(events.ToArray());
             return Batches.Count == 1
                 ? _mainInsertedCount
-                : _compensationInsertedCount;
+                : _compensationResponses.Count > 0
+                    ? _compensationResponses.Dequeue()
+                    : 0;
         }
     }
 
@@ -1046,6 +1188,11 @@ public sealed class SelectedTextReaderTests
         public int ActivationCount { get; private set; }
         public Action? OnCapture { get; set; }
         public Action? OnCheckForeground { get; set; }
+        public Func<CancellationToken, Task>? OnActivateAsync
+        {
+            get;
+            set;
+        }
 
         public ForegroundTargetIdentity? CaptureIdentity(
             ForegroundSnapshot target)
@@ -1073,7 +1220,7 @@ public sealed class SelectedTextReaderTests
                 identity.FocusHwnd == FocusedControlHwnd;
         }
 
-        public Task<bool> TryActivateAsync(
+        public async Task<bool> TryActivateAsync(
             ForegroundTargetIdentity identity,
             CancellationToken cancellationToken)
         {
@@ -1081,10 +1228,12 @@ public sealed class SelectedTextReaderTests
             ActivationCount++;
             if (!ActivationSucceeds ||
                 identity.FocusHwnd != FocusedControlHwnd)
-                return Task.FromResult(false);
+                return false;
+            if (OnActivateAsync is not null)
+                await OnActivateAsync(cancellationToken);
             IsForeground = true;
             ForegroundTopLevelHwnd = identity.TopLevelHwnd;
-            return Task.FromResult(true);
+            return true;
         }
     }
 

@@ -42,6 +42,7 @@ public sealed class SelectedTextReader :
         TimeSpan.FromSeconds(1);
     private static readonly TimeSpan DefaultPollInterval =
         TimeSpan.FromMilliseconds(25);
+    private const int PreInjectionStabilityPasses = 2;
 
     private readonly IClipboardSession _clipboard;
     private readonly ICopyShortcutSender _sender;
@@ -197,23 +198,22 @@ public sealed class SelectedTextReader :
                 return ClipboardDenied();
 
             expectedRestoreSequence = snapshot.SequenceNumber;
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (!await EnsureForegroundAsync(identity, cancellationToken)
-                    .ConfigureAwait(false))
+            for (var pass = 0;
+                 pass < PreInjectionStabilityPasses;
+                 pass++)
             {
-                return TargetNotForeground();
-            }
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!await EnsureForegroundAsync(
+                            identity,
+                            cancellationToken)
+                        .ConfigureAwait(false))
+                {
+                    return TargetNotForeground();
+                }
 
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!AreModifiersReleased())
-                return ModifiersHeld();
-
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!await EnsureForegroundAsync(identity, cancellationToken)
-                    .ConfigureAwait(false))
-            {
-                return TargetNotForeground();
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!AreModifiersReleased())
+                    return ModifiersHeld();
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -240,6 +240,12 @@ public sealed class SelectedTextReader :
                 expectedRestoreSequence = null;
                 return ClipboardDenied();
             }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!IsForeground(identity))
+                return TargetNotForeground();
+            if (!AreModifiersReleased())
+                return ModifiersHeld();
 
             cancellationToken.ThrowIfCancellationRequested();
             CopyShortcutSendResult sendResult;
@@ -635,9 +641,12 @@ internal readonly record struct CopyShortcutSendResult(
     int CompensationRequestedCount,
     int CompensationInsertedCount)
 {
+    public bool CompensationComplete =>
+        CompensationInsertedCount == CompensationRequestedCount;
+
     public bool Succeeded =>
         InsertedCount == RequestedCount &&
-        CompensationInsertedCount == CompensationRequestedCount;
+        CompensationComplete;
 
     public static CopyShortcutSendResult Complete(int requestedCount) =>
         new(requestedCount, requestedCount, 0, 0);
@@ -1316,6 +1325,7 @@ internal sealed class Win32CopyShortcutSender : ICopyShortcutSender
     private const ushort KeyEventKeyUp = 0x0002;
     private const ushort VirtualKeyControl = 0x11;
     private const ushort VirtualKeyC = 0x43;
+    private const int KeyUpAttempts = 3;
 
     private static readonly SendInputEvent[] CopyEvents =
     {
@@ -1325,10 +1335,14 @@ internal sealed class Win32CopyShortcutSender : ICopyShortcutSender
         new(VirtualKeyControl, KeyEventKeyUp)
     };
 
-    private static readonly SendInputEvent[] CompensationEvents =
+    private static readonly SendInputEvent[] ControlKeyUpEvents =
     {
-        new(VirtualKeyC, KeyEventKeyUp),
         new(VirtualKeyControl, KeyEventKeyUp)
+    };
+
+    private static readonly SendInputEvent[] CKeyUpEvents =
+    {
+        new(VirtualKeyC, KeyEventKeyUp)
     };
 
     private readonly ISendInputBackend _backend;
@@ -1362,15 +1376,48 @@ internal sealed class Win32CopyShortcutSender : ICopyShortcutSender
                 0);
         }
 
-        var compensationInsertedCount = Math.Clamp(
-            _backend.SendInput(CompensationEvents),
-            0,
-            CompensationEvents.Length);
+        var requiredKeyUps = GetRequiredKeyUps(insertedCount);
+        var compensationInsertedCount = 0;
+        foreach (var keyUp in requiredKeyUps)
+        {
+            if (TrySendKeyUp(keyUp))
+                compensationInsertedCount++;
+        }
+
         return new CopyShortcutSendResult(
             CopyEvents.Length,
             insertedCount,
-            CompensationEvents.Length,
+            requiredKeyUps.Count,
             compensationInsertedCount);
+    }
+
+    private static List<SendInputEvent[]> GetRequiredKeyUps(
+        int insertedCount)
+    {
+        var keyUps = new List<SendInputEvent[]>(capacity: 2);
+        if (insertedCount >= 1)
+            keyUps.Add(ControlKeyUpEvents);
+        if (insertedCount == 2)
+            keyUps.Add(CKeyUpEvents);
+        return keyUps;
+    }
+
+    private bool TrySendKeyUp(IReadOnlyList<SendInputEvent> keyUp)
+    {
+        for (var attempt = 0; attempt < KeyUpAttempts; attempt++)
+        {
+            try
+            {
+                if (_backend.SendInput(keyUp) > 0)
+                    return true;
+            }
+            catch
+            {
+                // Retry bounded; the caller reports an incomplete cleanup.
+            }
+        }
+
+        return false;
     }
 }
 
