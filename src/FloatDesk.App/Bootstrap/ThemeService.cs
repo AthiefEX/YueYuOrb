@@ -97,7 +97,7 @@ public static class ThemeService
             SystemUsesDarkTheme());
     }
 
-    private static bool SystemUsesDarkTheme()
+    public static bool SystemUsesDarkTheme()
     {
         try
         {

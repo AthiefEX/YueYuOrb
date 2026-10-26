@@ -128,6 +128,37 @@ public sealed class SettingsViewModelMergeTests
     }
 
     [Fact]
+    public void UntouchedBrowserThemePreservesConcurrentChange()
+    {
+        var original = AppSettings.CreateDefault();
+        var viewModel = SettingsViewModel.From(original);
+        var latest = original with
+        {
+            BrowserTheme = BrowserThemeMode.Dark
+        };
+
+        var candidate = viewModel.BuildCandidate(latest);
+
+        Assert.Equal(BrowserThemeMode.Dark, candidate.BrowserTheme);
+    }
+
+    [Fact]
+    public void EditedBrowserThemeWinsOverConcurrentChange()
+    {
+        var original = AppSettings.CreateDefault();
+        var viewModel = SettingsViewModel.From(original);
+        viewModel.BrowserThemeIndex = (int)BrowserThemeMode.Light;
+        var latest = original with
+        {
+            BrowserTheme = BrowserThemeMode.Dark
+        };
+
+        var candidate = viewModel.BuildCandidate(latest);
+
+        Assert.Equal(BrowserThemeMode.Light, candidate.BrowserTheme);
+    }
+
+    [Fact]
     public void InvalidHotkeyPreventsApply()
     {
         var viewModel = SettingsViewModel.From(AppSettings.CreateDefault());

@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Input;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
+using FloatDesk.App.Browser;
 using FloatDesk.Core.Browser;
 using FloatDesk.Core.Models;
 
@@ -15,10 +16,15 @@ public partial class AiBrowserWindow : Window, IDisposable
     private readonly AppDataPaths _paths;
     private readonly Func<BrowserSite, Task> _selectedSiteChanged;
     private readonly SemaphoreSlim _initializationGate = new(1, 1);
+    private readonly BrowserThemeLifecycle _themeLifecycle =
+        new(BrowserColorScheme.Light);
+    private readonly List<AiPopupWindow> _popups = [];
     private WebView2 _browser;
     private CoreWebView2Environment? _environment;
     private BrowserSite[] _sites = [];
     private BrowserSite? _selectedSite;
+    private BrowserThemeMode _browserTheme = BrowserThemeMode.FollowApp;
+    private BrowserColorScheme _resolvedColorScheme = BrowserColorScheme.Light;
     private bool _initialized;
     private bool _releaseOnClose;
     private bool _allowClose;
@@ -94,6 +100,12 @@ public partial class AiBrowserWindow : Window, IDisposable
     {
         _releaseOnClose = settings.BrowserReleaseOnClose;
         _zoomPercent = settings.BrowserZoomPercent;
+        _browserTheme = settings.BrowserTheme;
+        _resolvedColorScheme = BrowserThemePolicy.Resolve(
+            _browserTheme,
+            settings.General.Theme,
+            ThemeService.SystemUsesDarkTheme());
+        _themeLifecycle.Request(_resolvedColorScheme);
         Topmost = settings.BrowserTopmost;
         PinButton.Content = Topmost ? "取消固定" : "固定";
         _sites = settings.BrowserSites.OrderBy(site => site.Order).ToArray();
@@ -106,8 +118,11 @@ public partial class AiBrowserWindow : Window, IDisposable
             _selectedSite = selected;
         }
         if (_initialized)
+        {
             _browser.ZoomFactor = _zoomPercent / 100.0;
+        }
         ZoomText.Text = $"{_zoomPercent}%";
+        _ = ApplyThemeAsync();
     }
 
     public async Task ShowAndEnsureAsync(CancellationToken cancellationToken)
@@ -182,8 +197,11 @@ public partial class AiBrowserWindow : Window, IDisposable
             _browser.CoreWebView2.PermissionRequested += OnPermissionRequested;
             _browser.CoreWebView2.DownloadStarting += OnDownloadStarting;
             _browser.CoreWebView2.ProcessFailed += OnProcessFailed;
-            _browser.ZoomFactor = _zoomPercent / 100.0;
+            await _themeLifecycle.AttachAsync(
+                new CoreWebView2ThemeSurface(_browser.CoreWebView2));
             _initialized = true;
+            await ApplyThemeAsync();
+            _browser.ZoomFactor = _zoomPercent / 100.0;
             StatusPanel.Visibility = Visibility.Collapsed;
             if (_selectedSite is not null &&
                 _browser.Source is null)
@@ -282,6 +300,7 @@ public partial class AiBrowserWindow : Window, IDisposable
             FooterText.Text = _browser.Source?.Host is { Length: > 0 } host
                 ? $"当前站点：{host} · WebView2 独立进程"
                 : "WebView2 独立进程";
+            _ = ReapplyCurrentThemeAsync();
             return;
         }
 
@@ -304,10 +323,15 @@ public partial class AiBrowserWindow : Window, IDisposable
         }
 
         e.Handled = true;
-        var popup = new AiPopupWindow(uri, _environment!)
+        var popup = new AiPopupWindow(
+            uri,
+            _environment!,
+            _resolvedColorScheme)
         {
             Owner = this
         };
+        popup.Closed += (_, _) => _popups.Remove(popup);
+        _popups.Add(popup);
         popup.Show();
     }
 
@@ -483,6 +507,7 @@ public partial class AiBrowserWindow : Window, IDisposable
 
     private void RebuildBrowser()
     {
+        _themeLifecycle.Detach();
         BrowserHost.Children.Remove(_browser);
         _browser.Dispose();
         _browser = CreateBrowser();
@@ -490,8 +515,19 @@ public partial class AiBrowserWindow : Window, IDisposable
         _initialized = false;
     }
 
+    private async Task ApplyThemeAsync()
+    {
+        await _themeLifecycle.ApplyAsync();
+        foreach (var popup in _popups.ToArray())
+            await popup.ApplyThemeAsync(_resolvedColorScheme);
+    }
+
+    private Task ReapplyCurrentThemeAsync() =>
+        _themeLifecycle.ReapplyCurrentDocumentAsync();
+
     public void Dispose()
     {
+        _themeLifecycle.Dispose();
         _initializationGate.Dispose();
         GC.SuppressFinalize(this);
     }
@@ -500,10 +536,15 @@ public partial class AiBrowserWindow : Window, IDisposable
 internal sealed class AiPopupWindow : Window, IDisposable
 {
     private readonly WebView2 _browser = new();
+    private readonly BrowserThemeLifecycle _themeLifecycle;
     private bool _disposed;
 
-    public AiPopupWindow(Uri uri, CoreWebView2Environment environment)
+    public AiPopupWindow(
+        Uri uri,
+        CoreWebView2Environment environment,
+        BrowserColorScheme colorScheme)
     {
+        _themeLifecycle = new BrowserThemeLifecycle(colorScheme);
         Width = 640;
         Height = 720;
         MinWidth = 380;
@@ -533,6 +574,12 @@ internal sealed class AiPopupWindow : Window, IDisposable
                     args.State = CoreWebView2PermissionState.Deny;
                     args.Handled = true;
                 };
+                _browser.NavigationCompleted += OnNavigationCompleted;
+                await _themeLifecycle.AttachAsync(
+                    new CoreWebView2ThemeSurface(_browser.CoreWebView2));
+                if (_disposed)
+                    return;
+                await _themeLifecycle.ApplyAsync();
                 _browser.CoreWebView2.Navigate(uri.AbsoluteUri);
             }
             catch (Exception exception)
@@ -547,11 +594,32 @@ internal sealed class AiPopupWindow : Window, IDisposable
         Closed += (_, _) => Dispose();
     }
 
+    public async Task ApplyThemeAsync(BrowserColorScheme colorScheme)
+    {
+        if (_disposed)
+            return;
+
+        _themeLifecycle.Request(colorScheme);
+        await _themeLifecycle.ApplyAsync();
+    }
+
+    private void OnNavigationCompleted(
+        object? sender,
+        CoreWebView2NavigationCompletedEventArgs e)
+    {
+        if (e.IsSuccess)
+            _ = ReapplyCurrentThemeAsync();
+    }
+
+    private Task ReapplyCurrentThemeAsync() =>
+        _themeLifecycle.ReapplyCurrentDocumentAsync();
+
     public void Dispose()
     {
         if (_disposed)
             return;
         _disposed = true;
+        _themeLifecycle.Dispose();
         _browser.Dispose();
         GC.SuppressFinalize(this);
     }

@@ -147,6 +147,57 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void LegacySettingsWithoutBrowserThemeFollowTheApp()
+    {
+        var options = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            Converters = { new JsonStringEnumConverter() }
+        };
+        var json = JsonSerializer.SerializeToNode(
+            AppSettings.CreateDefault(),
+            options)!.AsObject();
+        json.Remove("browserTheme");
+
+        var migrated = SettingsMigrator.Deserialize(
+            json.ToJsonString(),
+            options);
+
+        Assert.Equal(BrowserThemeMode.FollowApp, migrated.BrowserTheme);
+    }
+
+    [Fact]
+    public async Task BrowserThemeRoundTripsWithoutSchemaChange()
+    {
+        using var store = new JsonSettingsStore(_root);
+        var expected = AppSettings.CreateDefault() with
+        {
+            BrowserTheme = BrowserThemeMode.Dark
+        };
+
+        await store.SaveAsync(expected, CancellationToken.None);
+        var loaded = await store.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(1, loaded.SchemaVersion);
+        Assert.Equal(BrowserThemeMode.Dark, loaded.BrowserTheme);
+    }
+
+    [Fact]
+    public void ValidatorRejectsUndefinedBrowserTheme()
+    {
+        var settings = AppSettings.CreateDefault() with
+        {
+            BrowserTheme = (BrowserThemeMode)99
+        };
+
+        var errors = SettingsValidator.Validate(settings);
+
+        Assert.Contains(
+            errors,
+            error => error.Contains("BrowserTheme", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task PositionAndRuleUpdatesBothSurviveInterleaving()
     {
         var store = new MemoryStore(AppSettings.CreateDefault());

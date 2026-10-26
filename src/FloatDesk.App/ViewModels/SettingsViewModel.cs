@@ -32,6 +32,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _browserReleaseOnClose;
     [ObservableProperty] private int _browserZoomPercent;
     [ObservableProperty] private bool _browserTopmost;
+    [ObservableProperty] private int _browserThemeIndex;
     [ObservableProperty] private int _captureDelayIndex;
     [ObservableProperty] private int _captureFormatIndex;
     [ObservableProperty] private bool _captureAutoSave;
@@ -86,6 +87,7 @@ public partial class SettingsViewModel : ObservableObject
             BrowserReleaseOnClose = settings.BrowserReleaseOnClose,
             BrowserZoomPercent = settings.BrowserZoomPercent,
             BrowserTopmost = settings.BrowserTopmost,
+            BrowserThemeIndex = (int)settings.BrowserTheme,
             CaptureDelayIndex = settings.Capture.DelaySeconds switch { 3 => 1, 5 => 2, _ => 0 },
             CaptureFormatIndex = settings.Capture.Format == ImageFormat.Jpeg ? 1 : 0,
             CaptureAutoSave = settings.Capture.AutoSave,
@@ -189,6 +191,9 @@ public partial class SettingsViewModel : ObservableObject
         var browserTopmost = BrowserTopmost != _baseline.BrowserTopmost
             ? BrowserTopmost
             : latest.BrowserTopmost;
+        var browserTheme = (BrowserThemeMode)BrowserThemeIndex != _baseline.BrowserTheme
+            ? (BrowserThemeMode)BrowserThemeIndex
+            : latest.BrowserTheme;
 
         var capture = latest.Capture;
         var captureDelay = CaptureDelayIndex switch { 1 => 3, 2 => 5, _ => 0 };
@@ -230,6 +235,7 @@ public partial class SettingsViewModel : ObservableObject
             BrowserReleaseOnClose = browserReleaseOnClose,
             BrowserZoomPercent = browserZoomPercent,
             BrowserTopmost = browserTopmost,
+            BrowserTheme = browserTheme,
             Capture = capture,
             Hotkeys = hotkeys,
             Windows = latest.Windows,

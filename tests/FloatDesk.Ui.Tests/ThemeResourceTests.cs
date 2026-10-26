@@ -105,6 +105,53 @@ public sealed class ThemeResourceTests
         Assert.True(Brightness(dark["InkBrush"]) > Brightness(light["InkBrush"]));
     }
 
+    [Fact]
+    public void RuntimeObservesWindowsThemePreferenceChanges()
+    {
+        var source = File.ReadAllText(FindRepoFile(
+            "src/FloatDesk.App/AppRuntime.cs"));
+
+        Assert.Contains(
+            "UserPreferenceChanged +=",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "UserPreferenceChanged -=",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BrowserThemeChangesAlwaysReachOpenPopups()
+    {
+        var source = File.ReadAllText(FindRepoFile(
+                "src/FloatDesk.App/Views/AiBrowserWindow.xaml.cs"))
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
+        var applySettings = SliceBetween(
+            source,
+            "public void ApplySettings",
+            "public async Task ShowAndEnsureAsync");
+        var ensureBrowser = SliceBetween(
+            source,
+            "private async Task EnsureBrowserAsync",
+            "private async void OnSiteSelectionChanged");
+
+        Assert.DoesNotContain(
+            "_browser.ZoomFactor = _zoomPercent / 100.0;\n" +
+            "            _ = ApplyThemeAsync();",
+            applySettings,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ZoomText.Text = $\"{_zoomPercent}%\";\n" +
+            "        _ = ApplyThemeAsync();",
+            applySettings,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "await ApplyThemeAsync();",
+            ensureBrowser,
+            StringComparison.Ordinal);
+    }
+
     [Fact(Timeout = 10_000)]
     public async Task WheelLauncherLabelsFollowThemeResources()
     {
@@ -264,5 +311,20 @@ public sealed class ThemeResourceTests
 
         throw new FileNotFoundException(
             $"Could not find repository file '{relativePath}'.");
+    }
+
+    private static string SliceBetween(
+        string source,
+        string startMarker,
+        string endMarker)
+    {
+        var start = source.IndexOf(startMarker, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"Missing source marker '{startMarker}'.");
+        var end = source.IndexOf(
+            endMarker,
+            start + startMarker.Length,
+            StringComparison.Ordinal);
+        Assert.True(end > start, $"Missing source marker '{endMarker}'.");
+        return source[start..end];
     }
 }

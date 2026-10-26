@@ -31,6 +31,8 @@ public static partial class SettingsValidator
             errors.Add("Browser site names must contain 1-40 characters.");
         if (value.BrowserZoomPercent is < 75 or > 150)
             errors.Add("BrowserZoomPercent must be between 75 and 150.");
+        if (!Enum.IsDefined(value.BrowserTheme))
+            errors.Add("BrowserTheme must be FollowApp, Light, or Dark.");
         if (value.Capture.DelaySeconds is not (0 or 3 or 5))
             errors.Add("Capture.DelaySeconds must be 0, 3, or 5.");
         if (!ColorPattern().IsMatch(value.Capture.AnnotationColor))
