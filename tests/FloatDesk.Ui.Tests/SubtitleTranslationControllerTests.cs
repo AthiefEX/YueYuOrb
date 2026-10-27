@@ -105,7 +105,10 @@ public sealed class SubtitleTranslationControllerTests
             TaskCreationOptions.RunContinuationsAsynchronously);
         var secondShown = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstDeliveryFinished = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         var deliveryCount = 0;
+        var deliveredTexts = new List<string>();
         var host = new RecordingSubtitleHost
         {
             TranslationHandler = (text, _) =>
@@ -115,7 +118,7 @@ public sealed class SubtitleTranslationControllerTests
                         text == "Hello A" ? "译文 A" : "译文 B",
                         "en",
                         "Test provider")),
-            SubtitleTextHandler = (_, _) =>
+            SubtitleTextHandler = (text, commitIfCurrent) =>
             {
                 var delivery = Interlocked.Increment(ref deliveryCount);
                 if (delivery == 1)
@@ -128,6 +131,10 @@ public sealed class SubtitleTranslationControllerTests
                     secondShown.TrySetResult();
                 }
 
+                _ = commitIfCurrent?.Invoke(
+                    () => deliveredTexts.Add(text));
+                if (delivery == 1)
+                    firstDeliveryFinished.TrySetResult();
                 return TranslationSubtitlePlacementStatus.Ready;
             }
         };
@@ -153,13 +160,61 @@ public sealed class SubtitleTranslationControllerTests
         }
 
         release.TrySetResult();
-        await WaitUntilAsync(
-            () => !controller.IsRunning ||
-                  host.SubtitleTexts.Count >= 1,
-            TimeSpan.FromSeconds(2));
+        await firstDeliveryFinished.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
-        Assert.DoesNotContain("译文 A", host.SubtitleTexts);
-        Assert.Equal(["译文 B"], host.SubtitleTexts);
+        Assert.DoesNotContain("译文 A", deliveredTexts);
+        Assert.Equal(["译文 B"], deliveredTexts);
+        await controller.StopAsync();
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task PausedDeliveryDoesNotCommitAfterSubtitleResume()
+    {
+        var source = new SequenceSubtitleSource(
+            [0x10, 0x10],
+            finishedAfterCaptures: null);
+        var ocr = new SequenceOcr(
+            new ScreenOcrResult("Hello A", null, null));
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var deliveryFinished = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var deliveredTexts = new List<string>();
+        var host = new RecordingSubtitleHost
+        {
+            TranslationHandler = (text, _) =>
+                Task.FromResult(
+                    TranslationResponse.Ok(
+                        text,
+                        "译文 A",
+                        "en",
+                        "Test provider")),
+            SubtitleTextHandler = (text, commitIfCurrent) =>
+            {
+                entered.TrySetResult();
+                release.Task.GetAwaiter().GetResult();
+                _ = commitIfCurrent?.Invoke(
+                    () => deliveredTexts.Add(text));
+                deliveryFinished.TrySetResult();
+                return TranslationSubtitlePlacementStatus.Ready;
+            }
+        };
+        using var controller = new SubtitleTranslationController(
+            ocr,
+            source,
+            host,
+            new ImmediateClock());
+
+        await controller.StartAsync(Settings(), CancellationToken.None);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        controller.Pause("字幕翻译已暂停。");
+        controller.Resume();
+        release.TrySetResult();
+        await deliveryFinished.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Empty(deliveredTexts);
         await controller.StopAsync();
     }
 
@@ -334,6 +389,32 @@ public sealed class SubtitleTranslationControllerTests
                 TranslationFailureKind.ProviderError,
                 "ProviderError",
                 "翻译失败。"),
+            NoticePlacementStatus =
+                TranslationSubtitlePlacementStatus.NoSafePlacement
+        };
+        using var controller = new SubtitleTranslationController(
+            ocr,
+            source,
+            host,
+            new ImmediateClock());
+
+        await controller.StartAsync(Settings(), CancellationToken.None);
+        await WaitUntilAsync(
+            () => controller.IsPaused,
+            TimeSpan.FromSeconds(2));
+
+        Assert.True(controller.IsPaused);
+        await controller.StopAsync();
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task CaptureFailureNoticePlacementFailurePausesSampling()
+    {
+        var source = new ThrowingSubtitleCapture();
+        var ocr = new SequenceOcr(
+            new ScreenOcrResult("unused", null, null));
+        var host = new RecordingSubtitleHost
+        {
             NoticePlacementStatus =
                 TranslationSubtitlePlacementStatus.NoSafePlacement
         };
@@ -1485,6 +1566,30 @@ public sealed class SubtitleTranslationControllerTests
         }
     }
 
+    private sealed class ThrowingSubtitleCapture : ITranslationSubtitleCapture
+    {
+        private int _captureCount;
+
+        public Task<CapturedTranslationRegion?> CaptureRegionAsync(
+            TranslationCaptureRegion region,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Interlocked.Increment(ref _captureCount) > 1)
+                throw new IOException("capture failed");
+
+            var frame = new CaptureFrame(
+                new PixelRect(0, 0, 4, 4),
+                16,
+                Enumerable.Repeat((byte)0x10, 4 * 4 * 4).ToArray());
+            return Task.FromResult<CapturedTranslationRegion?>(
+                new CapturedTranslationRegion(
+                    frame,
+                    new PixelRect(0, 0, 4, 4),
+                    region));
+        }
+    }
+
     private sealed class GatedSequenceSubtitleSource(
         IReadOnlyList<byte> values,
         int gateBeforeCapture) : ITranslationSubtitleCapture
@@ -1704,7 +1809,7 @@ public sealed class SubtitleTranslationControllerTests
         } = TranslationSubtitlePlacementStatus.Ready;
         public Func<
             string,
-            Func<bool>?,
+            Func<Action, bool>?,
             TranslationSubtitlePlacementStatus>? SubtitleTextHandler
         {
             get;
@@ -1752,21 +1857,26 @@ public sealed class SubtitleTranslationControllerTests
         public TranslationSubtitlePlacementStatus ShowSubtitleText(
             TranslationRouteHandle operation,
             string translatedText,
-            Func<bool>? isCurrent = null)
+            Func<Action, bool>? commitIfCurrent = null)
         {
             if (SubtitleTextHandler is { } handler)
+                return handler(translatedText, commitIfCurrent);
+
+            void Commit()
             {
-                var handled = handler(translatedText, isCurrent);
-                if (handled == TranslationSubtitlePlacementStatus.Ready &&
-                    isCurrent?.Invoke() != false)
-                {
-                    SubtitleTexts.Add(translatedText);
-                    FirstSubtitleTextShown.TrySetResult();
-                }
-                return handled;
+                SubtitleTexts.Add(translatedText);
+                FirstSubtitleTextShown.TrySetResult();
             }
-            SubtitleTexts.Add(translatedText);
-            FirstSubtitleTextShown.TrySetResult();
+
+            if (commitIfCurrent is not null)
+            {
+                if (!commitIfCurrent(Commit))
+                    return TranslationSubtitlePlacementStatus.Ready;
+            }
+            else
+            {
+                Commit();
+            }
             return PlacementStatus;
         }
 

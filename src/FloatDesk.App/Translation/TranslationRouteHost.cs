@@ -57,11 +57,20 @@ public interface ITranslationRouteHost
     TranslationSubtitlePlacementStatus ShowSubtitleText(
         TranslationRouteHandle operation,
         string translatedText,
-        Func<bool>? isCurrent = null)
+        Func<Action, bool>? commitIfCurrent = null)
     {
-        if (isCurrent?.Invoke() == false)
-            return TranslationSubtitlePlacementStatus.Ready;
-        ShowStatus(operation, translatedText);
+        if (commitIfCurrent is not null)
+        {
+            if (!commitIfCurrent(
+                    () => ShowStatus(operation, translatedText)))
+            {
+                return TranslationSubtitlePlacementStatus.Ready;
+            }
+        }
+        else
+        {
+            ShowStatus(operation, translatedText);
+        }
         return TranslationSubtitlePlacementStatus.Ready;
     }
 
@@ -191,11 +200,11 @@ public sealed class TranslationRouteHost : ITranslationRouteHost
     public TranslationSubtitlePlacementStatus ShowSubtitleText(
         TranslationRouteHandle operation,
         string translatedText,
-        Func<bool>? isCurrent = null) =>
+        Func<Action, bool>? commitIfCurrent = null) =>
         _overlay.ShowSubtitleText(
             operation.Operation,
             translatedText,
-            isCurrent);
+            commitIfCurrent);
 
     public TranslationSubtitlePlacementStatus ShowSubtitleNotice(
         TranslationRouteHandle operation,

@@ -191,8 +191,9 @@ public sealed class TranslationPrivacyTests
         public TranslationSubtitlePlacementStatus ShowSubtitleText(
             TranslationRouteHandle operation,
             string text,
-            Func<bool>? isCurrent = null)
+            Func<Action, bool>? commitIfCurrent = null)
         {
+            _ = commitIfCurrent?.Invoke(() => { });
             return TranslationSubtitlePlacementStatus.Ready;
         }
 

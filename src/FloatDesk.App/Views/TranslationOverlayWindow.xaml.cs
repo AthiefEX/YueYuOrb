@@ -313,14 +313,14 @@ public partial class TranslationOverlayWindow : Window
     public TranslationSubtitlePlacementStatus ShowSubtitleText(
         TranslationOverlayOperationToken operation,
         string translatedText,
-        Func<bool>? isCurrent = null)
+        Func<Action, bool>? commitIfCurrent = null)
     {
         var status = TranslationSubtitlePlacementStatus.NoSafePlacement;
         RunOnUiThread(() =>
             status = ShowSubtitleTextCore(
                 operation,
                 translatedText,
-                isCurrent));
+                commitIfCurrent));
         return status;
     }
 
@@ -337,26 +337,38 @@ public partial class TranslationOverlayWindow : Window
     private TranslationSubtitlePlacementStatus ShowSubtitleTextCore(
         TranslationOverlayOperationToken operation,
         string translatedText,
-        Func<bool>? isCurrent = null)
+        Func<Action, bool>? commitIfCurrent = null)
     {
         if (!IsCurrentOperation(operation) ||
-            isCurrent?.Invoke() == false ||
             string.IsNullOrWhiteSpace(translatedText))
         {
             return TranslationSubtitlePlacementStatus.Ready;
         }
 
-        ApplySubtitlePresentation();
         var previousText = SubtitleTranslationTextBlock.Text;
         var previousNotice = SubtitleNoticeTextBlock.Text;
         var previousNoticeVisibility = SubtitleNoticeTextBlock.Visibility;
         var wasVisible = IsVisible;
 
-        SubtitleTranslationTextBlock.Text = "";
-        SubtitleTranslationTextBlock.Text = translatedText;
-        SubtitleNoticeTextBlock.Text = "";
-        SubtitleNoticeTextBlock.Visibility = Visibility.Collapsed;
-        SubtitleSurface.Visibility = Visibility.Visible;
+        void CommitText()
+        {
+            ApplySubtitlePresentation();
+            SubtitleTranslationTextBlock.Text = "";
+            SubtitleTranslationTextBlock.Text = translatedText;
+            SubtitleNoticeTextBlock.Text = "";
+            SubtitleNoticeTextBlock.Visibility = Visibility.Collapsed;
+            SubtitleSurface.Visibility = Visibility.Visible;
+        }
+
+        if (commitIfCurrent is not null)
+        {
+            if (!commitIfCurrent(CommitText))
+                return TranslationSubtitlePlacementStatus.Ready;
+        }
+        else
+        {
+            CommitText();
+        }
 
         var status = PositionSubtitleSurfaceCore();
         if (status == TranslationSubtitlePlacementStatus.Ready)
@@ -532,9 +544,11 @@ public partial class TranslationOverlayWindow : Window
         if (!_isSubtitleMode || _isClosed)
             return TranslationSubtitlePlacementStatus.Ready;
 
-        return IsVisible
-            ? PositionSubtitleSurfaceCore()
-            : TranslationSubtitlePlacementStatus.Ready;
+        var wasVisible = IsVisible;
+        var status = PositionSubtitleSurfaceCore();
+        if (!wasVisible)
+            HideWithoutClearingContent();
+        return status;
     }
 
     private void ApplySubtitlePresentation()

@@ -2000,14 +2000,21 @@ public sealed class TranslationRuntimeTests
         public TranslationSubtitlePlacementStatus ShowSubtitleText(
             TranslationRouteHandle operation,
             string translatedText,
-            Func<bool>? isCurrent = null)
+            Func<Action, bool>? commitIfCurrent = null)
         {
-            if (!IsCurrent(operation) ||
-                isCurrent?.Invoke() == false)
-            {
+            if (!IsCurrent(operation))
                 return TranslationSubtitlePlacementStatus.Ready;
+
+            void Commit() => SubtitleTexts.Add(translatedText);
+            if (commitIfCurrent is not null)
+            {
+                if (!commitIfCurrent(Commit))
+                    return TranslationSubtitlePlacementStatus.Ready;
             }
-            SubtitleTexts.Add(translatedText);
+            else
+            {
+                Commit();
+            }
             return TranslationSubtitlePlacementStatus.Ready;
         }
 

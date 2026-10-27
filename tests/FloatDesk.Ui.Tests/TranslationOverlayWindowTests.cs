@@ -358,6 +358,15 @@ public sealed class TranslationOverlayWindowTests
                     status);
                 Assert.Equal("安全字幕", window.TranslatedText);
                 Assert.False(window.IsVisible);
+                Assert.NotEqual(
+                    TranslationSubtitlePlacementStatus.Ready,
+                    window.PrepareSubtitleCaptureRegion(
+                        new TranslationCaptureRegion(
+                            monitor.DeviceName,
+                            0,
+                            0,
+                            1,
+                            1)));
             }
             finally
             {

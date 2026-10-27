@@ -108,7 +108,6 @@ public sealed class SubtitleTranslationController : IDisposable
             cancellationToken);
         var work = new LatestSubtitleWorkSlot<SubtitleOcrWork>();
         long generation;
-        TranslationRouteHandle operation;
         lock (_sync)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -132,10 +131,32 @@ public sealed class SubtitleTranslationController : IDisposable
             _running = true;
             _sessionCancellation = session;
             _ocrWork = work;
-            operation = _host.ShowSubtitleStatus(
-                TranslationRoutePoint.GetCursorPosition(),
-                "字幕翻译准备中。");
-            _operation = operation;
+            _operation = null;
+        }
+
+        var operation = _host.ShowSubtitleStatus(
+            TranslationRoutePoint.GetCursorPosition(),
+            "字幕翻译准备中。");
+        var accepted = false;
+        lock (_sync)
+        {
+            if (IsCurrentGenerationLocked(generation))
+            {
+                _operation = operation;
+                accepted = true;
+            }
+        }
+        if (!accepted)
+        {
+            CancelQuietly(session);
+            session.Dispose();
+            work.Dispose();
+            _host.SetSubtitleControls(
+                operation,
+                active: false,
+                paused: false,
+                canReselect: false);
+            return;
         }
 
         _host.SetSubtitleControls(
@@ -1062,7 +1083,8 @@ public sealed class SubtitleTranslationController : IDisposable
                     ShowSubtitleTextIfCurrent(
                         generation,
                         sequence,
-                        displayText);
+                        displayText,
+                        cancellationToken);
                     MarkTextTranslated(generation, sequence, text);
                     return;
                 }
@@ -1246,7 +1268,8 @@ public sealed class SubtitleTranslationController : IDisposable
     private void ShowSubtitleTextIfCurrent(
         long generation,
         long sequence,
-        string text)
+        string text,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(text))
             return;
@@ -1270,10 +1293,21 @@ public sealed class SubtitleTranslationController : IDisposable
         var placement = _host.ShowSubtitleText(
             current,
             text,
-            () => IsCurrentTranslation(
-                generation,
-                sequence,
-                CancellationToken.None));
+            commit =>
+            {
+                lock (_sync)
+                {
+                    if (!IsCurrentTranslationLocked(
+                            generation,
+                            sequence) ||
+                        cancellationToken.IsCancellationRequested)
+                    {
+                        return false;
+                    }
+                    commit();
+                    return true;
+                }
+            });
         if (placement != TranslationSubtitlePlacementStatus.Ready)
         {
             PauseForPlacementFailure(generation, placement);
@@ -1412,11 +1446,8 @@ public sealed class SubtitleTranslationController : IDisposable
 
     private void ShowStatusIfCurrent(
         long generation,
-        string status)
-    {
-        if (GetCurrentOperation(generation) is { } operation)
-            _host.ShowStatus(operation, status);
-    }
+        string status) =>
+        ShowSubtitleNoticeIfCurrent(generation, status);
 
     private void ShowSubtitleNoticeIfCurrent(
         long generation,
