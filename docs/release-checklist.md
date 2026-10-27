@@ -1,6 +1,6 @@
 # 月语悬浮球发布检查表
 
-版本：1.0.0
+版本：1.1.0
 声明：本版发布物已完成当前构建机验收；不能把自动化测试 PASS 当成全兼容验收。
 
 ## 开发门禁
@@ -8,12 +8,16 @@
 - [x] SDK 锁定为 .NET `10.0.400`。
 - [x] NuGet 使用中央版本与 lock 文件。
 - [x] Debug 构建 0 errors。
-- [x] Release 自动化测试 190/190 通过
-  （Core 74、Infrastructure 17、Windows 13、UI 86）。
+- [x] Release 自动化测试 625/625 通过
+  （Core 138、Infrastructure 90、Windows 44、UI 353）。
 - [x] 单实例交接冒烟通过。
 - [x] `startup.complete` 可在存在热键冲突的环境中到达。
 - [x] 设置并发字段合并、未来 schema 只读、笔记失败回退与删除保护、
   旧前台状态隔离、截图覆盖层取消、截图输出异常、前台身份复用、球图片图层有回归测试。
+- [x] 翻译选中、框选 OCR、实时字幕、翻译服务、DPAPI 密钥、字幕放置和
+  捕获排除有自动化回归测试。
+- [x] 悬浮球图片手动裁切、裁切边界、时间无底板显示和替换图片即时刷新有
+  自动化回归测试。
 - [x] 扫描无 `NotImplementedException` 或生产占位按钮。
 - [x] Release 构建/测试在最终代码上通过。
 - [x] self-contained `win-x64` 发布包生成。
@@ -36,7 +40,7 @@
 ## 安装门禁
 
 - [x] Inno Setup 6.7.3 生成
-  `YueYuOrb-1.0.0-win-x64-setup.exe`，简体中文语言文件随仓库提供。
+  `YueYuOrb-1.1.0-win-x64-setup.exe`，简体中文语言文件随仓库提供。
 - [x] 当前 Windows 用户静默安装、开始菜单快捷方式、启动、单实例和卸载。
 - [ ] 标准用户干净虚拟机安装、升级与卸载。
 - [x] 默认卸载保留 `%LOCALAPPDATA%\FloatDesk`；`settings.json` 哈希前后一致。
@@ -50,7 +54,7 @@
 ## 发布命令
 
 ```powershell
-.\scripts\publish.ps1 -Version 1.0.0 -Installer
+.\scripts\publish.ps1 -Version 1.1.0 -Installer
 ```
 
 脚本执行 locked restore、Release build、Release tests、self-contained publish、ZIP 和 SHA256。只有所有命令退出码为 0 才生成最终哈希文件。
