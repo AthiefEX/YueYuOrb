@@ -315,13 +315,26 @@ public partial class TranslationOverlayWindow : Window
         string translatedText,
         Func<Action, bool>? commitIfCurrent = null)
     {
-        var status = TranslationSubtitlePlacementStatus.NoSafePlacement;
+        return ShowSubtitleTextWithResult(
+            operation,
+            translatedText,
+            commitIfCurrent).PlacementStatus;
+    }
+
+    public TranslationSubtitleDeliveryResult ShowSubtitleTextWithResult(
+        TranslationOverlayOperationToken operation,
+        string translatedText,
+        Func<Action, bool>? commitIfCurrent = null)
+    {
+        var result = new TranslationSubtitleDeliveryResult(
+            Displayed: false,
+            TranslationSubtitlePlacementStatus.NoSafePlacement);
         RunOnUiThread(() =>
-            status = ShowSubtitleTextCore(
+            result = ShowSubtitleTextCore(
                 operation,
                 translatedText,
                 commitIfCurrent));
-        return status;
+        return result;
     }
 
     public TranslationSubtitlePlacementStatus ShowSubtitleNotice(
@@ -334,7 +347,7 @@ public partial class TranslationOverlayWindow : Window
         return status;
     }
 
-    private TranslationSubtitlePlacementStatus ShowSubtitleTextCore(
+    private TranslationSubtitleDeliveryResult ShowSubtitleTextCore(
         TranslationOverlayOperationToken operation,
         string translatedText,
         Func<Action, bool>? commitIfCurrent = null)
@@ -342,7 +355,9 @@ public partial class TranslationOverlayWindow : Window
         if (!IsCurrentOperation(operation) ||
             string.IsNullOrWhiteSpace(translatedText))
         {
-            return TranslationSubtitlePlacementStatus.Ready;
+            return new TranslationSubtitleDeliveryResult(
+                Displayed: false,
+                TranslationSubtitlePlacementStatus.Ready);
         }
 
         var previousText = SubtitleTranslationTextBlock.Text;
@@ -363,7 +378,11 @@ public partial class TranslationOverlayWindow : Window
         if (commitIfCurrent is not null)
         {
             if (!commitIfCurrent(CommitText))
-                return TranslationSubtitlePlacementStatus.Ready;
+            {
+                return new TranslationSubtitleDeliveryResult(
+                    Displayed: false,
+                    TranslationSubtitlePlacementStatus.Ready);
+            }
         }
         else
         {
@@ -372,14 +391,20 @@ public partial class TranslationOverlayWindow : Window
 
         var status = PositionSubtitleSurfaceCore();
         if (status == TranslationSubtitlePlacementStatus.Ready)
-            return status;
+        {
+            return new TranslationSubtitleDeliveryResult(
+                Displayed: true,
+                status);
+        }
 
         SubtitleTranslationTextBlock.Text = previousText;
         SubtitleNoticeTextBlock.Text = previousNotice;
         SubtitleNoticeTextBlock.Visibility = previousNoticeVisibility;
         if (!wasVisible)
             HideWithoutClearingContent();
-        return status;
+        return new TranslationSubtitleDeliveryResult(
+            Displayed: false,
+            status);
     }
 
     private TranslationSubtitlePlacementStatus ShowSubtitleNoticeCore(

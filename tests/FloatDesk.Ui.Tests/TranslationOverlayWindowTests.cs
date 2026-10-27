@@ -286,6 +286,46 @@ public sealed class TranslationOverlayWindowTests
     }
 
     [Fact]
+    public void RejectedSubtitleCommitIsNotReportedAsDisplayed()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                var operation = window.BeginOperation(subtitle: true);
+                window.SetSubtitleControls(
+                    operation,
+                    active: true,
+                    paused: false,
+                    canReselect: true);
+                window.PrepareSubtitleCaptureRegion(PrimaryCaptureRegion());
+
+                var rejected = window.ShowSubtitleTextWithResult(
+                    operation,
+                    "不应显示",
+                    _ => false);
+                var accepted = window.ShowSubtitleTextWithResult(
+                    operation,
+                    "应当显示",
+                    commit =>
+                    {
+                        commit();
+                        return true;
+                    });
+
+                Assert.False(rejected.Displayed);
+                Assert.True(accepted.Displayed);
+                Assert.Equal("应当显示", window.TranslatedText);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
     public void SubtitleNoticeDoesNotClearTranslatedText()
     {
         RunOnSta(() =>

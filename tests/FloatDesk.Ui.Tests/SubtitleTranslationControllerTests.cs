@@ -170,9 +170,9 @@ public sealed class SubtitleTranslationControllerTests
     [Fact(Timeout = 10_000)]
     public async Task PausedDeliveryDoesNotCommitAfterSubtitleResume()
     {
-        var source = new SequenceSubtitleSource(
-            [0x10, 0x10],
-            finishedAfterCaptures: null);
+        var source = new GatedSequenceSubtitleSource(
+            [0x10, 0x10, 0xE0, 0xE0],
+            gateBeforeCapture: 3);
         var ocr = new SequenceOcr(
             new ScreenOcrResult("Hello A", null, null));
         var entered = new TaskCompletionSource(
@@ -181,6 +181,9 @@ public sealed class SubtitleTranslationControllerTests
             TaskCreationOptions.RunContinuationsAsynchronously);
         var deliveryFinished = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondDelivery = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var deliveryCount = 0;
         var deliveredTexts = new List<string>();
         var host = new RecordingSubtitleHost
         {
@@ -193,11 +196,19 @@ public sealed class SubtitleTranslationControllerTests
                         "Test provider")),
             SubtitleTextHandler = (text, commitIfCurrent) =>
             {
-                entered.TrySetResult();
-                release.Task.GetAwaiter().GetResult();
-                _ = commitIfCurrent?.Invoke(
-                    () => deliveredTexts.Add(text));
-                deliveryFinished.TrySetResult();
+                var delivery = Interlocked.Increment(ref deliveryCount);
+                if (delivery == 1)
+                {
+                    entered.TrySetResult();
+                    release.Task.GetAwaiter().GetResult();
+                }
+                var committed =
+                    commitIfCurrent is not null &&
+                    commitIfCurrent(() => deliveredTexts.Add(text));
+                if (delivery == 1)
+                    deliveryFinished.TrySetResult();
+                if (committed)
+                    secondDelivery.TrySetResult();
                 return TranslationSubtitlePlacementStatus.Ready;
             }
         };
@@ -209,12 +220,18 @@ public sealed class SubtitleTranslationControllerTests
 
         await controller.StartAsync(Settings(), CancellationToken.None);
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.False(controller.IsPaused);
         controller.Pause("字幕翻译已暂停。");
+        Assert.True(controller.IsPaused);
         controller.Resume();
+        Assert.False(controller.IsPaused);
         release.TrySetResult();
         await deliveryFinished.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.Empty(deliveredTexts);
+        source.ReleaseGate();
+        await secondDelivery.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(["译文 A"], deliveredTexts);
         await controller.StopAsync();
     }
 
@@ -1605,7 +1622,7 @@ public sealed class SubtitleTranslationControllerTests
             CancellationToken cancellationToken)
         {
             var call = Interlocked.Increment(ref _captureCount);
-            if (call == gateBeforeCapture)
+            if (call >= gateBeforeCapture)
                 await _gate.Task.WaitAsync(cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             var value = values[Math.Min(call - 1, values.Count - 1)];

@@ -17,6 +17,10 @@ public enum TranslationSubtitlePlacementStatus
     NoSafePlacement
 }
 
+public readonly record struct TranslationSubtitleDeliveryResult(
+    bool Displayed,
+    TranslationSubtitlePlacementStatus PlacementStatus);
+
 public interface ITranslationRouteHost
 {
     void ApplySettings(AppSettings settings);
@@ -72,6 +76,28 @@ public interface ITranslationRouteHost
             ShowStatus(operation, translatedText);
         }
         return TranslationSubtitlePlacementStatus.Ready;
+    }
+
+    TranslationSubtitleDeliveryResult ShowSubtitleTextWithResult(
+        TranslationRouteHandle operation,
+        string translatedText,
+        Func<Action, bool>? commitIfCurrent = null)
+    {
+        var committed = false;
+        var placement = ShowSubtitleText(
+            operation,
+            translatedText,
+            commit =>
+            {
+                committed =
+                    commitIfCurrent is null ||
+                    commitIfCurrent(commit);
+                return committed;
+            });
+        return new TranslationSubtitleDeliveryResult(
+            committed &&
+            placement == TranslationSubtitlePlacementStatus.Ready,
+            placement);
     }
 
     TranslationSubtitlePlacementStatus ShowSubtitleNotice(
@@ -202,6 +228,15 @@ public sealed class TranslationRouteHost : ITranslationRouteHost
         string translatedText,
         Func<Action, bool>? commitIfCurrent = null) =>
         _overlay.ShowSubtitleText(
+            operation.Operation,
+            translatedText,
+            commitIfCurrent);
+
+    public TranslationSubtitleDeliveryResult ShowSubtitleTextWithResult(
+        TranslationRouteHandle operation,
+        string translatedText,
+        Func<Action, bool>? commitIfCurrent = null) =>
+        _overlay.ShowSubtitleTextWithResult(
             operation.Operation,
             translatedText,
             commitIfCurrent);

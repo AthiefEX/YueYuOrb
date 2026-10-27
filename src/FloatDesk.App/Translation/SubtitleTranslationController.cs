@@ -1080,12 +1080,17 @@ public sealed class SubtitleTranslationController : IDisposable
                         return;
                     }
 
-                    ShowSubtitleTextIfCurrent(
-                        generation,
-                        sequence,
-                        displayText,
-                        cancellationToken);
-                    MarkTextTranslated(generation, sequence, text);
+                    if (ShowSubtitleTextIfCurrent(
+                            generation,
+                            sequence,
+                            displayText,
+                            cancellationToken))
+                    {
+                        MarkTextTranslated(
+                            generation,
+                            sequence,
+                            text);
+                    }
                     return;
                 }
 
@@ -1265,32 +1270,32 @@ public sealed class SubtitleTranslationController : IDisposable
         ObserveAbandonedTask(translationTask);
     }
 
-    private void ShowSubtitleTextIfCurrent(
+    private bool ShowSubtitleTextIfCurrent(
         long generation,
         long sequence,
         string text,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(text))
-            return;
+            return false;
 
         TranslationRouteHandle? operation;
         lock (_sync)
         {
             if (!IsCurrentTranslationLocked(generation, sequence))
-                return;
+                return false;
             if (_lastRenderedText is { } previous &&
                 TranslationTextProcessor.IsNearDuplicate(previous, text))
             {
-                return;
+                return false;
             }
             operation = _operation;
         }
 
         if (operation is not { } current)
-            return;
+            return false;
 
-        var placement = _host.ShowSubtitleText(
+        var delivery = _host.ShowSubtitleTextWithResult(
             current,
             text,
             commit =>
@@ -1308,10 +1313,16 @@ public sealed class SubtitleTranslationController : IDisposable
                     return true;
                 }
             });
-        if (placement != TranslationSubtitlePlacementStatus.Ready)
+        if (!delivery.Displayed)
         {
-            PauseForPlacementFailure(generation, placement);
-            return;
+            if (delivery.PlacementStatus !=
+                TranslationSubtitlePlacementStatus.Ready)
+            {
+                PauseForPlacementFailure(
+                    generation,
+                    delivery.PlacementStatus);
+            }
+            return false;
         }
 
         var displayed = false;
@@ -1334,6 +1345,7 @@ public sealed class SubtitleTranslationController : IDisposable
                             text.Length)
                 });
         }
+        return displayed;
     }
 
     private void EmitDiagnostic(
