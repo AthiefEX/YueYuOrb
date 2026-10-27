@@ -1000,7 +1000,7 @@
                                 <Border Style="{StaticResource SettingsCardStyle}" Margin="0,14,0,0">
                                     <StackPanel>
                                         <TextBlock Text="字幕翻译" Style="{StaticResource SettingsSectionTitleStyle}" />
-                                        <TextBlock Text="固定区域只在本地采样与识别；未变化的画面不会重复发送翻译请求。"
+                                        <TextBlock Text="固定区域只在本地采样与识别；译文以透明、区域锚定的纯文字贴合字幕显示，未变化的画面不会重复发送请求。"
                                                    Style="{StaticResource SettingsDescriptionStyle}"
                                                    Margin="0,3,0,12" />
                                         <Border Style="{StaticResource SettingsSubtleCardStyle}" Padding="16,8">
@@ -1013,8 +1013,9 @@
                                                     <RowDefinition Height="58" />
                                                     <RowDefinition Height="58" />
                                                     <RowDefinition Height="58" />
+                                                    <RowDefinition Height="58" />
                                                 </Grid.RowDefinitions>
-                                                <TextBlock Text="采样间隔（300–1500ms）" Style="{StaticResource SettingsLabelStyle}" />
+                                                <TextBlock Text="画面检测间隔（100–1500 ms，150 ms 适合实时字幕）" Style="{StaticResource SettingsLabelStyle}" />
                                                 <TextBox x:Name="SubtitleRefreshIntervalTextBox"
                                                          Grid.Column="1"
                                                          Text="{Binding SubtitleRefreshIntervalMs}"
@@ -1022,18 +1023,31 @@
                                                          AutomationProperties.Name="字幕翻译采样间隔"
                                                          VerticalAlignment="Center" />
                                                 <Border Grid.Row="1" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
-                                                <TextBlock Grid.Row="1" Text="浮层透明度（60–100%）" Style="{StaticResource SettingsLabelStyle}" />
-                                                <TextBox x:Name="SubtitleOverlayOpacityTextBox"
+                                                <TextBlock Grid.Row="1" Text="显示位置" Style="{StaticResource SettingsLabelStyle}" />
+                                                <ComboBox x:Name="SubtitleAttachmentComboBox"
                                                          Grid.Row="1"
+                                                         Grid.Column="1"
+                                                         SelectedIndex="{Binding SubtitleAttachmentIndex}"
+                                                         Style="{StaticResource SettingsComboBoxStyle}"
+                                                         AutomationProperties.Name="字幕翻译显示位置"
+                                                         VerticalAlignment="Center">
+                                                    <ComboBoxItem Content="自动" />
+                                                    <ComboBoxItem Content="字幕上方" />
+                                                    <ComboBoxItem Content="字幕下方" />
+                                                </ComboBox>
+                                                <Border Grid.Row="2" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <TextBlock Grid.Row="2" Text="文字不透明度（60–100%）" Style="{StaticResource SettingsLabelStyle}" />
+                                                <TextBox x:Name="SubtitleOverlayOpacityTextBox"
+                                                         Grid.Row="2"
                                                          Grid.Column="1"
                                                          Text="{Binding SubtitleOverlayOpacityPercent}"
                                                          Style="{StaticResource SettingsTextBoxStyle}"
-                                                         AutomationProperties.Name="字幕翻译浮层透明度"
+                                                         AutomationProperties.Name="字幕翻译文字不透明度"
                                                          VerticalAlignment="Center" />
-                                                <Border Grid.Row="2" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
-                                                <TextBlock Grid.Row="2" Text="字号（14–36 DIP）" Style="{StaticResource SettingsLabelStyle}" />
+                                                <Border Grid.Row="3" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <TextBlock Grid.Row="3" Text="字号（14–36 DIP）" Style="{StaticResource SettingsLabelStyle}" />
                                                 <TextBox x:Name="SubtitleFontSizeTextBox"
-                                                         Grid.Row="2"
+                                                         Grid.Row="3"
                                                          Grid.Column="1"
                                                          Text="{Binding SubtitleFontSizeDip}"
                                                          Style="{StaticResource SettingsTextBoxStyle}"

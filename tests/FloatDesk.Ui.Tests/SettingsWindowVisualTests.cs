@@ -218,6 +218,52 @@ public sealed class SettingsWindowVisualTests
     }
 
     [Fact]
+    public void SubtitleSettingsExposeAttachmentIntervalOpacityAndFontControls()
+    {
+        var document = XDocument.Load(FindRepoFile(
+            "src/FloatDesk.App/Views/SettingsWindow.xaml"));
+        var xName = XName.Get(
+            "Name",
+            "http://schemas.microsoft.com/winfx/2006/xaml");
+
+        foreach (var name in new[]
+                 {
+                     "SubtitleAttachmentComboBox",
+                     "SubtitleRefreshIntervalTextBox",
+                     "SubtitleOverlayOpacityTextBox",
+                     "SubtitleFontSizeTextBox"
+                 })
+        {
+            var element = document
+                .Descendants()
+                .Single(candidate =>
+                    (string?)candidate.Attribute(xName) == name);
+            Assert.False(string.IsNullOrWhiteSpace(
+                (string?)element.Attribute("AutomationProperties.Name")));
+        }
+
+        var attachment = document
+            .Descendants()
+            .Single(element =>
+                (string?)element.Attribute(xName) ==
+                "SubtitleAttachmentComboBox");
+        var attachmentOptions = attachment
+            .Elements()
+            .Where(element => element.Name.LocalName == "ComboBoxItem")
+            .Select(element => (string?)element.Attribute("Content"))
+            .ToArray();
+        Assert.Collection(
+            attachmentOptions,
+            option => Assert.Equal("自动", option),
+            option => Assert.Equal("字幕上方", option),
+            option => Assert.Equal("字幕下方", option));
+        Assert.Contains(
+            "100–1500 ms",
+            document.ToString(SaveOptions.DisableFormatting),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AboutPageIdentifiesAuthorRepositoryLicenseAndGplText()
     {
         var document = XDocument.Load(FindRepoFile(

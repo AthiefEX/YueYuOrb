@@ -30,6 +30,9 @@ public partial class SettingsViewModel : ObservableObject
     public static IReadOnlyList<string> TranslationTargetLanguages { get; } =
         TranslationSourceLanguages.Skip(1).ToArray();
 
+    public static IReadOnlyList<SubtitleAttachmentMode> SubtitleAttachmentModes { get; } =
+        Enum.GetValues<SubtitleAttachmentMode>();
+
     private AppSettings _baseline = AppSettings.CreateDefault();
 
     [ObservableProperty] private bool _startWithWindows;
@@ -81,6 +84,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _translationModel = "";
     [ObservableProperty] private string _translationAzureRegion = "";
     [ObservableProperty] private int _translationOcrLanguageIndex = -1;
+    [ObservableProperty] private int _subtitleAttachmentIndex;
     [ObservableProperty] private int _subtitleRefreshIntervalMs;
     [ObservableProperty] private double _subtitleOverlayOpacityPercent;
     [ObservableProperty] private double _subtitleFontSizeDip;
@@ -165,6 +169,9 @@ public partial class SettingsViewModel : ObservableObject
             TranslationOcrLanguageIndex = IndexOfOcrLanguage(
                 ocrOptions,
                 translation.OcrLanguage),
+            SubtitleAttachmentIndex = IndexOf(
+                SubtitleAttachmentModes,
+                translation.SubtitleAttachment),
             SubtitleRefreshIntervalMs = translation.SubtitleRefreshIntervalMs,
             SubtitleOverlayOpacityPercent = translation.SubtitleOverlayOpacity * 100,
             SubtitleFontSizeDip = translation.SubtitleFontSizeDip,
@@ -411,6 +418,13 @@ public partial class SettingsViewModel : ObservableObject
                 SubtitleRefreshIntervalMs = SubtitleRefreshIntervalMs
             };
         }
+        var subtitleAttachment =
+            SubtitleAttachmentIndex >= 0 &&
+            SubtitleAttachmentIndex < SubtitleAttachmentModes.Count
+                ? SubtitleAttachmentModes[SubtitleAttachmentIndex]
+                : baseline.SubtitleAttachment;
+        if (subtitleAttachment != baseline.SubtitleAttachment)
+            translation = translation with { SubtitleAttachment = subtitleAttachment };
         if (Math.Abs(
                 SubtitleOverlayOpacityPercent / 100.0 -
                 baseline.SubtitleOverlayOpacity) > 0.0001)

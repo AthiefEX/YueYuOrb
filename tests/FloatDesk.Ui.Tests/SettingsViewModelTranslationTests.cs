@@ -31,6 +31,46 @@ public sealed class SettingsViewModelTranslationTests
     }
 
     [Fact]
+    public void SubtitleAttachmentMapsIndexesAndMergesAgainstTheBaseline()
+    {
+        var original = AppSettings.CreateDefault() with
+        {
+            Translation = AppSettings.CreateDefault().Translation with
+            {
+                SubtitleAttachment = SubtitleAttachmentMode.Below
+            }
+        };
+        var viewModel = SettingsViewModel.From(original);
+
+        Assert.Equal(2, viewModel.SubtitleAttachmentIndex);
+        viewModel.SubtitleAttachmentIndex = 1;
+        var latest = AppSettings.CreateDefault();
+        Assert.Equal(
+            SubtitleAttachmentMode.Above,
+            viewModel.BuildCandidate(latest).Translation.SubtitleAttachment);
+    }
+
+    [Fact]
+    public void InvalidSubtitleAttachmentIndexPreservesTheLatestSavedValue()
+    {
+        var original = AppSettings.CreateDefault();
+        var viewModel = SettingsViewModel.From(original);
+        var latest = original with
+        {
+            Translation = original.Translation with
+            {
+                SubtitleAttachment = SubtitleAttachmentMode.Below
+            }
+        };
+
+        viewModel.SubtitleAttachmentIndex = 99;
+
+        Assert.Equal(
+            SubtitleAttachmentMode.Below,
+            viewModel.BuildCandidate(latest).Translation.SubtitleAttachment);
+    }
+
+    [Fact]
     public void FromMapsCanonicalTagsToIndexesAndIndexesBackToCanonicalTags()
     {
         var original = AppSettings.CreateDefault() with
@@ -260,6 +300,7 @@ public sealed class SettingsViewModelTranslationTests
             "westeurope")
         {
             SubtitleRefreshIntervalMs = 900,
+            SubtitleAttachment = SubtitleAttachmentMode.Below,
             SubtitleOverlayOpacity = 0.75,
             SubtitleFontSizeDip = 30,
             OcrLanguage = "fr-FR"
@@ -295,6 +336,7 @@ public sealed class SettingsViewModelTranslationTests
         viewModel.TranslationAzureRegion = "eastasia";
         viewModel.TranslationOcrLanguageIndex = 1;
         viewModel.SubtitleRefreshIntervalMs = 600;
+        viewModel.SubtitleAttachmentIndex = 1;
         viewModel.SubtitleOverlayOpacityPercent = 88;
         viewModel.SubtitleFontSizeDip = 26;
         var concurrentTranslation = new TranslationSettings(
@@ -306,6 +348,7 @@ public sealed class SettingsViewModelTranslationTests
             "westeurope")
         {
             SubtitleRefreshIntervalMs = 1200,
+            SubtitleAttachment = SubtitleAttachmentMode.Below,
             SubtitleOverlayOpacity = 0.65,
             SubtitleFontSizeDip = 16,
             OcrLanguage = "en-US"
@@ -322,6 +365,7 @@ public sealed class SettingsViewModelTranslationTests
         Assert.Equal("eastasia", candidate.Translation.AzureRegion);
         Assert.Equal("fr-FR", candidate.Translation.OcrLanguage);
         Assert.Equal(600, candidate.Translation.SubtitleRefreshIntervalMs);
+        Assert.Equal(SubtitleAttachmentMode.Above, candidate.Translation.SubtitleAttachment);
         Assert.Equal(0.88, candidate.Translation.SubtitleOverlayOpacity, 10);
         Assert.Equal(26, candidate.Translation.SubtitleFontSizeDip);
     }
