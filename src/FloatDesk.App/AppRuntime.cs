@@ -1106,7 +1106,8 @@ internal sealed class AppRuntime : IDisposable
     {
         if (_captureCoordinator is null)
             return;
-        _translationRuntime.PauseForCapture();
+        var capturePaused =
+            await _translationRuntime.PauseForCaptureAsync();
         try
         {
             _panel?.PrepareForScreenCapture();
@@ -1126,7 +1127,8 @@ internal sealed class AppRuntime : IDisposable
         }
         finally
         {
-            _translationRuntime.ResumeAfterCapture();
+            if (capturePaused)
+                _translationRuntime.ResumeAfterCapture();
         }
     }
 

@@ -12,6 +12,7 @@ public sealed class TranslationCenter : IDisposable
     private readonly Dictionary<(string Text, string Source, string Target, TranslationPurpose Purpose),
         (TranslationResponse Response, DateTimeOffset Expires)> _cache = [];
     private readonly Dictionary<(string Text, string Source, string Target, TranslationPurpose Purpose), PendingOperation> _pending = [];
+    private readonly HashSet<PendingOperation> _activeOperationSet = [];
     private readonly Timer _cleanupTimer;
     private int _activeOperations;
     private bool _disposed;
@@ -21,6 +22,8 @@ public sealed class TranslationCenter : IDisposable
     private sealed class PendingOperation
     {
         public TaskCompletionSource<TranslationResponse> Completion { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Drained { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         public CancellationTokenSource Cancellation { get; } = new();
         public int Subscribers { get; set; }
@@ -72,6 +75,7 @@ public sealed class TranslationCenter : IDisposable
                     CacheGeneration = _cacheGeneration
                 };
                 _pending[key] = operation;
+                _activeOperationSet.Add(operation);
                 _activeOperations++;
                 start = true;
             }
@@ -157,8 +161,30 @@ public sealed class TranslationCenter : IDisposable
             lock (_sync)
             {
                 _activeOperations--;
+                _activeOperationSet.Remove(operation);
+                operation.Drained.TrySetResult();
                 if (_disposed && _activeOperations == 0) DisposeGates();
             }
+        }
+    }
+
+    public async Task WaitForIdleAsync(
+        CancellationToken cancellationToken = default)
+    {
+        while (true)
+        {
+            Task[] pending;
+            lock (_sync)
+            {
+                pending = _activeOperationSet
+                    .Select(operation => operation.Drained.Task)
+                    .ToArray();
+            }
+            if (pending.Length == 0)
+                return;
+            await Task.WhenAll(pending)
+                .WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 

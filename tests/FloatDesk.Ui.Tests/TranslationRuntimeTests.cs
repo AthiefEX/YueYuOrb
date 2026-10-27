@@ -906,6 +906,63 @@ public sealed class TranslationRuntimeTests
     }
 
     [Fact(Timeout = 10_000)]
+    public async Task ProviderReconfigureStopWaitsForInFlightOcrCleanup()
+    {
+        var region = new TranslationCaptureRegion(
+            "monitor-1",
+            0.1,
+            0.7,
+            0.8,
+            0.2);
+        var ocr = new ControlledOcr("Recognized text");
+        var capture = new SubtitleCaptureStub(region);
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("字幕翻译")),
+            ocr: ocr,
+            regionCapture: capture);
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(SubtitleSettings(region));
+
+        try
+        {
+            await runtime.ToggleSubtitlesAsync(CancellationToken.None);
+            await ocr.FirstCallEntered.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+
+            runtime.ApplySettings(SubtitleSettings(region) with
+            {
+                Translation = SubtitleSettings(region).Translation with
+                {
+                    Provider = TranslationProviderKind.LibreTranslate,
+                    Endpoint = "https://example.test/translate"
+                }
+            });
+            await ocr.FirstCallCancelled.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+
+            var stop = runtime.StopSubtitlesAsync();
+            await Task.Delay(100);
+            Assert.False(stop.IsCompleted);
+            Assert.False(ocr.FirstCallCompleted.Task.IsCompleted);
+
+            ocr.ReleaseFirstCallCancellation();
+            await ocr.FirstCallCompleted.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+            await stop.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.False(host.IsOperationActive);
+        }
+        finally
+        {
+            ocr.ReleaseFirstCallCancellation();
+            await runtime.StopSubtitlesAsync();
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
     public async Task SubtitlePipelinePausesForCaptureAndResumesOnlyAfterLastLease()
     {
         var region = new TranslationCaptureRegion(
@@ -934,13 +991,25 @@ public sealed class TranslationRuntimeTests
                 TimeSpan.FromSeconds(2));
             Assert.Equal(0, ocr.CallCount);
 
-            runtime.PauseForCapture();
-            runtime.PauseForCapture();
+            var firstPause = runtime.PauseForCaptureAsync();
+            var lastPause = runtime.PauseForCaptureAsync();
             await capture.FirstCallCancelled.Task.WaitAsync(
                 TimeSpan.FromSeconds(2));
+            await Task.Delay(100);
+            Assert.False(firstPause.IsCompleted);
+            Assert.False(lastPause.IsCompleted);
             Assert.True(runtime.IsSubtitlePaused);
             Assert.Equal(0, ocr.CallCount);
             var pausedCaptureCount = capture.RegionCaptureCount;
+
+            Assert.False(capture.FirstCallCompleted.Task.IsCompleted);
+
+            capture.ReleaseFirstCallCancellation();
+            await capture.FirstCallCompleted.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+            await Task.WhenAll(firstPause, lastPause)
+                .WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.Equal(0, ocr.CallCount);
 
             runtime.ResumeAfterCapture();
             await Task.Delay(200);
@@ -948,12 +1017,6 @@ public sealed class TranslationRuntimeTests
             Assert.Equal(
                 pausedCaptureCount,
                 capture.RegionCaptureCount);
-            Assert.False(capture.FirstCallCompleted.Task.IsCompleted);
-
-            capture.ReleaseFirstCallCancellation();
-            await capture.FirstCallCompleted.Task.WaitAsync(
-                TimeSpan.FromSeconds(2));
-            Assert.Equal(0, ocr.CallCount);
 
             runtime.ResumeAfterCapture();
             await WaitUntilAsync(
@@ -1001,23 +1064,29 @@ public sealed class TranslationRuntimeTests
                 TimeSpan.FromSeconds(2));
             Assert.Equal(0, host.TranslateCount);
 
-            runtime.PauseForCapture();
-            runtime.PauseForCapture();
+            var firstPause = runtime.PauseForCaptureAsync();
+            var lastPause = runtime.PauseForCaptureAsync();
             await ocr.FirstCallCancelled.Task.WaitAsync(
                 TimeSpan.FromSeconds(2));
+            await Task.Delay(100);
+            Assert.False(firstPause.IsCompleted);
+            Assert.False(lastPause.IsCompleted);
             Assert.True(runtime.IsSubtitlePaused);
             var pausedOcrCount = ocr.CallCount;
 
-            runtime.ResumeAfterCapture();
-            await Task.Delay(200);
-            Assert.True(runtime.IsSubtitlePaused);
-            Assert.Equal(pausedOcrCount, ocr.CallCount);
             Assert.False(ocr.FirstCallCompleted.Task.IsCompleted);
 
             ocr.ReleaseFirstCallCancellation();
             await ocr.FirstCallCompleted.Task.WaitAsync(
                 TimeSpan.FromSeconds(2));
+            await Task.WhenAll(firstPause, lastPause)
+                .WaitAsync(TimeSpan.FromSeconds(2));
             Assert.Equal(0, host.TranslateCount);
+
+            runtime.ResumeAfterCapture();
+            await Task.Delay(200);
+            Assert.True(runtime.IsSubtitlePaused);
+            Assert.Equal(pausedOcrCount, ocr.CallCount);
 
             runtime.ResumeAfterCapture();
             await WaitUntilAsync(
@@ -1063,20 +1132,26 @@ public sealed class TranslationRuntimeTests
             await provider.FirstCallEntered.Task.WaitAsync(
                 TimeSpan.FromSeconds(2));
 
-            runtime.PauseForCapture();
-            runtime.PauseForCapture();
+            var firstPause = runtime.PauseForCaptureAsync();
+            var lastPause = runtime.PauseForCaptureAsync();
             await provider.FirstCallCancelled.Task.WaitAsync(
                 TimeSpan.FromSeconds(2));
+            await Task.Delay(100);
+            Assert.False(firstPause.IsCompleted);
+            Assert.False(lastPause.IsCompleted);
             Assert.True(runtime.IsSubtitlePaused);
 
-            runtime.ResumeAfterCapture();
-            await Task.Delay(200);
-            Assert.True(runtime.IsSubtitlePaused);
             Assert.False(provider.FirstCallCompleted.Task.IsCompleted);
 
             provider.ReleaseFirstCallCancellation();
             await provider.FirstCallCompleted.Task.WaitAsync(
                 TimeSpan.FromSeconds(2));
+            await Task.WhenAll(firstPause, lastPause)
+                .WaitAsync(TimeSpan.FromSeconds(2));
+
+            runtime.ResumeAfterCapture();
+            await Task.Delay(200);
+            Assert.True(runtime.IsSubtitlePaused);
 
             runtime.ResumeAfterCapture();
             await WaitUntilAsync(

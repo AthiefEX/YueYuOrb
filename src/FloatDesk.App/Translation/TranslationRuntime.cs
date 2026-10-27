@@ -26,6 +26,7 @@ public sealed class TranslationRuntime : IDisposable
     private readonly Action<string, IReadOnlyDictionary<string, object?>?>?
         _diagnostics;
     private readonly SemaphoreSlim _subtitleGate = new(1, 1);
+    private Task _subtitleStopTask = Task.CompletedTask;
     private ConfigurationState? _configuration;
     private CancellationTokenSource? _interactiveCancellation;
     private AppSettings _latestSettings = AppSettings.CreateDefault();
@@ -317,12 +318,24 @@ public sealed class TranslationRuntime : IDisposable
 
     public Task StopSubtitlesAsync()
     {
+        Task stop;
         lock (_sync)
         {
             _deferSubtitleResumeUntilInteractiveDismissed = false;
             _subtitleResumePending = false;
+            if (!_subtitleStopTask.IsCompleted)
+                return _subtitleStopTask;
+            stop = StopSubtitlesCoreAsync();
+            _subtitleStopTask = stop;
         }
-        return _subtitleController?.StopAsync() ?? Task.CompletedTask;
+        return stop;
+    }
+
+    private async Task StopSubtitlesCoreAsync()
+    {
+        if (_subtitleController is { } subtitles)
+            await subtitles.StopAsync().ConfigureAwait(false);
+        await WaitForProviderDrainAsync().ConfigureAwait(false);
     }
 
     public void ToggleSubtitlePause()
@@ -428,6 +441,26 @@ public sealed class TranslationRuntime : IDisposable
     public void PauseForCapture()
     {
         _ = TryBeginCapturePause();
+    }
+
+    public async Task<bool> PauseForCaptureAsync(
+        string? subtitlePauseReason = null)
+    {
+        if (!TryBeginCapturePause(subtitlePauseReason))
+            return false;
+        if (_subtitleController is { } subtitles)
+            await subtitles.WaitForPauseDrainAsync().ConfigureAwait(false);
+        await WaitForProviderDrainAsync().ConfigureAwait(false);
+        return true;
+    }
+
+    private async Task WaitForProviderDrainAsync()
+    {
+        TranslationCenter? center;
+        lock (_sync)
+            center = _configuration?.Center;
+        if (center is not null)
+            await center.WaitForIdleAsync().ConfigureAwait(false);
     }
 
     private bool TryBeginCapturePause(

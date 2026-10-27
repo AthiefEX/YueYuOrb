@@ -21,10 +21,13 @@ public sealed class SubtitleTranslationController : IDisposable
     private readonly Action<
         string,
         IReadOnlyDictionary<string, object?>?>? _diagnostics;
+    private readonly List<Task> _pauseDrainTasks = [];
     private CancellationTokenSource? _sessionCancellation;
     private CancellationTokenSource? _captureIterationCancellation;
     private CancellationTokenSource? _ocrIterationCancellation;
     private CancellationTokenSource? _translationCancellation;
+    private TaskCompletionSource? _captureIterationCompletion;
+    private TaskCompletionSource? _ocrIterationCompletion;
     private TaskCompletionSource? _resumeSignal;
     private TaskCompletionSource? _firstCandidateObserved;
     private TaskCompletionSource? _translationStartedSignal;
@@ -244,6 +247,33 @@ public sealed class SubtitleTranslationController : IDisposable
     public void Pause(string reason) =>
         PauseCore(reason, placementFailure: false);
 
+    public Task PauseAsync(string reason)
+    {
+        PauseCore(reason, placementFailure: false);
+        return WaitForPauseDrainAsync();
+    }
+
+    internal async Task WaitForPauseDrainAsync()
+    {
+        while (true)
+        {
+            Task[] pending;
+            lock (_sync)
+            {
+                pending = _pauseDrainTasks.ToArray();
+                _pauseDrainTasks.Clear();
+                if (_captureIterationCompletion?.Task is { } capture)
+                    pending = [.. pending, capture];
+                if (_ocrIterationCompletion?.Task is { } ocr)
+                    pending = [.. pending, ocr];
+            }
+
+            if (pending.Length == 0)
+                return;
+            await Task.WhenAll(pending).ConfigureAwait(false);
+        }
+    }
+
     private void PauseCore(string reason, bool placementFailure)
     {
         TranslationRouteHandle? operation;
@@ -275,6 +305,8 @@ public sealed class SubtitleTranslationController : IDisposable
                 ReleaseTranslationStartedLocked();
                 abandonedTranslation = _translationTask;
                 _translationTask = null;
+                if (abandonedTranslation is not null)
+                    _pauseDrainTasks.Add(abandonedTranslation);
             }
             else
             {
@@ -538,6 +570,8 @@ public sealed class SubtitleTranslationController : IDisposable
                     ?? settings;
                 var iteration = CancellationTokenSource
                     .CreateLinkedTokenSource(cancellationToken);
+                var iterationCompletion = new TaskCompletionSource(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
                 lock (_sync)
                 {
                     if (!IsCurrentGenerationLocked(generation))
@@ -546,6 +580,7 @@ public sealed class SubtitleTranslationController : IDisposable
                         break;
                     }
                     _captureIterationCancellation = iteration;
+                    _captureIterationCompletion = iterationCompletion;
                 }
 
                 try
@@ -649,6 +684,7 @@ public sealed class SubtitleTranslationController : IDisposable
                 }
                 finally
                 {
+                    TaskCompletionSource? completion = null;
                     lock (_sync)
                     {
                         if (ReferenceEquals(
@@ -657,8 +693,16 @@ public sealed class SubtitleTranslationController : IDisposable
                         {
                             _captureIterationCancellation = null;
                         }
+                        if (ReferenceEquals(
+                            _captureIterationCompletion,
+                            iterationCompletion))
+                        {
+                            _captureIterationCompletion = null;
+                            completion = iterationCompletion;
+                        }
                     }
                     iteration.Dispose();
+                    completion?.TrySetResult();
                 }
 
                 if (cancellationToken.IsCancellationRequested)
@@ -747,6 +791,8 @@ public sealed class SubtitleTranslationController : IDisposable
 
                     var iteration = CancellationTokenSource
                         .CreateLinkedTokenSource(cancellationToken);
+                    var iterationCompletion = new TaskCompletionSource(
+                        TaskCreationOptions.RunContinuationsAsynchronously);
                     lock (_sync)
                     {
                         if (!IsCurrentWorkLocked(
@@ -758,6 +804,7 @@ public sealed class SubtitleTranslationController : IDisposable
                             continue;
                         }
                         _ocrIterationCancellation = iteration;
+                        _ocrIterationCompletion = iterationCompletion;
                     }
 
                     try
@@ -840,6 +887,7 @@ public sealed class SubtitleTranslationController : IDisposable
                     }
                     finally
                     {
+                        TaskCompletionSource? completion = null;
                         lock (_sync)
                         {
                             if (ReferenceEquals(
@@ -848,8 +896,16 @@ public sealed class SubtitleTranslationController : IDisposable
                             {
                                 _ocrIterationCancellation = null;
                             }
+                            if (ReferenceEquals(
+                                _ocrIterationCompletion,
+                                iterationCompletion))
+                            {
+                                _ocrIterationCompletion = null;
+                                completion = iterationCompletion;
+                            }
                         }
                         iteration.Dispose();
+                        completion?.TrySetResult();
                     }
                 }
                 finally
