@@ -113,6 +113,7 @@ public sealed class TranslationRuntime : IDisposable
                 host,
                 _clock,
                 subtitleWarning);
+            _subtitleController.StateChanged += OnSubtitleStateChanged;
         }
         if (host is TranslationRouteHost routeHost)
         {
@@ -127,6 +128,8 @@ public sealed class TranslationRuntime : IDisposable
 
     public bool IsSubtitlePaused =>
         _subtitleController?.IsPaused == true;
+
+    public event Action? SubtitleStateChanged;
 
     public void ApplySettings(AppSettings settings)
     {
@@ -598,6 +601,8 @@ public sealed class TranslationRuntime : IDisposable
 
         _lifetime.Cancel();
         interactive?.Cancel();
+        if (_subtitleController is not null)
+            _subtitleController.StateChanged -= OnSubtitleStateChanged;
         _subtitleController?.Dispose();
         if (configuration is not null)
         {
@@ -608,6 +613,9 @@ public sealed class TranslationRuntime : IDisposable
         _host.DismissActiveOperation();
         _lifetime.Dispose();
     }
+
+    private void OnSubtitleStateChanged() =>
+        SubtitleStateChanged?.Invoke();
 
     internal async Task<TranslationResponse> TranslateTextAsync(
         string text,

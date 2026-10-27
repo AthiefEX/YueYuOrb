@@ -45,6 +45,8 @@ public sealed class SubtitleTranslationController : IDisposable
     private bool _placementFailurePaused;
     private bool _disposed;
 
+    public event Action? StateChanged;
+
     public SubtitleTranslationController(
         IScreenOcrService ocr,
         ITranslationSubtitleCapture capture,
@@ -132,6 +134,7 @@ public sealed class SubtitleTranslationController : IDisposable
             active: true,
             paused: false,
             canReselect: true);
+        NotifyStateChanged();
 
         var placement = _host.PrepareSubtitleCaptureRegion(
             settings.SubtitleRegion);
@@ -219,6 +222,7 @@ public sealed class SubtitleTranslationController : IDisposable
             ReleaseTranslationStartedLocked();
         }
 
+        NotifyStateChanged();
         CancelQuietly(session);
         CancelQuietly(captureIteration);
         CancelQuietly(ocrIteration);
@@ -294,6 +298,7 @@ public sealed class SubtitleTranslationController : IDisposable
                     ? "字幕翻译已暂停。"
                     : reason);
         }
+        NotifyStateChanged();
     }
 
     public void Resume()
@@ -387,6 +392,8 @@ public sealed class SubtitleTranslationController : IDisposable
             }
             if (resumed && !renewed)
                 _host.ShowStatus(current, "字幕翻译已继续。");
+            if (resumed)
+                NotifyStateChanged();
         }
     }
 
@@ -1476,7 +1483,12 @@ public sealed class SubtitleTranslationController : IDisposable
                 paused: false,
                 canReselect: false);
         }
+        if (dismissOperation is not null)
+            NotifyStateChanged();
     }
+
+    private void NotifyStateChanged() =>
+        StateChanged?.Invoke();
 
     private static void ObserveAbandonedTask(Task? task)
     {

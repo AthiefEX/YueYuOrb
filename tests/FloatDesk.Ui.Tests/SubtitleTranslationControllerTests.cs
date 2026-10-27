@@ -358,12 +358,6 @@ public sealed class SubtitleTranslationControllerTests
     public async Task PendingCaptionKeepsLastRenderedTranslation()
     {
         var source = new AlternatingSubtitleSource();
-        var ocr = new CallbackOcr((call, _) =>
-            Task.FromResult(
-                new ScreenOcrResult(
-                    call == 1 ? "First subtitle" : "Second subtitle",
-                    null,
-                    null)));
         var secondEntered = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseSecond = new TaskCompletionSource<TranslationResponse>(
@@ -386,6 +380,18 @@ public sealed class SubtitleTranslationControllerTests
                     .WaitAsync(cancellationToken);
             }
         };
+        var ocr = new CallbackOcr(async (call, cancellationToken) =>
+        {
+            if (call > 1)
+            {
+                await host.FirstSubtitleTextShown.Task
+                    .WaitAsync(cancellationToken);
+            }
+            return new ScreenOcrResult(
+                call == 1 ? "First subtitle" : "Second subtitle",
+                null,
+                null);
+        });
         using var controller = new SubtitleTranslationController(
             ocr,
             source,
@@ -423,12 +429,6 @@ public sealed class SubtitleTranslationControllerTests
     public async Task FirstNonEmptyNewTranslationReplacesLastTranslation()
     {
         var source = new AlternatingSubtitleSource();
-        var ocr = new CallbackOcr((call, _) =>
-            Task.FromResult(
-                new ScreenOcrResult(
-                    call == 1 ? "First subtitle" : "Second subtitle",
-                    null,
-                    null)));
         var secondEntered = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseSecond = new TaskCompletionSource<TranslationResponse>(
@@ -451,6 +451,18 @@ public sealed class SubtitleTranslationControllerTests
                     .WaitAsync(cancellationToken);
             }
         };
+        var ocr = new CallbackOcr(async (call, cancellationToken) =>
+        {
+            if (call > 1)
+            {
+                await host.FirstSubtitleTextShown.Task
+                    .WaitAsync(cancellationToken);
+            }
+            return new ScreenOcrResult(
+                call == 1 ? "First subtitle" : "Second subtitle",
+                null,
+                null);
+        });
         using var controller = new SubtitleTranslationController(
             ocr,
             source,
@@ -497,23 +509,6 @@ public sealed class SubtitleTranslationControllerTests
     public async Task EmptyOcrCancelsPendingCaptionAndKeepsLastText()
     {
         var source = new AlternatingSubtitleSource();
-        var ocr = new CallbackOcr((call, _) =>
-            Task.FromResult(
-                call switch
-                {
-                    1 => new ScreenOcrResult(
-                        "First subtitle",
-                        null,
-                        null),
-                    2 => new ScreenOcrResult(
-                        "Second subtitle",
-                        null,
-                        null),
-                    _ => new ScreenOcrResult(
-                        null,
-                        "OcrNoText",
-                        null)
-                }));
         var secondEntered = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var secondCancelled = new TaskCompletionSource(
@@ -552,6 +547,31 @@ public sealed class SubtitleTranslationControllerTests
                     "Test provider");
             }
         };
+        var ocr = new CallbackOcr(async (call, cancellationToken) =>
+        {
+            if (call > 1)
+            {
+                await host.FirstSubtitleTextShown.Task
+                    .WaitAsync(cancellationToken);
+            }
+            if (call > 2)
+                await secondEntered.Task.WaitAsync(cancellationToken);
+            return call switch
+            {
+                1 => new ScreenOcrResult(
+                    "First subtitle",
+                    null,
+                    null),
+                2 => new ScreenOcrResult(
+                    "Second subtitle",
+                    null,
+                    null),
+                _ => new ScreenOcrResult(
+                    null,
+                    "OcrNoText",
+                    null)
+            };
+        });
         using var controller = new SubtitleTranslationController(
             ocr,
             source,
@@ -581,12 +601,6 @@ public sealed class SubtitleTranslationControllerTests
     public async Task NetworkFailureKeepsLastTextAndRetriesCurrentCaption()
     {
         var source = new AlternatingSubtitleSource();
-        var ocr = new CallbackOcr((call, _) =>
-            Task.FromResult(
-                new ScreenOcrResult(
-                    call == 1 ? "First subtitle" : "Second subtitle",
-                    null,
-                    null)));
         var attempts = 0;
         var host = new RecordingSubtitleHost
         {
@@ -619,6 +633,18 @@ public sealed class SubtitleTranslationControllerTests
                             "Test provider"));
             }
         };
+        var ocr = new CallbackOcr(async (call, cancellationToken) =>
+        {
+            if (call > 1)
+            {
+                await host.FirstSubtitleTextShown.Task
+                    .WaitAsync(cancellationToken);
+            }
+            return new ScreenOcrResult(
+                call == 1 ? "First subtitle" : "Second subtitle",
+                null,
+                null);
+        });
         using var controller = new SubtitleTranslationController(
             ocr,
             source,
@@ -646,12 +672,6 @@ public sealed class SubtitleTranslationControllerTests
     public async Task ActionableErrorRetainsTextShowsNoticeAndEmitsWarning()
     {
         var source = new AlternatingSubtitleSource();
-        var ocr = new CallbackOcr((call, _) =>
-            Task.FromResult(
-                new ScreenOcrResult(
-                    call == 1 ? "First subtitle" : "Second subtitle",
-                    null,
-                    null)));
         var warnings = new List<string>();
         var host = new RecordingSubtitleHost
         {
@@ -671,6 +691,18 @@ public sealed class SubtitleTranslationControllerTests
                             "Unauthorized",
                             "认证失败。"))
         };
+        var ocr = new CallbackOcr(async (call, cancellationToken) =>
+        {
+            if (call > 1)
+            {
+                await host.FirstSubtitleTextShown.Task
+                    .WaitAsync(cancellationToken);
+            }
+            return new ScreenOcrResult(
+                call == 1 ? "First subtitle" : "Second subtitle",
+                null,
+                null);
+        });
         using var controller = new SubtitleTranslationController(
             ocr,
             source,
@@ -740,12 +772,6 @@ public sealed class SubtitleTranslationControllerTests
     public async Task PauseRetainsTextAndCancelsPendingWork()
     {
         var source = new AlternatingSubtitleSource();
-        var ocr = new CallbackOcr((call, _) =>
-            Task.FromResult(
-                new ScreenOcrResult(
-                    call == 1 ? "First subtitle" : "Second subtitle",
-                    null,
-                    null)));
         var secondEntered = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var secondCancelled = new TaskCompletionSource(
@@ -784,6 +810,18 @@ public sealed class SubtitleTranslationControllerTests
                     "Test provider");
             }
         };
+        var ocr = new CallbackOcr(async (call, cancellationToken) =>
+        {
+            if (call > 1)
+            {
+                await host.FirstSubtitleTextShown.Task
+                    .WaitAsync(cancellationToken);
+            }
+            return new ScreenOcrResult(
+                call == 1 ? "First subtitle" : "Second subtitle",
+                null,
+                null);
+        });
         using var controller = new SubtitleTranslationController(
             ocr,
             source,
@@ -1295,6 +1333,8 @@ public sealed class SubtitleTranslationControllerTests
         public int TranslateCount => Volatile.Read(ref _translateCount);
         public TranslationPurpose? LastPurpose { get; private set; }
         public bool IsPaused { get; private set; }
+        public TaskCompletionSource FirstSubtitleTextShown { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int SubtitleStatusCount { get; private set; }
         public int InactiveControlCount { get; private set; }
         public bool OperationActive { get; set; } = true;
@@ -1349,6 +1389,7 @@ public sealed class SubtitleTranslationControllerTests
             string translatedText)
         {
             SubtitleTexts.Add(translatedText);
+            FirstSubtitleTextShown.TrySetResult();
             return PlacementStatus;
         }
 

@@ -144,6 +144,8 @@ internal sealed class AppRuntime : IDisposable
             OnStopSubtitlesRequested;
         _translationOverlay.InteractiveOperationDismissed +=
             _translationRuntime.OnInteractiveOperationDismissed;
+        _translationRuntime.SubtitleStateChanged +=
+            UpdateSubtitleTrayState;
 
         _coordinator = new WindowCoordinator(factories, _orb, _panel);
         _coordinator.RegisterCaptureHiddenWindow(_translationOverlay);
@@ -295,6 +297,8 @@ internal sealed class AppRuntime : IDisposable
                 OnStopSubtitlesRequested;
             _translationOverlay.InteractiveOperationDismissed -=
                 _translationRuntime.OnInteractiveOperationDismissed;
+            _translationRuntime.SubtitleStateChanged -=
+                UpdateSubtitleTrayState;
             _translationRuntime.Dispose();
             _translationRegionCapture.Dispose();
             _selectedTextReader.Dispose();

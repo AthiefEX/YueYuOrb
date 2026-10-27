@@ -437,7 +437,13 @@ public sealed class SettingsWindowVisualTests
                      "reselectSubtitleRegion: " +
                      "OnReselectSubtitleRegionRequested",
                      "stopSubtitles: OnStopSubtitlesRequested",
-                     "UpdateSubtitleTrayState()",
+                     "_translationRuntime.SubtitleStateChanged += " +
+                     "UpdateSubtitleTrayState;",
+                     "_translationRuntime.SubtitleStateChanged -= " +
+                     "UpdateSubtitleTrayState;",
+                     "private void OnToggleSubtitlePauseRequested() " +
+                     "{ _translationRuntime.ToggleSubtitlePause(); " +
+                     "UpdateSubtitleTrayState(); }",
                      "UpdateSubtitleSession("
                  })
         {

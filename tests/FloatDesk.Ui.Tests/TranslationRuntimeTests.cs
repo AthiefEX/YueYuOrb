@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using FloatDesk.App.Translation;
 using FloatDesk.App.Views;
@@ -818,6 +819,10 @@ public sealed class TranslationRuntimeTests
             regionCapture: capture);
         host.TranslateHandler = runtime.TranslateTextAsync;
         runtime.ApplySettings(SubtitleSettings(region));
+        var stateChanges = new ConcurrentQueue<(bool Running, bool Paused)>();
+        runtime.SubtitleStateChanged += () =>
+            stateChanges.Enqueue(
+                (runtime.IsSubtitleRunning, runtime.IsSubtitlePaused));
 
         try
         {
@@ -828,11 +833,13 @@ public sealed class TranslationRuntimeTests
             runtime.PauseForCapture();
             Assert.True(host.SubtitleControlsPaused);
             Assert.True(host.IsOperationActive);
+            Assert.Contains((true, true), stateChanges);
 
             runtime.ResumeAfterCapture();
 
             Assert.False(host.SubtitleControlsPaused);
             Assert.True(host.IsOperationActive);
+            Assert.Contains((true, false), stateChanges);
         }
         finally
         {
