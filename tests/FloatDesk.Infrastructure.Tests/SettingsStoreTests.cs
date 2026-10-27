@@ -32,6 +32,10 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void LauncherDockVisibilityDefaultsToTrue() =>
+        Assert.True(AppSettings.CreateDefault().ShowLauncherDock);
+
+    [Fact]
     public async Task CorruptPrimaryLoadsBackup()
     {
         Directory.CreateDirectory(_root);
@@ -144,6 +148,42 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.Equal(
             Enum.GetValues<WheelActionKind>(),
             migrated.WheelActions);
+    }
+
+    [Fact]
+    public void LegacySettingsWithoutLauncherDockVisibilityShowIt()
+    {
+        var options = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            Converters = { new JsonStringEnumConverter() }
+        };
+        var json = JsonSerializer.SerializeToNode(
+            AppSettings.CreateDefault(),
+            options)!.AsObject();
+        json.Remove("showLauncherDock");
+
+        var migrated = SettingsMigrator.Deserialize(
+            json.ToJsonString(),
+            options);
+
+        Assert.True(migrated.ShowLauncherDock);
+    }
+
+    [Fact]
+    public async Task LauncherDockVisibilityRoundTripsWithoutSchemaChange()
+    {
+        using var store = new JsonSettingsStore(_root);
+        var expected = AppSettings.CreateDefault() with
+        {
+            ShowLauncherDock = false
+        };
+
+        await store.SaveAsync(expected, CancellationToken.None);
+        var loaded = await store.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(1, loaded.SchemaVersion);
+        Assert.False(loaded.ShowLauncherDock);
     }
 
     [Fact]

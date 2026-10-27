@@ -55,6 +55,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _showTranslateSelectionInWheel = true;
     [ObservableProperty] private bool _showTranslateRegionInWheel = true;
     [ObservableProperty] private bool _showTranslateSubtitlesInWheel = true;
+    [ObservableProperty] private bool _showLauncherDock = true;
     [ObservableProperty] private bool _alwaysOnTop;
     [ObservableProperty] private int _fullscreenPolicyIndex;
     [ObservableProperty] private bool _autoInputEnabled;
@@ -138,6 +139,7 @@ public partial class SettingsViewModel : ObservableObject
                 wheelActions.Contains(WheelActionKind.TranslateRegion),
             ShowTranslateSubtitlesInWheel =
                 wheelActions.Contains(WheelActionKind.TranslateSubtitles),
+            ShowLauncherDock = settings.ShowLauncherDock,
             AlwaysOnTop = settings.Overlay.AlwaysOnTop,
             FullscreenPolicyIndex = (int)settings.Overlay.FullscreenPolicy,
             AutoInputEnabled = settings.InputLock.AutoEnabled,
@@ -258,6 +260,9 @@ public partial class SettingsViewModel : ObservableObject
             .SetEquals(_baseline.WheelActions)
             ? latest.WheelActions
             : wheelActions;
+        var showLauncherDock = ShowLauncherDock != _baseline.ShowLauncherDock
+            ? ShowLauncherDock
+            : latest.ShowLauncherDock;
 
         var browserSites = BrowserSites
             .Select((site, index) => site with { Order = index })
@@ -333,7 +338,8 @@ public partial class SettingsViewModel : ObservableObject
             Capture = capture,
             Hotkeys = hotkeys,
             Windows = latest.Windows,
-            WheelActions = effectiveWheelActions
+            WheelActions = effectiveWheelActions,
+            ShowLauncherDock = showLauncherDock
         };
 
         void MergeHotkey(HotkeyAction action, string value)

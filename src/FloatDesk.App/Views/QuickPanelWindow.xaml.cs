@@ -118,7 +118,8 @@ public partial class QuickPanelWindow : Window
         ResetSmoothWheelScroll();
 
         LauncherPanel.Children.Clear();
-        LauncherDock.Visibility = dockLaunchers.Length > 0
+        LauncherDock.Visibility =
+            settings.ShowLauncherDock && dockLaunchers.Length > 0
             ? Visibility.Visible
             : Visibility.Collapsed;
         LauncherCountText.Text = $"{dockLaunchers.Length} 个项目";

@@ -241,4 +241,29 @@ public sealed class SettingsViewModelMergeTests
             WheelActionKind.TranslateSubtitles,
             candidate.WheelActions);
     }
+
+    [Fact]
+    public void EditedLauncherDockVisibilityMergesIntoLatestVersion()
+    {
+        var original = AppSettings.CreateDefault();
+        var viewModel = SettingsViewModel.From(original);
+        viewModel.ShowLauncherDock = false;
+        var latest = original with { BrowserTopmost = true };
+
+        var candidate = viewModel.BuildCandidate(latest);
+
+        Assert.False(candidate.ShowLauncherDock);
+        Assert.True(candidate.BrowserTopmost);
+    }
+
+    [Fact]
+    public void UntouchedLauncherDockVisibilityPreservesConcurrentChange()
+    {
+        var original = AppSettings.CreateDefault();
+        var latest = original with { ShowLauncherDock = false };
+
+        var candidate = SettingsViewModel.From(original).BuildCandidate(latest);
+
+        Assert.False(candidate.ShowLauncherDock);
+    }
 }

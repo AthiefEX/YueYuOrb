@@ -71,6 +71,8 @@ public sealed record AppSettings(
     public IReadOnlyList<WheelActionKind> WheelActions { get; init; } =
         DefaultWheelActions;
 
+    public bool ShowLauncherDock { get; init; } = true;
+
     public BrowserThemeMode BrowserTheme { get; init; } =
         BrowserThemeMode.FollowApp;
 

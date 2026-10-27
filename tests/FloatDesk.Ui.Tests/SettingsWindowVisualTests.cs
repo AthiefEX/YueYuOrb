@@ -218,6 +218,29 @@ public sealed class SettingsWindowVisualTests
     }
 
     [Fact]
+    public void WheelSettingsExposeLauncherDockVisibilityToggle()
+    {
+        var document = XDocument.Load(FindRepoFile(
+            "src/FloatDesk.App/Views/SettingsWindow.xaml"));
+        var xName = XName.Get(
+            "Name",
+            "http://schemas.microsoft.com/winfx/2006/xaml");
+        var checkBox = document
+            .Descendants()
+            .Single(element =>
+                element.Name.LocalName == "CheckBox" &&
+                (string?)element.Attribute(xName) ==
+                "ShowLauncherDockCheckBox");
+
+        Assert.Equal(
+            "{Binding ShowLauncherDock}",
+            (string?)checkBox.Attribute("IsChecked"));
+        Assert.Equal(
+            "显示轮盘下方快捷应用栏",
+            (string?)checkBox.Attribute("AutomationProperties.Name"));
+    }
+
+    [Fact]
     public void SubtitleSettingsExposeAttachmentIntervalOpacityAndFontControls()
     {
         var document = XDocument.Load(FindRepoFile(
