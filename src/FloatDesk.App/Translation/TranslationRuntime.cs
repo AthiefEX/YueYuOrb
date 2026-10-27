@@ -27,7 +27,6 @@ public sealed class TranslationRuntime : IDisposable
         _diagnostics;
     private readonly SemaphoreSlim _subtitleGate = new(1, 1);
     private readonly HashSet<TranslationCenter> _retiredCenters = [];
-    private Task _subtitleStopTask = Task.CompletedTask;
     private ConfigurationState? _configuration;
     private CancellationTokenSource? _interactiveCancellation;
     private AppSettings _latestSettings = AppSettings.CreateDefault();
@@ -277,18 +276,9 @@ public sealed class TranslationRuntime : IDisposable
             .ConfigureAwait(false);
         try
         {
-            Task pendingStop;
-            lock (_sync)
-                pendingStop = _subtitleStopTask;
-            if (!pendingStop.IsCompleted)
-            {
-                await pendingStop.WaitAsync(cancellationToken)
-                    .ConfigureAwait(false);
-            }
-
             if (controller.IsRunning)
             {
-                await StopSubtitlesAsync().ConfigureAwait(false);
+                await StopSubtitlesCoreAsync().ConfigureAwait(false);
                 return;
             }
 
@@ -326,19 +316,23 @@ public sealed class TranslationRuntime : IDisposable
         }
     }
 
-    public Task StopSubtitlesAsync()
+    public async Task StopSubtitlesAsync()
     {
-        Task stop;
         lock (_sync)
         {
             _deferSubtitleResumeUntilInteractiveDismissed = false;
             _subtitleResumePending = false;
-            if (!_subtitleStopTask.IsCompleted)
-                return _subtitleStopTask;
-            stop = StopSubtitlesCoreAsync();
-            _subtitleStopTask = stop;
         }
-        return stop;
+
+        await _subtitleGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await StopSubtitlesCoreAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _subtitleGate.Release();
+        }
     }
 
     private async Task StopSubtitlesCoreAsync()

@@ -331,6 +331,8 @@ public sealed class TranslationRuntimeTests
         await provider.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
         runtime.SetEmergencyPaused(true);
+        await provider.CancellationObserved.Task.WaitAsync(
+            TimeSpan.FromSeconds(2));
         await translation.WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.True(provider.WasCancelled);
@@ -1069,6 +1071,67 @@ public sealed class TranslationRuntimeTests
 
             await runtime.StopSubtitlesAsync();
             Assert.False(runtime.IsSubtitleRunning);
+        }
+        finally
+        {
+            provider.ReleaseFirstCallCancellation();
+            await runtime.StopSubtitlesAsync();
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task PendingStopCannotBeReusedAcrossQueuedToggle()
+    {
+        var region = new TranslationCaptureRegion(
+            "monitor-1",
+            0.1,
+            0.7,
+            0.8,
+            0.2);
+        var provider = new ControlledTranslationProvider("字幕翻译");
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(provider),
+            ocr: new RecordingOcr(),
+            regionCapture: new SubtitleCaptureStub(region));
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(SubtitleSettings(region));
+
+        try
+        {
+            await runtime.ToggleSubtitlesAsync(CancellationToken.None);
+            await provider.FirstCallEntered.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+
+            runtime.ApplySettings(SubtitleSettings(region) with
+            {
+                Translation = SubtitleSettings(region).Translation with
+                {
+                    Provider = TranslationProviderKind.LibreTranslate,
+                    Endpoint = "https://example.test/translate"
+                }
+            });
+            await provider.FirstCallCancelled.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+
+            var toggle = runtime.ToggleSubtitlesAsync(
+                CancellationToken.None);
+            await Task.Delay(50);
+            var stop = runtime.StopSubtitlesAsync();
+            await Task.Delay(50);
+            Assert.False(toggle.IsCompleted);
+            Assert.False(stop.IsCompleted);
+
+            provider.ReleaseFirstCallCancellation();
+            await provider.FirstCallCompleted.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+            await Task.WhenAll(toggle, stop)
+                .WaitAsync(TimeSpan.FromSeconds(2));
+            await WaitUntilAsync(
+                () => !runtime.IsSubtitleRunning,
+                TimeSpan.FromSeconds(2));
         }
         finally
         {
@@ -2189,6 +2252,8 @@ public sealed class TranslationRuntimeTests
     {
         public TaskCompletionSource Entered { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource CancellationObserved { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public bool WasCancelled { get; private set; }
         public string Id => "blocking";
@@ -2217,6 +2282,7 @@ public sealed class TranslationRuntimeTests
             catch (OperationCanceledException)
             {
                 WasCancelled = true;
+                CancellationObserved.TrySetResult();
                 throw;
             }
         }
