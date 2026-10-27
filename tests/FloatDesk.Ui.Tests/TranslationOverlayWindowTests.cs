@@ -459,6 +459,21 @@ public sealed class TranslationOverlayWindowTests
     }
 
     [Fact]
+    public void ResizedSubtitleTargetPromotesFallbackBackToSafe()
+    {
+        Assert.Equal(
+            TranslationOverlayWindow.SubtitleTargetKind.Safe,
+            TranslationOverlayWindow.ResolveResizedTargetKind(
+                TranslationOverlayWindow.SubtitleTargetKind.Fallback,
+                TranslationOverlayWindow.SubtitleTargetKind.Safe));
+        Assert.Equal(
+            TranslationOverlayWindow.SubtitleTargetKind.Fallback,
+            TranslationOverlayWindow.ResolveResizedTargetKind(
+                TranslationOverlayWindow.SubtitleTargetKind.Safe,
+                TranslationOverlayWindow.SubtitleTargetKind.Fallback));
+    }
+
+    [Fact]
     public void SettingsChangeReportsUnsafeSubtitlePlacement()
     {
         RunOnSta(() =>

@@ -50,7 +50,7 @@ public partial class TranslationOverlayWindow : Window
     private const double MinimumInteractiveWidth = 340;
     private const double MaximumSubtitleWidth = 720;
 
-    private enum SubtitleTargetKind
+    internal enum SubtitleTargetKind
     {
         Safe,
         Fallback,
@@ -662,8 +662,7 @@ public partial class TranslationOverlayWindow : Window
                 out var adjusted);
             if (adjustedKind == SubtitleTargetKind.Unavailable)
                 return FailSubtitlePlacement();
-            if (adjustedKind == SubtitleTargetKind.Fallback)
-                targetKind = SubtitleTargetKind.Fallback;
+            targetKind = ResolveResizedTargetKind(targetKind, adjustedKind);
             MoveWindow(handle, adjusted);
             if (!TryGetWindowBounds(handle, out moved))
                 return FailSubtitlePlacement();
@@ -690,6 +689,10 @@ public partial class TranslationOverlayWindow : Window
 
     private static TranslationSubtitlePlacementStatus FailSubtitlePlacement()
         => TranslationSubtitlePlacementStatus.NoSafePlacement;
+
+    internal static SubtitleTargetKind ResolveResizedTargetKind(
+        SubtitleTargetKind current,
+        SubtitleTargetKind adjusted) => adjusted;
 
     private bool IsFinalSubtitleBoundsSafe(
         PixelRect bounds,
