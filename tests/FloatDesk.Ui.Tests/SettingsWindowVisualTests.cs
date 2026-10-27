@@ -414,6 +414,49 @@ public sealed class SettingsWindowVisualTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void AppRuntimeWiresSubtitleTrayCommands()
+    {
+        var source = File.ReadAllText(FindRepoFile(
+            "src/FloatDesk.App/AppRuntime.cs"));
+        var compact = string.Join(
+            " ",
+            source.Split(
+                (char[]?)null,
+                StringSplitOptions.RemoveEmptyEntries));
+
+        foreach (var integration in new[]
+                 {
+                     "_translationOverlay.PauseResumeRequested += " +
+                     "OnToggleSubtitlePauseRequested;",
+                     "_translationOverlay.ReselectRegionRequested += " +
+                     "OnReselectSubtitleRegionRequested;",
+                     "_translationOverlay.StopSubtitleRequested += " +
+                     "OnStopSubtitlesRequested;",
+                     "toggleSubtitlePause: OnToggleSubtitlePauseRequested",
+                     "reselectSubtitleRegion: " +
+                     "OnReselectSubtitleRegionRequested",
+                     "stopSubtitles: OnStopSubtitlesRequested",
+                     "UpdateSubtitleTrayState()",
+                     "UpdateSubtitleSession("
+                 })
+        {
+            Assert.Contains(
+                integration,
+                compact,
+                StringComparison.Ordinal);
+        }
+
+        Assert.Contains(
+            "_translationRuntime.IsSubtitleRunning",
+            compact,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_translationRuntime.IsSubtitlePaused",
+            compact,
+            StringComparison.Ordinal);
+    }
+
     private static string FindRepoFile(string relativePath)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

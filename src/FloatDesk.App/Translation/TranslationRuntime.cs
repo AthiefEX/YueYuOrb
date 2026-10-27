@@ -50,7 +50,8 @@ public sealed class TranslationRuntime : IDisposable
         ITranslationRegionCapture? regionCapture = null,
         ISettingsCoordinator? settingsCoordinator = null,
         Action<string, IReadOnlyDictionary<string, object?>?>?
-            diagnostics = null)
+            diagnostics = null,
+        Action<string>? subtitleWarning = null)
         : this(
             new TranslationRouteHost(overlay),
             reader,
@@ -62,7 +63,8 @@ public sealed class TranslationRuntime : IDisposable
             ocr,
             regionCapture,
             settingsCoordinator,
-            diagnostics)
+            diagnostics,
+            subtitleWarning)
     {
     }
 
@@ -78,7 +80,8 @@ public sealed class TranslationRuntime : IDisposable
         ITranslationRegionCapture? regionCapture = null,
         ISettingsCoordinator? settingsCoordinator = null,
         Action<string, IReadOnlyDictionary<string, object?>?>?
-            diagnostics = null)
+            diagnostics = null,
+        Action<string>? subtitleWarning = null)
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _providers = providers ??
@@ -108,7 +111,8 @@ public sealed class TranslationRuntime : IDisposable
                 ocr,
                 regionCapture,
                 host,
-                _clock);
+                _clock,
+                subtitleWarning);
         }
         if (host is TranslationRouteHost routeHost)
         {
@@ -117,6 +121,12 @@ public sealed class TranslationRuntime : IDisposable
                 IsInteractivePresentationAllowed);
         }
     }
+
+    public bool IsSubtitleRunning =>
+        _subtitleController?.IsRunning == true;
+
+    public bool IsSubtitlePaused =>
+        _subtitleController?.IsPaused == true;
 
     public void ApplySettings(AppSettings settings)
     {

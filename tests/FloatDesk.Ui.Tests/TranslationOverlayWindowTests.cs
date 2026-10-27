@@ -207,6 +207,40 @@ public sealed class TranslationOverlayWindowTests
     }
 
     [Fact]
+    public void CompactSubtitleModeIsClickThrough()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                Assert.False(window.IsClickThrough);
+
+                var operation = window.BeginOperation(subtitle: true);
+                window.SetSubtitleControls(
+                    operation,
+                    active: true,
+                    paused: false,
+                    canReselect: true);
+
+                Assert.True(window.IsClickThrough);
+
+                window.SetSubtitleControls(
+                    operation,
+                    active: false,
+                    paused: false,
+                    canReselect: false);
+
+                Assert.False(window.IsClickThrough);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
     public void SubtitleTextReplacesPreviousTextAndRejectsStaleToken()
     {
         RunOnSta(() =>
@@ -1260,6 +1294,7 @@ public sealed class TranslationOverlayWindowTests
 
         Assert.Contains("WS_EX_NOACTIVATE", code, StringComparison.Ordinal);
         Assert.Contains("WS_EX_TOOLWINDOW", code, StringComparison.Ordinal);
+        Assert.Contains("WS_EX_TRANSPARENT", code, StringComparison.Ordinal);
         Assert.Contains(
             "WindowCaptureExclusion.TryExclude",
             code,

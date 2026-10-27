@@ -36,6 +36,7 @@ public partial class TranslationOverlayWindow : Window
 {
     private const long WS_EX_TOOLWINDOW = 0x00000080L;
     private const long WS_EX_NOACTIVATE = 0x08000000L;
+    private const long WS_EX_TRANSPARENT = 0x00000020L;
     private const int GWL_EXSTYLE = -20;
     private const uint SWP_NOSIZE = 0x0001;
     private const uint SWP_NOACTIVATE = 0x0010;
@@ -52,6 +53,7 @@ public partial class TranslationOverlayWindow : Window
     private readonly Action<string> _clipboardWriter;
     private AppSettings _settings = AppSettings.CreateDefault();
     private bool _isSubtitleMode;
+    private bool _isClickThrough;
     private bool _subtitlePaused;
     private bool _canReselect;
     private bool _isDragging;
@@ -85,6 +87,7 @@ public partial class TranslationOverlayWindow : Window
     public event Action? InteractiveOperationDismissed;
 
     public bool IsSubtitleMode => _isSubtitleMode;
+    internal bool IsClickThrough => _isClickThrough;
     public bool IsDismissed => _dismissed;
     public bool IsCaptureExcluded { get; private set; }
     internal bool CanRestoreAfterCapture =>
@@ -483,6 +486,7 @@ public partial class TranslationOverlayWindow : Window
     private void ApplySubtitlePresentation()
     {
         _isSubtitleMode = true;
+        ApplyClickThrough(clickThrough: true);
         CardBackdrop.Visibility = Visibility.Collapsed;
         TransitionLayer.Visibility = Visibility.Collapsed;
         SubtitleSurface.Visibility = Visibility.Visible;
@@ -497,6 +501,7 @@ public partial class TranslationOverlayWindow : Window
 
     private void ApplyFullCardPresentation()
     {
+        ApplyClickThrough(clickThrough: false);
         CardBackdrop.Visibility = Visibility.Visible;
         TransitionLayer.Visibility = Visibility.Visible;
         SubtitleSurface.Visibility = Visibility.Collapsed;
@@ -615,6 +620,7 @@ public partial class TranslationOverlayWindow : Window
         }
 
         _isSubtitleMode = false;
+        ApplyClickThrough(clickThrough: false);
         _subtitlePaused = false;
         _canReselect = false;
         ClearSubtitleCaptureSafety();
@@ -1107,6 +1113,7 @@ public partial class TranslationOverlayWindow : Window
         _dismissed = true;
         InvalidateActiveOperation();
         _isSubtitleMode = false;
+        ApplyClickThrough(clickThrough: false);
         _subtitlePaused = false;
         _canReselect = false;
         ClearSubtitleCaptureSafety();
@@ -1221,11 +1228,7 @@ public partial class TranslationOverlayWindow : Window
         if (handle == 0)
             return;
 
-        var style = GetWindowLongPtr(handle, GWL_EXSTYLE).ToInt64();
-        _ = SetWindowLongPtr(
-            handle,
-            GWL_EXSTYLE,
-            new nint(style | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE));
+        ApplyExtendedWindowStyle(handle, _isClickThrough);
         IsCaptureExcluded = WindowCaptureExclusion.TryExclude(handle);
         if (_isSubtitleMode && IsVisible)
             PositionWindow(subtitleMode: true, default);
@@ -1237,6 +1240,7 @@ public partial class TranslationOverlayWindow : Window
         _dismissed = true;
         InvalidateActiveOperation();
         _isSubtitleMode = false;
+        ApplyClickThrough(clickThrough: false);
         _isDragging = false;
         ClearSubtitleCaptureSafety();
         ClearTranslationContent();
@@ -1263,6 +1267,26 @@ public partial class TranslationOverlayWindow : Window
     private void InvalidateActiveOperation() =>
         _activeOperationGeneration =
             NextGeneration(_activeOperationGeneration);
+
+    private void ApplyClickThrough(bool clickThrough)
+    {
+        _isClickThrough = clickThrough;
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle != 0)
+            ApplyExtendedWindowStyle(handle, clickThrough);
+    }
+
+    private static void ApplyExtendedWindowStyle(
+        nint handle,
+        bool clickThrough)
+    {
+        var style = GetWindowLongPtr(handle, GWL_EXSTYLE).ToInt64();
+        style |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+        style = clickThrough
+            ? style | WS_EX_TRANSPARENT
+            : style & ~WS_EX_TRANSPARENT;
+        _ = SetWindowLongPtr(handle, GWL_EXSTYLE, new nint(style));
+    }
 
     private void ClearSubtitleCaptureSafety()
     {

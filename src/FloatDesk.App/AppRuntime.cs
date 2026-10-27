@@ -88,7 +88,8 @@ internal sealed class AppRuntime : IDisposable
             regionCapture: _translationRegionCapture,
             settingsCoordinator: _settings,
             diagnostics: (eventName, properties) =>
-                _ = _logger.WriteAsync(eventName, properties));
+                _ = _logger.WriteAsync(eventName, properties),
+            subtitleWarning: ShowSubtitleWarning);
         _foreground = new ForegroundMonitor();
         _input = new InputLockEngine(
             new WindowsInputBackend(),
@@ -136,7 +137,7 @@ internal sealed class AppRuntime : IDisposable
         _panel.TranslateSubtitlesRequested +=
             OnTranslateSubtitlesRequested;
         _translationOverlay.PauseResumeRequested +=
-            _translationRuntime.ToggleSubtitlePause;
+            OnToggleSubtitlePauseRequested;
         _translationOverlay.ReselectRegionRequested +=
             OnReselectSubtitleRegionRequested;
         _translationOverlay.StopSubtitleRequested +=
@@ -177,7 +178,11 @@ internal sealed class AppRuntime : IDisposable
             () => _ = StartCaptureAsync(CaptureMode.Region),
             ToggleEmergencyPause,
             RequestExit,
-            ToggleOrbVisibility);
+            ToggleOrbVisibility,
+            toggleSubtitlePause: OnToggleSubtitlePauseRequested,
+            reselectSubtitleRegion: OnReselectSubtitleRegionRequested,
+            stopSubtitles: OnStopSubtitlesRequested);
+        UpdateSubtitleTrayState();
 
         await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
         {
@@ -283,7 +288,7 @@ internal sealed class AppRuntime : IDisposable
             _input.StatusChanged -= OnInputStatusChanged;
             _foreground.Changed -= OnForegroundChanged;
             _translationOverlay.PauseResumeRequested -=
-                _translationRuntime.ToggleSubtitlePause;
+                OnToggleSubtitlePauseRequested;
             _translationOverlay.ReselectRegionRequested -=
                 OnReselectSubtitleRegionRequested;
             _translationOverlay.StopSubtitleRequested -=
@@ -468,6 +473,10 @@ internal sealed class AppRuntime : IDisposable
             _lifetime.IsCancellationRequested)
         {
         }
+        finally
+        {
+            UpdateSubtitleTrayState();
+        }
     }
 
     private void OnTranslateRegionRequested()
@@ -486,6 +495,10 @@ internal sealed class AppRuntime : IDisposable
         catch (OperationCanceledException) when (
             _lifetime.IsCancellationRequested)
         {
+        }
+        finally
+        {
+            UpdateSubtitleTrayState();
         }
     }
 
@@ -507,6 +520,16 @@ internal sealed class AppRuntime : IDisposable
             _lifetime.IsCancellationRequested)
         {
         }
+        finally
+        {
+            UpdateSubtitleTrayState();
+        }
+    }
+
+    private void OnToggleSubtitlePauseRequested()
+    {
+        _translationRuntime.ToggleSubtitlePause();
+        UpdateSubtitleTrayState();
     }
 
     private void OnReselectSubtitleRegionRequested() =>
@@ -523,6 +546,10 @@ internal sealed class AppRuntime : IDisposable
             _lifetime.IsCancellationRequested)
         {
         }
+        finally
+        {
+            UpdateSubtitleTrayState();
+        }
     }
 
     private void OnStopSubtitlesRequested() =>
@@ -537,7 +564,19 @@ internal sealed class AppRuntime : IDisposable
         catch (OperationCanceledException)
         {
         }
+        finally
+        {
+            UpdateSubtitleTrayState();
+        }
     }
+
+    private void UpdateSubtitleTrayState() =>
+        _tray?.UpdateSubtitleSession(
+            _translationRuntime.IsSubtitleRunning,
+            _translationRuntime.IsSubtitlePaused);
+
+    private void ShowSubtitleWarning(string message) =>
+        _tray?.ShowWarning("字幕翻译需要处理", message);
 
     private ForegroundSnapshot SelectTranslationTarget()
     {

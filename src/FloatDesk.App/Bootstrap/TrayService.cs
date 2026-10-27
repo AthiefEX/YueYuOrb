@@ -7,6 +7,11 @@ namespace FloatDesk.App;
 public sealed class TrayService : IDisposable
 {
     private readonly NotifyIcon _icon;
+    private readonly ToolStripMenuItem _subtitlePauseItem;
+    private readonly ToolStripMenuItem _subtitleReselectItem;
+    private readonly ToolStripMenuItem _subtitleStopItem;
+    private readonly SynchronizationContext? _synchronizationContext;
+    private readonly int _createdThreadId;
 
     public TrayService(
         Action openPanel,
@@ -16,8 +21,13 @@ public sealed class TrayService : IDisposable
         Action captureRegion,
         Action togglePause,
         Action exit,
-        Action toggleOrb)
+        Action toggleOrb,
+        Action toggleSubtitlePause,
+        Action reselectSubtitleRegion,
+        Action stopSubtitles)
     {
+        _synchronizationContext = SynchronizationContext.Current;
+        _createdThreadId = Environment.CurrentManagedThreadId;
         var menu = new ContextMenuStrip();
         menu.Items.Add("显示/隐藏悬浮球", null, (_, _) => toggleOrb());
         menu.Items.Add("打开快捷面板", null, (_, _) => openPanel());
@@ -26,6 +36,24 @@ public sealed class TrayService : IDisposable
         menu.Items.Add("记事本", null, (_, _) => openNotes());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("框选截图", null, (_, _) => captureRegion());
+        _subtitlePauseItem = new ToolStripMenuItem(
+            "暂停字幕翻译",
+            null,
+            (_, _) => toggleSubtitlePause());
+        _subtitleReselectItem = new ToolStripMenuItem(
+            "重新选择字幕区域",
+            null,
+            (_, _) => reselectSubtitleRegion());
+        _subtitleStopItem = new ToolStripMenuItem(
+            "停止字幕翻译",
+            null,
+            (_, _) => stopSubtitles());
+        var subtitleMenu = new ToolStripMenuItem("字幕翻译");
+        subtitleMenu.DropDownItems.Add(_subtitlePauseItem);
+        subtitleMenu.DropDownItems.Add(_subtitleReselectItem);
+        subtitleMenu.DropDownItems.Add(new ToolStripSeparator());
+        subtitleMenu.DropDownItems.Add(_subtitleStopItem);
+        menu.Items.Add(subtitleMenu);
         menu.Items.Add("暂停/恢复英文规则", null, (_, _) => togglePause());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("退出", null, (_, _) => exit());
@@ -38,21 +66,46 @@ public sealed class TrayService : IDisposable
             ContextMenuStrip = menu
         };
         _icon.DoubleClick += (_, _) => openPanel();
+        UpdateSubtitleSession(running: false, paused: false);
+    }
+
+    public void UpdateSubtitleSession(bool running, bool paused)
+    {
+        RunOnCreatedThread(() =>
+        {
+            var state = new SubtitleTrayState(running, paused);
+            _subtitlePauseItem.Text = state.PauseHeader;
+            _subtitlePauseItem.Enabled = state.CommandsEnabled;
+            _subtitleReselectItem.Enabled = state.CommandsEnabled;
+            _subtitleStopItem.Enabled = state.CommandsEnabled;
+        });
     }
 
     public void ShowWarning(string title, string message)
     {
-        _icon.ShowBalloonTip(
-            6000,
-            title,
-            message,
-            ToolTipIcon.Warning);
+        RunOnCreatedThread(() =>
+            _icon.ShowBalloonTip(
+                6000,
+                title,
+                message,
+                ToolTipIcon.Warning));
     }
 
     public void Dispose()
     {
         _icon.Visible = false;
         _icon.Dispose();
+    }
+
+    private void RunOnCreatedThread(Action action)
+    {
+        if (Environment.CurrentManagedThreadId == _createdThreadId)
+        {
+            action();
+            return;
+        }
+
+        _synchronizationContext?.Post(_ => action(), null);
     }
 }
 
