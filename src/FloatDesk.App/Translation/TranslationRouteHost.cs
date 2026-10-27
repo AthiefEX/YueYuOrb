@@ -89,9 +89,15 @@ public interface ITranslationRouteHost
             translatedText,
             commit =>
             {
-                committed =
-                    commitIfCurrent is null ||
-                    commitIfCurrent(commit);
+                if (commitIfCurrent is null)
+                {
+                    commit();
+                    committed = true;
+                }
+                else
+                {
+                    committed = commitIfCurrent(commit);
+                }
                 return committed;
             });
         return new TranslationSubtitleDeliveryResult(
