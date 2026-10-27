@@ -1,5 +1,6 @@
 using FloatDesk.App.Translation;
 using FloatDesk.App.Views;
+using FloatDesk.Core.Contracts;
 using FloatDesk.Core.Geometry;
 using FloatDesk.Core.Models;
 using FloatDesk.Core.Translation;
@@ -511,6 +512,87 @@ public sealed class TranslationRuntimeTests
         Assert.Contains("正在翻译…", host.Statuses);
     }
 
+    [Fact]
+    public async Task SavedSubtitleRegionStartsSharedTranslationRoute()
+    {
+        var region = new TranslationCaptureRegion(
+            "monitor-1",
+            0.1,
+            0.7,
+            0.8,
+            0.2);
+        var capture = new SubtitleCaptureStub(region);
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("字幕翻译")),
+            ocr: new RecordingOcr(),
+            regionCapture: capture);
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(SubtitleSettings(region));
+
+        try
+        {
+            await runtime.ToggleSubtitlesAsync(CancellationToken.None);
+            await host.TranslationAttempted.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            await runtime.StopSubtitlesAsync();
+        }
+
+        Assert.True(capture.RegionCaptureCount >= 1);
+        Assert.Equal(TranslationPurpose.Subtitle, host.LastPurpose);
+        Assert.Equal("Recognized text", host.LastText);
+    }
+
+    [Fact]
+    public async Task FirstSubtitleStartSelectsAndPersistsRegion()
+    {
+        var initial = AppSettings.CreateDefault();
+        var settings = new MutableSettingsCoordinator(initial);
+        var selectedRegion = new TranslationCaptureRegion(
+            "monitor-2",
+            0.2,
+            0.75,
+            0.6,
+            0.18);
+        var capture = new SubtitleCaptureStub(selectedRegion);
+        var host = new RecordingRouteHost();
+        var factory = new RecordingProviderFactory(
+            new StaticTranslationProvider("字幕翻译"));
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            factory,
+            ocr: new RecordingOcr(),
+            regionCapture: capture,
+            settingsCoordinator: settings);
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(initial);
+
+        try
+        {
+            await runtime.ToggleSubtitlesAsync(CancellationToken.None);
+            await host.TranslationAttempted.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            await runtime.StopSubtitlesAsync();
+        }
+
+        Assert.Equal(1, capture.SelectionCount);
+        Assert.True(capture.RegionCaptureCount >= 1);
+        Assert.Equal(
+            selectedRegion,
+            settings.Current.Translation.SubtitleRegion);
+        Assert.Equal(1, factory.CreateCount);
+    }
+
     private static TranslationRuntime CreateRuntime(
         RecordingRouteHost host,
         MutableCredentialStore credentials,
@@ -519,7 +601,8 @@ public sealed class TranslationRuntimeTests
         Func<ForegroundSnapshot>? currentForeground = null,
         Func<ForegroundSnapshot?>? lastExternal = null,
         IScreenOcrService? ocr = null,
-        ITranslationRegionCapture? regionCapture = null) =>
+        ITranslationRegionCapture? regionCapture = null,
+        ISettingsCoordinator? settingsCoordinator = null) =>
         new(
             host,
             reader ?? new DelegateSelectedTextReader(
@@ -531,7 +614,19 @@ public sealed class TranslationRuntimeTests
             lastExternal ?? (() => ExternalTarget),
             clock: null,
             ocr: ocr,
-            regionCapture: regionCapture);
+            regionCapture: regionCapture,
+            settingsCoordinator: settingsCoordinator);
+
+    private static AppSettings SubtitleSettings(
+        TranslationCaptureRegion region) =>
+        AppSettings.CreateDefault() with
+        {
+            Translation = TranslationSettings.CreateDefault() with
+            {
+                SubtitleRefreshIntervalMs = 300,
+                SubtitleRegion = region
+            }
+        };
 
     private static AppSettings CustomProviderSettings() =>
         AppSettings.CreateDefault() with
@@ -645,7 +740,10 @@ public sealed class TranslationRuntimeTests
 
         public List<string> Statuses { get; } = [];
         public string? LastText { get; private set; }
+        public TranslationPurpose? LastPurpose { get; private set; }
         public TranslationResponse? LastResult { get; private set; }
+        public TaskCompletionSource TranslationAttempted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
         public string? LastError { get; private set; }
         public int TranslateCount { get; private set; }
         public int DismissCount { get; private set; }
@@ -704,6 +802,8 @@ public sealed class TranslationRuntimeTests
         {
             TranslateCount++;
             LastText = text;
+            LastPurpose = purpose;
+            TranslationAttempted.TrySetResult();
             return TranslateHandler(text, purpose, cancellationToken);
         }
 
@@ -793,6 +893,71 @@ public sealed class TranslationRuntimeTests
         public Task<CapturedTranslationRegion?> CaptureSelectedAsync(
             CancellationToken cancellationToken) =>
             Task.FromResult(result);
+
+        public Task<CapturedTranslationRegion?> CaptureRegionAsync(
+            TranslationCaptureRegion region,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(result);
+    }
+
+    private sealed class SubtitleCaptureStub(
+        TranslationCaptureRegion region) : ITranslationRegionCapture
+    {
+        private int _selectionCount;
+        private int _regionCaptureCount;
+
+        public int SelectionCount => Volatile.Read(ref _selectionCount);
+        public int RegionCaptureCount =>
+            Volatile.Read(ref _regionCaptureCount);
+
+        public Task<CapturedTranslationRegion?> CaptureSelectedAsync(
+            CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _selectionCount);
+            return Task.FromResult<CapturedTranslationRegion?>(
+                new CapturedTranslationRegion(
+                    NewFrame(),
+                    new PixelRect(0, 0, 4, 4),
+                    region));
+        }
+
+        public Task<CapturedTranslationRegion?> CaptureRegionAsync(
+            TranslationCaptureRegion requested,
+            CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _regionCaptureCount);
+            Assert.Equal(region, requested);
+            return Task.FromResult<CapturedTranslationRegion?>(
+                new CapturedTranslationRegion(
+                    NewFrame(),
+                    new PixelRect(0, 0, 4, 4),
+                    requested));
+        }
+
+        private static CaptureFrame NewFrame() =>
+            new(
+                new PixelRect(0, 0, 4, 4),
+                16,
+                new byte[4 * 4 * 4]);
+    }
+
+    private sealed class MutableSettingsCoordinator(
+        AppSettings initial) : ISettingsCoordinator
+    {
+        public AppSettings Current { get; private set; } = initial;
+        public event Action<AppSettings>? Changed;
+
+        public Task InitializeAsync(CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task<OperationResult> UpdateAsync(
+            Func<AppSettings, AppSettings> update,
+            CancellationToken cancellationToken)
+        {
+            Current = update(Current);
+            Changed?.Invoke(Current);
+            return Task.FromResult(OperationResult.Ok());
+        }
     }
 
     private sealed class StaticTranslationProvider(

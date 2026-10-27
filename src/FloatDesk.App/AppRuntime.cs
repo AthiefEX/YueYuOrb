@@ -85,7 +85,8 @@ internal sealed class AppRuntime : IDisposable
             () => _current,
             () => _wheelTranslationTarget ?? _lastExternal,
             ocr: _ocr,
-            regionCapture: _translationRegionCapture);
+            regionCapture: _translationRegionCapture,
+            settingsCoordinator: _settings);
         _foreground = new ForegroundMonitor();
         _input = new InputLockEngine(
             new WindowsInputBackend(),
@@ -130,6 +131,14 @@ internal sealed class AppRuntime : IDisposable
             OnTranslateSelectionRequested;
         _panel.TranslateRegionRequested +=
             OnTranslateRegionRequested;
+        _panel.TranslateSubtitlesRequested +=
+            OnTranslateSubtitlesRequested;
+        _translationOverlay.PauseResumeRequested +=
+            _translationRuntime.ToggleSubtitlePause;
+        _translationOverlay.ReselectRegionRequested +=
+            OnReselectSubtitleRegionRequested;
+        _translationOverlay.StopSubtitleRequested +=
+            OnStopSubtitlesRequested;
 
         _coordinator = new WindowCoordinator(factories, _orb, _panel);
         _captureCoordinator = new CaptureCoordinator(
@@ -268,6 +277,12 @@ internal sealed class AppRuntime : IDisposable
             _settings.Changed -= OnSettingsChanged;
             _input.StatusChanged -= OnInputStatusChanged;
             _foreground.Changed -= OnForegroundChanged;
+            _translationOverlay.PauseResumeRequested -=
+                _translationRuntime.ToggleSubtitlePause;
+            _translationOverlay.ReselectRegionRequested -=
+                OnReselectSubtitleRegionRequested;
+            _translationOverlay.StopSubtitleRequested -=
+                OnStopSubtitlesRequested;
             _translationRuntime.Dispose();
             _translationRegionCapture.Dispose();
             _selectedTextReader.Dispose();
@@ -465,6 +480,55 @@ internal sealed class AppRuntime : IDisposable
         }
     }
 
+    private void OnTranslateSubtitlesRequested()
+    {
+        _panel?.HideAnimated();
+        _ = ToggleSubtitlesAsync();
+    }
+
+    private async Task ToggleSubtitlesAsync()
+    {
+        try
+        {
+            await _translationRuntime.ToggleSubtitlesAsync(
+                _lifetime.Token);
+        }
+        catch (OperationCanceledException) when (
+            _lifetime.IsCancellationRequested)
+        {
+        }
+    }
+
+    private void OnReselectSubtitleRegionRequested() =>
+        _ = ReselectSubtitleRegionAsync();
+
+    private async Task ReselectSubtitleRegionAsync()
+    {
+        try
+        {
+            await _translationRuntime.ReselectSubtitleRegionAsync(
+                _lifetime.Token);
+        }
+        catch (OperationCanceledException) when (
+            _lifetime.IsCancellationRequested)
+        {
+        }
+    }
+
+    private void OnStopSubtitlesRequested() =>
+        _ = StopSubtitlesAsync();
+
+    private async Task StopSubtitlesAsync()
+    {
+        try
+        {
+            await _translationRuntime.StopSubtitlesAsync();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
     private ForegroundSnapshot SelectTranslationTarget()
     {
         if (_current.TopLevelHwnd != 0 &&
@@ -520,6 +584,9 @@ internal sealed class AppRuntime : IDisposable
                 break;
             case HotkeyAction.TranslateRegion:
                 _ = TranslateRegionAsync();
+                break;
+            case HotkeyAction.ToggleSubtitles:
+                _ = ToggleSubtitlesAsync();
                 break;
         }
     }

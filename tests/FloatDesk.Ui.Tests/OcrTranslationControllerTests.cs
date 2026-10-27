@@ -134,6 +134,11 @@ public sealed class OcrTranslationControllerTests
         public Task<CapturedTranslationRegion?> CaptureSelectedAsync(
             CancellationToken cancellationToken) =>
             Task.FromResult(result);
+
+        public Task<CapturedTranslationRegion?> CaptureRegionAsync(
+            TranslationCaptureRegion region,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(result);
     }
 
     private sealed class RecordingRouteHost : ITranslationRouteHost

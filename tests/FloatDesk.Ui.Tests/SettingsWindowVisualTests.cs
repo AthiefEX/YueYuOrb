@@ -256,8 +256,12 @@ public sealed class SettingsWindowVisualTests
         foreach (var integration in new[]
                  {
                      "HotkeyAction.TranslateSelection",
+                     "HotkeyAction.ToggleSubtitles",
                      "TranslateSelectionAsync",
                      "TranslateSelectionRequested",
+                     "TranslateSubtitlesRequested",
+                     "_translationOverlay.PauseResumeRequested",
+                     "_translationRuntime.ReselectSubtitleRegionAsync",
                      "_translationRuntime.SetSessionLocked",
                      "_translationRuntime.SetEmergencyPaused",
                      "_translationRuntime.PauseForCapture",

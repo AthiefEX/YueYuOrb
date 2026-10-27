@@ -14,6 +14,11 @@ public interface ITranslationRouteHost
 {
     void ApplySettings(AppSettings settings);
 
+    TranslationRouteHandle ShowSubtitleStatus(
+        PixelPoint anchor,
+        string status) =>
+        ShowStatus(anchor, status);
+
     TranslationRouteHandle ShowStatus(
         PixelPoint anchor,
         string status);
@@ -29,6 +34,16 @@ public interface ITranslationRouteHost
     void ShowError(
         TranslationRouteHandle operation,
         string message);
+
+    void SetSubtitleControls(
+        TranslationRouteHandle operation,
+        bool active,
+        bool paused,
+        bool canReselect)
+    {
+        if (!active)
+            DismissActiveOperation();
+    }
 
     Task<TranslationResponse> TranslateAsync(
         string text,
@@ -60,6 +75,15 @@ public sealed class TranslationRouteHost : ITranslationRouteHost
 
     public void ApplySettings(AppSettings settings) =>
         _overlay.ApplySettings(settings);
+
+    public TranslationRouteHandle ShowSubtitleStatus(
+        PixelPoint anchor,
+        string status)
+    {
+        var operation = _overlay.BeginOperation(subtitle: true);
+        _overlay.ShowStatus(operation, status, anchor);
+        return new TranslationRouteHandle(operation, anchor);
+    }
 
     public TranslationRouteHandle ShowStatus(
         PixelPoint anchor,
@@ -93,6 +117,17 @@ public sealed class TranslationRouteHost : ITranslationRouteHost
             operation.Operation,
             message,
             operation.Anchor);
+
+    public void SetSubtitleControls(
+        TranslationRouteHandle operation,
+        bool active,
+        bool paused,
+        bool canReselect) =>
+        _overlay.SetSubtitleControls(
+            operation.Operation,
+            active,
+            paused,
+            canReselect);
 
     public Task<TranslationResponse> TranslateAsync(
         string text,
