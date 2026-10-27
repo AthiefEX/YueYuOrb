@@ -440,7 +440,12 @@
                                 <TextBlock Text="快捷应用" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
                             </StackPanel>
                         </TabItem.Header>
-                        <Grid Margin="28,16,28,24">
+                        <Grid x:Name="LauncherDropSurface"
+                              Margin="28,16,28,24"
+                              AllowDrop="True"
+                              DragOver="OnLauncherDragOver"
+                              DragLeave="OnLauncherDragLeave"
+                              Drop="OnLauncherDrop">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
@@ -458,7 +463,7 @@
                                         </Border>
                                         <StackPanel VerticalAlignment="Center">
                                             <TextBlock Text="快捷应用" Style="{StaticResource SettingsSectionTitleStyle}" />
-                                            <TextBlock Text="加入同一个可滚动轮盘；未加入的应用保留在底部应用坞。移出轮盘不会删除应用。"
+                                            <TextBlock Text="可直接拖入 exe 或快捷方式到此页面添加应用。未加入轮盘的应用保留在底部应用坞，移出轮盘不会删除应用。"
                                                        Style="{StaticResource SettingsDescriptionStyle}"
                                                        Margin="0,2,0,0" />
                                         </StackPanel>
@@ -495,6 +500,41 @@
                                     <Button Content="加入轮盘" Click="OnAddLauncherToWheelClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
                                     <Button Content="移出轮盘" Click="OnRemoveLauncherFromWheelClick" Style="{StaticResource ActionButtonStyle}" />
                                 </WrapPanel>
+                            </Border>
+                            <Border x:Name="LauncherDropHint"
+                                    Grid.RowSpan="3"
+                                    Panel.ZIndex="20"
+                                    Background="#B3143044"
+                                    BorderBrush="{DynamicResource SettingsAccentBrush}"
+                                    BorderThickness="2"
+                                    CornerRadius="18"
+                                    IsHitTestVisible="False"
+                                    Visibility="Collapsed">
+                                <StackPanel HorizontalAlignment="Center"
+                                            VerticalAlignment="Center">
+                                    <Border Width="54"
+                                            Height="54"
+                                            HorizontalAlignment="Center"
+                                            Background="{DynamicResource SettingsAccentBrush}"
+                                            CornerRadius="27">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   FontFamily="{StaticResource SettingsIconFont}"
+                                                   FontSize="25"
+                                                   Foreground="White"
+                                                   Text="&#xE896;" />
+                                    </Border>
+                                    <TextBlock Margin="0,14,0,0"
+                                               HorizontalAlignment="Center"
+                                               FontSize="18"
+                                               FontWeight="SemiBold"
+                                               Foreground="White"
+                                               Text="松开即可添加应用" />
+                                    <TextBlock Margin="0,4,0,0"
+                                               HorizontalAlignment="Center"
+                                               Foreground="#DDEFFBFF"
+                                               Text="支持同时拖入多个 exe 或快捷方式" />
+                                </StackPanel>
                             </Border>
                         </Grid>
                     </TabItem>

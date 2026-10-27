@@ -241,6 +241,36 @@ public sealed class SettingsWindowVisualTests
     }
 
     [Fact]
+    public void QuickAppsPageExposesLauncherDropSurface()
+    {
+        var document = XDocument.Load(FindRepoFile(
+            "src/FloatDesk.App/Views/SettingsWindow.xaml"));
+        var xName = XName.Get(
+            "Name",
+            "http://schemas.microsoft.com/winfx/2006/xaml");
+        var surface = document
+            .Descendants()
+            .Single(element =>
+                (string?)element.Attribute(xName) ==
+                "LauncherDropSurface");
+
+        Assert.Equal("True", (string?)surface.Attribute("AllowDrop"));
+        Assert.Equal(
+            "OnLauncherDragOver",
+            (string?)surface.Attribute("DragOver"));
+        Assert.Equal(
+            "OnLauncherDragLeave",
+            (string?)surface.Attribute("DragLeave"));
+        Assert.Equal(
+            "OnLauncherDrop",
+            (string?)surface.Attribute("Drop"));
+        Assert.Contains(
+            "拖入 exe 或快捷方式",
+            document.ToString(SaveOptions.DisableFormatting),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SubtitleSettingsExposeAttachmentIntervalOpacityAndFontControls()
     {
         var document = XDocument.Load(FindRepoFile(

@@ -13,9 +13,11 @@ using FloatDesk.App.Translation;
 using FloatDesk.App.ViewModels;
 using FloatDesk.Core;
 using FloatDesk.Core.Contracts;
+using FloatDesk.Core.Launcher;
 using FloatDesk.Core.Models;
 using FloatDesk.Core.Translation;
 using FloatDesk.Infrastructure.Settings;
+using FloatDesk.Windows.Launcher;
 
 namespace FloatDesk.App.Views;
 
@@ -40,8 +42,10 @@ public partial class SettingsWindow : Window
     private readonly TranslationConnectionTestStatusState _translationTestStatus;
     private readonly SettingsReloadCoordinator _reloadCoordinator;
     private readonly SettingsPreferenceWorkflow _preferenceWorkflow;
+    private readonly LauncherEntryResolver _launcherEntryResolver = new();
     private SettingsViewModel _viewModel;
     private bool _applyInProgress;
+    private bool _launcherDropInProgress;
 
     public event Action<AppSettings>? Applied;
 
@@ -701,6 +705,64 @@ public partial class SettingsWindow : Window
             [],
             kind == LauncherKind.Exe ? Path.GetDirectoryName(path) : null,
             _viewModel.Launchers.Count));
+    }
+
+    private void OnLauncherDragOver(object sender, DragEventArgs e)
+    {
+        var acceptsFiles =
+            !_launcherDropInProgress &&
+            e.Data.GetDataPresent(DataFormats.FileDrop);
+        e.Effects = acceptsFiles
+            ? DragDropEffects.Copy
+            : DragDropEffects.None;
+        LauncherDropHint.Visibility = acceptsFiles
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        e.Handled = true;
+    }
+
+    private void OnLauncherDragLeave(object sender, DragEventArgs e)
+    {
+        LauncherDropHint.Visibility = Visibility.Collapsed;
+        e.Handled = true;
+    }
+
+    private async void OnLauncherDrop(object sender, DragEventArgs e)
+    {
+        LauncherDropHint.Visibility = Visibility.Collapsed;
+        e.Handled = true;
+        if (_launcherDropInProgress ||
+            !e.Data.GetDataPresent(DataFormats.FileDrop) ||
+            e.Data.GetData(DataFormats.FileDrop) is not string[] droppedPaths)
+        {
+            return;
+        }
+
+        _launcherDropInProgress = true;
+        SaveStatusText.Text = "正在识别拖入的应用…";
+        try
+        {
+            var paths = droppedPaths.ToArray();
+            var existing = _viewModel.Launchers.ToArray();
+            var result = await Task.Run(() =>
+                LauncherDropParser.Parse(
+                    paths,
+                    existing,
+                    _launcherEntryResolver));
+            foreach (var item in result.Added)
+                _viewModel.Launchers.Add(item);
+            if (result.Added.Count > 0)
+                LauncherGrid.SelectedItem = result.Added[^1];
+            SaveStatusText.Text = result.Summary;
+        }
+        catch (Exception)
+        {
+            SaveStatusText.Text = "拖放识别失败，请重试。";
+        }
+        finally
+        {
+            _launcherDropInProgress = false;
+        }
     }
 
     private void OnRemoveLauncherClick(object sender, RoutedEventArgs e)
