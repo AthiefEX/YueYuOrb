@@ -36,6 +36,7 @@ internal sealed class AppRuntime : IDisposable
     private readonly WindowsScreenOcrService _ocr = new();
     private readonly TranslationOverlayWindow _translationOverlay;
     private readonly SelectedTextReader _selectedTextReader;
+    private readonly TranslationRegionCaptureService _translationRegionCapture;
     private readonly TranslationRuntime _translationRuntime;
     private readonly CaptureSessionGate _captureSessionGate = new();
     private readonly RegionSelectionCoordinator _regionSelection = new();
@@ -70,13 +71,21 @@ internal sealed class AppRuntime : IDisposable
             Path.Combine(paths.Root, "translation-secrets.dat"));
         _translationOverlay = new TranslationOverlayWindow();
         _selectedTextReader = new SelectedTextReader();
+        _translationRegionCapture = new TranslationRegionCaptureService(
+            _captureSessionGate,
+            () => _coordinator,
+            _regionSelection,
+            (eventName, properties) =>
+                _ = _logger.WriteAsync(eventName, properties));
         _translationRuntime = new TranslationRuntime(
             _translationOverlay,
             _selectedTextReader,
             _translationProviders,
             _translationCredentials,
             () => _current,
-            () => _wheelTranslationTarget ?? _lastExternal);
+            () => _wheelTranslationTarget ?? _lastExternal,
+            ocr: _ocr,
+            regionCapture: _translationRegionCapture);
         _foreground = new ForegroundMonitor();
         _input = new InputLockEngine(
             new WindowsInputBackend(),
@@ -119,6 +128,8 @@ internal sealed class AppRuntime : IDisposable
         _panel.CaptureRequested += mode => _ = StartCaptureAsync(mode);
         _panel.TranslateSelectionRequested +=
             OnTranslateSelectionRequested;
+        _panel.TranslateRegionRequested +=
+            OnTranslateRegionRequested;
 
         _coordinator = new WindowCoordinator(factories, _orb, _panel);
         _captureCoordinator = new CaptureCoordinator(
@@ -258,6 +269,7 @@ internal sealed class AppRuntime : IDisposable
             _input.StatusChanged -= OnInputStatusChanged;
             _foreground.Changed -= OnForegroundChanged;
             _translationRuntime.Dispose();
+            _translationRegionCapture.Dispose();
             _selectedTextReader.Dispose();
             if (_translationOverlay.IsLoaded)
                 _translationOverlay.Close();
@@ -434,6 +446,25 @@ internal sealed class AppRuntime : IDisposable
         }
     }
 
+    private void OnTranslateRegionRequested()
+    {
+        _panel?.HideAnimated();
+        _ = TranslateRegionAsync();
+    }
+
+    private async Task TranslateRegionAsync()
+    {
+        try
+        {
+            await _translationRuntime.TranslateRegionAsync(
+                _lifetime.Token);
+        }
+        catch (OperationCanceledException) when (
+            _lifetime.IsCancellationRequested)
+        {
+        }
+    }
+
     private ForegroundSnapshot SelectTranslationTarget()
     {
         if (_current.TopLevelHwnd != 0 &&
@@ -486,6 +517,9 @@ internal sealed class AppRuntime : IDisposable
             case HotkeyAction.TranslateSelection:
                 _ = TranslateSelectionAsync(
                     SelectTranslationTarget());
+                break;
+            case HotkeyAction.TranslateRegion:
+                _ = TranslateRegionAsync();
                 break;
         }
     }

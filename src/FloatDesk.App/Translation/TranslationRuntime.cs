@@ -18,6 +18,7 @@ public sealed class TranslationRuntime : IDisposable
     private readonly ITranslationCredentialStore _credentials;
     private readonly Func<ForegroundSnapshot> _currentForeground;
     private readonly Func<ForegroundSnapshot?> _lastExternal;
+    private readonly OcrTranslationController? _regionController;
     private readonly IClock _clock;
     private ConfigurationState? _configuration;
     private CancellationTokenSource? _interactiveCancellation;
@@ -34,7 +35,9 @@ public sealed class TranslationRuntime : IDisposable
         ITranslationCredentialStore credentials,
         Func<ForegroundSnapshot> currentForeground,
         Func<ForegroundSnapshot?> lastExternal,
-        IClock? clock = null)
+        IClock? clock = null,
+        IScreenOcrService? ocr = null,
+        ITranslationRegionCapture? regionCapture = null)
         : this(
             new TranslationRouteHost(overlay),
             reader,
@@ -42,7 +45,9 @@ public sealed class TranslationRuntime : IDisposable
             credentials,
             currentForeground,
             lastExternal,
-            clock)
+            clock,
+            ocr,
+            regionCapture)
     {
     }
 
@@ -53,7 +58,9 @@ public sealed class TranslationRuntime : IDisposable
         ITranslationCredentialStore credentials,
         Func<ForegroundSnapshot> currentForeground,
         Func<ForegroundSnapshot?> lastExternal,
-        IClock? clock = null)
+        IClock? clock = null,
+        IScreenOcrService? ocr = null,
+        ITranslationRegionCapture? regionCapture = null)
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _providers = providers ??
@@ -66,6 +73,14 @@ public sealed class TranslationRuntime : IDisposable
             throw new ArgumentNullException(nameof(lastExternal));
         _clock = clock ?? new SystemClock();
         _controller = new SelectedTextTranslationController(reader, host);
+        if (ocr is not null && regionCapture is not null)
+        {
+            _regionController = new OcrTranslationController(
+                ocr,
+                regionCapture,
+                host,
+                CurrentOcrLanguage);
+        }
         if (host is TranslationRouteHost routeHost)
             routeHost.SetTranslator(TranslateTextAsync);
     }
@@ -135,6 +150,55 @@ public sealed class TranslationRuntime : IDisposable
         {
             await _controller.RunAsync(target, operation.Token)
                 .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            lock (_sync)
+            {
+                if (ReferenceEquals(_interactiveCancellation, operation))
+                    _interactiveCancellation = null;
+            }
+            operation.Dispose();
+        }
+    }
+
+    public async Task TranslateRegionAsync(
+        CancellationToken cancellationToken)
+    {
+        if (IsPausedOrDisposed())
+            return;
+        var controller = _regionController;
+        if (controller is null)
+        {
+            ShowRouteError("区域 OCR 翻译尚未初始化。");
+            return;
+        }
+
+        var operation = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            _lifetime.Token);
+        CancellationTokenSource? previous;
+        lock (_sync)
+        {
+            if (_disposed || IsPausedLocked())
+            {
+                operation.Dispose();
+                return;
+            }
+
+            previous = _interactiveCancellation;
+            _interactiveCancellation = operation;
+        }
+        previous?.Cancel();
+
+        try
+        {
+            await controller.RunAsync(
+                TranslationRoutePoint.GetCursorPosition(),
+                operation.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -548,6 +612,12 @@ public sealed class TranslationRuntime : IDisposable
         }
 
         return fallbackTarget;
+    }
+
+    private string? CurrentOcrLanguage()
+    {
+        lock (_sync)
+            return _configuration?.Settings.OcrLanguage;
     }
 
     private void ShowRouteError(string message)

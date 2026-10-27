@@ -1,4 +1,5 @@
 using FloatDesk.App.Translation;
+using FloatDesk.App.Views;
 using FloatDesk.Core.Geometry;
 using FloatDesk.Core.Models;
 using FloatDesk.Core.Translation;
@@ -477,13 +478,48 @@ public sealed class TranslationRuntimeTests
         Assert.Equal(2, reader.ReadCount);
     }
 
+    [Fact]
+    public async Task RegionRouteRecognizesSelectionThenUsesSharedRuntime()
+    {
+        var frame = new CaptureFrame(
+            new PixelRect(0, 0, 4, 4),
+            16,
+            new byte[4 * 4 * 4]);
+        var ocr = new RecordingOcr();
+        var capture = new StubRegionCapture(
+            new CapturedTranslationRegion(
+                frame,
+                new PixelRect(5, 6, 40, 20)));
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("你好")),
+            ocr: ocr,
+            regionCapture: capture);
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(AppSettings.CreateDefault());
+
+        await runtime.TranslateRegionAsync(CancellationToken.None);
+
+        Assert.Equal(1, ocr.CallCount);
+        Assert.True(host.LastResult!.Success);
+        Assert.Equal("Recognized text", host.LastText);
+        Assert.Contains("正在选择区域", host.Statuses);
+        Assert.Contains("正在识别文字…", host.Statuses);
+        Assert.Contains("正在翻译…", host.Statuses);
+    }
+
     private static TranslationRuntime CreateRuntime(
         RecordingRouteHost host,
         MutableCredentialStore credentials,
         RecordingProviderFactory factory,
         ISelectedTextReader? reader = null,
         Func<ForegroundSnapshot>? currentForeground = null,
-        Func<ForegroundSnapshot?>? lastExternal = null) =>
+        Func<ForegroundSnapshot?>? lastExternal = null,
+        IScreenOcrService? ocr = null,
+        ITranslationRegionCapture? regionCapture = null) =>
         new(
             host,
             reader ?? new DelegateSelectedTextReader(
@@ -492,7 +528,10 @@ public sealed class TranslationRuntimeTests
             factory,
             credentials,
             currentForeground ?? (() => ExternalTarget),
-            lastExternal ?? (() => ExternalTarget));
+            lastExternal ?? (() => ExternalTarget),
+            clock: null,
+            ocr: ocr,
+            regionCapture: regionCapture);
 
     private static AppSettings CustomProviderSettings() =>
         AppSettings.CreateDefault() with
@@ -593,7 +632,7 @@ public sealed class TranslationRuntimeTests
     private sealed class RecordingRouteHost : ITranslationRouteHost
     {
         private int _nextOperationId;
-        private PixelPoint? _activeOperationId;
+        private TranslationOverlayOperationToken? _activeOperationToken;
 
         public Func<string, TranslationPurpose, CancellationToken,
             Task<TranslationResponse>> TranslateHandler { get; set; } =
@@ -605,12 +644,13 @@ public sealed class TranslationRuntimeTests
                     TranslationFailureKind.ProviderError));
 
         public List<string> Statuses { get; } = [];
+        public string? LastText { get; private set; }
         public TranslationResponse? LastResult { get; private set; }
         public string? LastError { get; private set; }
         public int TranslateCount { get; private set; }
         public int DismissCount { get; private set; }
         public int RejectedResultAttempts { get; private set; }
-        public bool IsOperationActive => _activeOperationId is not null;
+        public bool IsOperationActive => _activeOperationToken is not null;
 
         public void ApplySettings(AppSettings settings)
         {
@@ -620,10 +660,11 @@ public sealed class TranslationRuntimeTests
             PixelPoint anchor,
             string status)
         {
-            var operationId = new PixelPoint(++_nextOperationId, 0);
-            _activeOperationId = operationId;
+            var operationToken =
+                new TranslationOverlayOperationToken(++_nextOperationId);
+            _activeOperationToken = operationToken;
             Statuses.Add(status);
-            return new TranslationRouteHandle(default, operationId);
+            return new TranslationRouteHandle(operationToken, anchor);
         }
 
         public void ShowStatus(
@@ -662,20 +703,21 @@ public sealed class TranslationRuntimeTests
             CancellationToken cancellationToken)
         {
             TranslateCount++;
+            LastText = text;
             return TranslateHandler(text, purpose, cancellationToken);
         }
 
         public void DismissActiveOperation()
         {
             DismissCount++;
-            _activeOperationId = null;
+            _activeOperationToken = null;
             LastResult = null;
             LastError = null;
         }
 
         private bool IsCurrent(TranslationRouteHandle operation) =>
-            _activeOperationId is { } active &&
-            operation.Anchor == active;
+            _activeOperationToken is { } active &&
+            operation.Operation.Equals(active);
     }
 
     private sealed class MutableCredentialStore : ITranslationCredentialStore
@@ -726,6 +768,31 @@ public sealed class TranslationRuntimeTests
             CreateCount++;
             return provider;
         }
+    }
+
+    private sealed class RecordingOcr : IScreenOcrService
+    {
+        public IReadOnlyList<OcrLanguageOption> AvailableLanguages { get; } =
+            [new("en-US", "English")];
+        public int CallCount { get; private set; }
+
+        public Task<ScreenOcrResult> RecognizeAsync(
+            CaptureFrame frame,
+            string? languageTag,
+            CancellationToken cancellationToken)
+        {
+            CallCount++;
+            return Task.FromResult(
+                new ScreenOcrResult("Recognized text", null, null));
+        }
+    }
+
+    private sealed class StubRegionCapture(
+        CapturedTranslationRegion? result) : ITranslationRegionCapture
+    {
+        public Task<CapturedTranslationRegion?> CaptureSelectedAsync(
+            CancellationToken cancellationToken) =>
+            Task.FromResult(result);
     }
 
     private sealed class StaticTranslationProvider(
