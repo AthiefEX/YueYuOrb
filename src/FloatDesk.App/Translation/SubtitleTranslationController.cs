@@ -579,6 +579,11 @@ public sealed class SubtitleTranslationController : IDisposable
                         iteration.Dispose();
                         break;
                     }
+                    if (_paused)
+                    {
+                        iteration.Dispose();
+                        continue;
+                    }
                     _captureIterationCancellation = iteration;
                     _captureIterationCompletion = iterationCompletion;
                 }

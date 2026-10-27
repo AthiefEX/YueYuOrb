@@ -26,6 +26,7 @@ public sealed class TranslationRuntime : IDisposable
     private readonly Action<string, IReadOnlyDictionary<string, object?>?>?
         _diagnostics;
     private readonly SemaphoreSlim _subtitleGate = new(1, 1);
+    private readonly HashSet<TranslationCenter> _retiredCenters = [];
     private Task _subtitleStopTask = Task.CompletedTask;
     private ConfigurationState? _configuration;
     private CancellationTokenSource? _interactiveCancellation;
@@ -276,9 +277,18 @@ public sealed class TranslationRuntime : IDisposable
             .ConfigureAwait(false);
         try
         {
+            Task pendingStop;
+            lock (_sync)
+                pendingStop = _subtitleStopTask;
+            if (!pendingStop.IsCompleted)
+            {
+                await pendingStop.WaitAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             if (controller.IsRunning)
             {
-                await controller.StopAsync().ConfigureAwait(false);
+                await StopSubtitlesAsync().ConfigureAwait(false);
                 return;
             }
 
@@ -456,11 +466,35 @@ public sealed class TranslationRuntime : IDisposable
 
     private async Task WaitForProviderDrainAsync()
     {
-        TranslationCenter? center;
-        lock (_sync)
-            center = _configuration?.Center;
-        if (center is not null)
-            await center.WaitForIdleAsync().ConfigureAwait(false);
+        while (true)
+        {
+            List<(TranslationCenter Center, Task Drain)> centers = [];
+            lock (_sync)
+            {
+                centers.AddRange(_retiredCenters.Select(center =>
+                    (center, Drain: center.WaitForIdleAsync())));
+                if (_configuration?.Center is { } current)
+                    centers.Add((current, current.WaitForIdleAsync()));
+            }
+
+            if (centers.Count == 0)
+                return;
+            await Task.WhenAll(centers.Select(center => center.Drain))
+                .ConfigureAwait(false);
+
+            var remainingRetired = false;
+            lock (_sync)
+            {
+                foreach (var (center, drain) in centers)
+                {
+                    if (drain.IsCompleted)
+                        _retiredCenters.Remove(center);
+                }
+                remainingRetired = _retiredCenters.Count > 0;
+            }
+            if (!remainingRetired)
+                return;
+        }
     }
 
     private bool TryBeginCapturePause(
@@ -803,6 +837,8 @@ public sealed class TranslationRuntime : IDisposable
         if (previous is not null)
         {
             previous.Cancellation.Cancel();
+            if (previous.Center is { } previousCenter)
+                _retiredCenters.Add(previousCenter);
             previous.Center?.Dispose();
             ObserveConfigurationDisposal(previous);
         }

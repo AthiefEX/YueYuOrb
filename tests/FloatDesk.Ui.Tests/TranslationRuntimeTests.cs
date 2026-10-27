@@ -963,6 +963,121 @@ public sealed class TranslationRuntimeTests
     }
 
     [Fact(Timeout = 10_000)]
+    public async Task ProviderReconfigureWaitsForRetiredProviderCleanup()
+    {
+        var region = new TranslationCaptureRegion(
+            "monitor-1",
+            0.1,
+            0.7,
+            0.8,
+            0.2);
+        var provider = new ControlledTranslationProvider("字幕翻译");
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(provider),
+            ocr: new RecordingOcr(),
+            regionCapture: new SubtitleCaptureStub(region));
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(SubtitleSettings(region));
+
+        try
+        {
+            await runtime.ToggleSubtitlesAsync(CancellationToken.None);
+            await provider.FirstCallEntered.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+
+            runtime.ApplySettings(SubtitleSettings(region) with
+            {
+                Translation = SubtitleSettings(region).Translation with
+                {
+                    Provider = TranslationProviderKind.LibreTranslate,
+                    Endpoint = "https://example.test/translate"
+                }
+            });
+            await provider.FirstCallCancelled.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+
+            var stop = runtime.StopSubtitlesAsync();
+            await Task.Delay(100);
+            Assert.False(stop.IsCompleted);
+            Assert.False(provider.FirstCallCompleted.Task.IsCompleted);
+
+            provider.ReleaseFirstCallCancellation();
+            await provider.FirstCallCompleted.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+            await stop.WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            provider.ReleaseFirstCallCancellation();
+            await runtime.StopSubtitlesAsync();
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task ToggleSubtitlesWaitsForPendingProviderCleanup()
+    {
+        var region = new TranslationCaptureRegion(
+            "monitor-1",
+            0.1,
+            0.7,
+            0.8,
+            0.2);
+        var provider = new ControlledTranslationProvider("字幕翻译");
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(provider),
+            ocr: new RecordingOcr(),
+            regionCapture: new SubtitleCaptureStub(region));
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(SubtitleSettings(region));
+
+        try
+        {
+            await runtime.ToggleSubtitlesAsync(CancellationToken.None);
+            await provider.FirstCallEntered.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+
+            runtime.ApplySettings(SubtitleSettings(region) with
+            {
+                Translation = SubtitleSettings(region).Translation with
+                {
+                    Provider = TranslationProviderKind.LibreTranslate,
+                    Endpoint = "https://example.test/translate"
+                }
+            });
+            await provider.FirstCallCancelled.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+
+            var toggle = runtime.ToggleSubtitlesAsync(
+                CancellationToken.None);
+            await Task.Delay(150);
+            Assert.False(toggle.IsCompleted);
+            Assert.False(provider.SecondCallEntered.Task.IsCompleted);
+
+            provider.ReleaseFirstCallCancellation();
+            await provider.FirstCallCompleted.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+            await toggle.WaitAsync(TimeSpan.FromSeconds(2));
+            await provider.SecondCallEntered.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+            Assert.True(runtime.IsSubtitleRunning);
+
+            await runtime.StopSubtitlesAsync();
+            Assert.False(runtime.IsSubtitleRunning);
+        }
+        finally
+        {
+            provider.ReleaseFirstCallCancellation();
+            await runtime.StopSubtitlesAsync();
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
     public async Task SubtitlePipelinePausesForCaptureAndResumesOnlyAfterLastLease()
     {
         var region = new TranslationCaptureRegion(
