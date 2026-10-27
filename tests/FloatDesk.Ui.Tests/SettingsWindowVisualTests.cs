@@ -461,6 +461,48 @@ public sealed class SettingsWindowVisualTests
             "_translationRuntime.IsSubtitlePaused",
             compact,
             StringComparison.Ordinal);
+
+        var toggleStart = compact.IndexOf(
+            "private async Task ToggleSubtitlesAsync()",
+            StringComparison.Ordinal);
+        var toggleEnd = compact.IndexOf(
+            "private void OnToggleSubtitlePauseRequested()",
+            StringComparison.Ordinal);
+        var toggleMethod = Between(toggleStart, toggleEnd);
+        Assert.Contains(
+            "UpdateSubtitleTrayState()",
+            toggleMethod,
+            StringComparison.Ordinal);
+
+        var reselectStart = compact.IndexOf(
+            "private async Task ReselectSubtitleRegionAsync()",
+            StringComparison.Ordinal);
+        var reselectEnd = compact.IndexOf(
+            "private void OnStopSubtitlesRequested()",
+            StringComparison.Ordinal);
+        var reselectMethod = Between(reselectStart, reselectEnd);
+        Assert.Contains(
+            "UpdateSubtitleTrayState()",
+            reselectMethod,
+            StringComparison.Ordinal);
+
+        var stopStart = compact.IndexOf(
+            "private async Task StopSubtitlesAsync()",
+            StringComparison.Ordinal);
+        var stopEnd = compact.IndexOf(
+            "private void UpdateSubtitleTrayState()",
+            StringComparison.Ordinal);
+        var stopMethod = Between(stopStart, stopEnd);
+        Assert.Contains(
+            "UpdateSubtitleTrayState()",
+            stopMethod,
+            StringComparison.Ordinal);
+
+        string Between(int start, int end)
+        {
+            Assert.True(start >= 0 && end > start);
+            return compact[start..end];
+        }
     }
 
     private static string FindRepoFile(string relativePath)

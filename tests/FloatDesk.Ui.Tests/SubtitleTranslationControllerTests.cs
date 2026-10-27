@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using FloatDesk.App.Capture;
 using FloatDesk.App.Coordination;
 using FloatDesk.App.Translation;
@@ -709,6 +710,10 @@ public sealed class SubtitleTranslationControllerTests
             host,
             new ImmediateClock(),
             warnings.Add);
+        var stateChanges = new ConcurrentQueue<(bool Running, bool Paused)>();
+        controller.StateChanged += () =>
+            stateChanges.Enqueue(
+                (controller.IsRunning, controller.IsPaused));
 
         try
         {
@@ -721,6 +726,7 @@ public sealed class SubtitleTranslationControllerTests
             Assert.Equal(["第一句"], host.SubtitleTexts);
             Assert.Single(host.SubtitleNotices);
             Assert.Single(warnings);
+            Assert.Contains((true, true), stateChanges);
         }
         finally
         {

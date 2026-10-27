@@ -834,6 +834,7 @@ public sealed class TranslationRuntimeTests
             Assert.True(host.SubtitleControlsPaused);
             Assert.True(host.IsOperationActive);
             Assert.Contains((true, true), stateChanges);
+            stateChanges.Clear();
 
             runtime.ResumeAfterCapture();
 
