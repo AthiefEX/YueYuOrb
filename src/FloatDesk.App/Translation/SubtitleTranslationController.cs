@@ -18,6 +18,9 @@ public sealed class SubtitleTranslationController : IDisposable
     private readonly ITranslationRouteHost _host;
     private readonly IClock _clock;
     private readonly Action<string>? _warning;
+    private readonly Action<
+        string,
+        IReadOnlyDictionary<string, object?>?>? _diagnostics;
     private CancellationTokenSource? _sessionCancellation;
     private CancellationTokenSource? _captureIterationCancellation;
     private CancellationTokenSource? _ocrIterationCancellation;
@@ -52,7 +55,9 @@ public sealed class SubtitleTranslationController : IDisposable
         ITranslationSubtitleCapture capture,
         ITranslationRouteHost host,
         IClock clock,
-        Action<string>? warning = null)
+        Action<string>? warning = null,
+        Action<string, IReadOnlyDictionary<string, object?>?>?
+            diagnostics = null)
     {
         _ocr = ocr ?? throw new ArgumentNullException(nameof(ocr));
         _capture = capture ??
@@ -60,6 +65,7 @@ public sealed class SubtitleTranslationController : IDisposable
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
         _warning = warning;
+        _diagnostics = diagnostics;
     }
 
     public bool IsRunning
@@ -602,6 +608,13 @@ public sealed class SubtitleTranslationController : IDisposable
                     }
                     if (publishedCandidate)
                     {
+                        EmitDiagnostic(
+                            "translation.subtitle.frame_changed",
+                            new Dictionary<string, object?>
+                            {
+                                ["generationSupersessionCount"] =
+                                    Math.Max(0, publishedSequence - 1)
+                            });
                         if (publishedSequence == 1)
                         {
                             Task? firstObserved;
@@ -1133,10 +1146,42 @@ public sealed class SubtitleTranslationController : IDisposable
             return;
         }
 
+        var displayed = false;
         lock (_sync)
         {
             if (IsCurrentTranslationLocked(generation, sequence))
+            {
                 _lastRenderedText = text;
+                displayed = true;
+            }
+        }
+        if (displayed)
+        {
+            EmitDiagnostic(
+                "translation.subtitle.displayed",
+                new Dictionary<string, object?>
+                {
+                    ["characterBucket"] =
+                        TranslationDiagnostics.CharacterBucket(
+                            text.Length)
+                });
+        }
+    }
+
+    private void EmitDiagnostic(
+        string eventName,
+        IReadOnlyDictionary<string, object?> properties)
+    {
+        var diagnostics = _diagnostics;
+        if (diagnostics is null)
+            return;
+        try
+        {
+            diagnostics(eventName, properties);
+        }
+        catch
+        {
+            // Diagnostics must never change subtitle behavior.
         }
     }
 

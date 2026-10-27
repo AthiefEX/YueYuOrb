@@ -22,7 +22,7 @@ internal static class TranslationDiagnostics
             ["retryCount"] = Math.Max(0, retryCount)
         };
 
-    private static string CharacterBucket(int totalCharacters) =>
+    internal static string CharacterBucket(int totalCharacters) =>
         totalCharacters switch
         {
             < 100 => "0-99",

@@ -112,7 +112,8 @@ public sealed class TranslationRuntime : IDisposable
                 regionCapture,
                 host,
                 _clock,
-                subtitleWarning);
+                subtitleWarning,
+                _diagnostics);
             _subtitleController.StateChanged += OnSubtitleStateChanged;
         }
         if (host is TranslationRouteHost routeHost)

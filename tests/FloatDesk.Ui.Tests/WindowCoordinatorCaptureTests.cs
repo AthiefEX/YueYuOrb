@@ -91,6 +91,50 @@ public sealed class WindowCoordinatorCaptureTests
     }
 
     [Fact]
+    public void SubtitleOverlayRestoresClickThroughAfterCapture()
+    {
+        RunScenario(async () =>
+        {
+            var orb = new Window();
+            var quickPanel = new Window();
+            var subtitle = new TranslationOverlayWindow();
+            try
+            {
+                orb.Show();
+                quickPanel.Show();
+                var operation = subtitle.BeginOperation(subtitle: true);
+                subtitle.SetSubtitleControls(
+                    operation,
+                    active: true,
+                    paused: false,
+                    canReselect: true);
+                subtitle.ShowSubtitleText(operation, "字幕");
+                var coordinator = new WindowCoordinator(
+                    [],
+                    orb,
+                    quickPanel);
+                coordinator.RegisterCaptureHiddenWindow(subtitle);
+
+                var visibility = await coordinator.HideForCaptureAsync(
+                    CancellationToken.None);
+                Assert.False(subtitle.IsVisible);
+
+                await visibility.DisposeAsync();
+
+                Assert.True(subtitle.IsVisible);
+                Assert.True(subtitle.IsClickThrough);
+                coordinator.UnregisterCaptureHiddenWindow(subtitle);
+            }
+            finally
+            {
+                subtitle.Close();
+                quickPanel.Close();
+                orb.Close();
+            }
+        });
+    }
+
+    [Fact]
     public void CancellationDuringCaptureHidingRestoresWindows()
     {
         RunScenario(async () =>

@@ -849,7 +849,7 @@ public sealed class TranslationRuntimeTests
     }
 
     [Fact(Timeout = 10_000)]
-    public async Task ProviderChangeStopsSubtitlePipelineAndDismissesCurrentToken()
+    public async Task ProviderReconfigureStopsAllSubtitleLanesAndDismissesCurrentToken()
     {
         var region = new TranslationCaptureRegion(
             "monitor-1",
@@ -859,12 +859,13 @@ public sealed class TranslationRuntimeTests
             0.2);
         var provider = new BlockingTranslationProvider();
         var capture = new SubtitleCaptureStub(region);
+        var ocr = new RecordingOcr();
         var host = new RecordingRouteHost();
         using var runtime = CreateRuntime(
             host,
             new MutableCredentialStore(),
             new RecordingProviderFactory(provider),
-            ocr: new RecordingOcr(),
+            ocr: ocr,
             regionCapture: capture);
         host.TranslateHandler = runtime.TranslateTextAsync;
         runtime.ApplySettings(SubtitleSettings(region));
@@ -888,6 +889,70 @@ public sealed class TranslationRuntimeTests
                       !host.SubtitleControlsActive,
                 TimeSpan.FromSeconds(2));
             Assert.Empty(host.SubtitleTexts);
+
+            await Task.Delay(350);
+            var captureCount = capture.RegionCaptureCount;
+            var ocrCount = ocr.CallCount;
+            await Task.Delay(350);
+            Assert.Equal(captureCount, capture.RegionCaptureCount);
+            Assert.Equal(ocrCount, ocr.CallCount);
+        }
+        finally
+        {
+            await runtime.StopSubtitlesAsync();
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task SubtitlePipelinePausesForCaptureAndResumesOnlyAfterLastLease()
+    {
+        var region = new TranslationCaptureRegion(
+            "monitor-1",
+            0.1,
+            0.7,
+            0.8,
+            0.2);
+        var capture = new SubtitleCaptureStub(region);
+        var ocr = new RecordingOcr();
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("字幕翻译")),
+            ocr: ocr,
+            regionCapture: capture);
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(SubtitleSettings(region));
+
+        try
+        {
+            await runtime.ToggleSubtitlesAsync(CancellationToken.None);
+            await host.TranslationAttempted.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+
+            runtime.PauseForCapture();
+            runtime.PauseForCapture();
+            await WaitUntilAsync(
+                () => host.SubtitleControlsPaused,
+                TimeSpan.FromSeconds(2));
+            await Task.Delay(100);
+            var pausedCaptureCount = capture.RegionCaptureCount;
+
+            runtime.ResumeAfterCapture();
+            await Task.Delay(350);
+            Assert.True(runtime.IsSubtitlePaused);
+            Assert.Equal(
+                pausedCaptureCount,
+                capture.RegionCaptureCount);
+
+            runtime.ResumeAfterCapture();
+            await WaitUntilAsync(
+                () => !runtime.IsSubtitlePaused,
+                TimeSpan.FromSeconds(2));
+            await WaitUntilAsync(
+                () => capture.RegionCaptureCount > pausedCaptureCount,
+                TimeSpan.FromSeconds(2));
         }
         finally
         {
