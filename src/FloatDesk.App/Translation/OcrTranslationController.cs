@@ -27,7 +27,7 @@ public sealed class OcrTranslationController
         PixelPoint fallbackAnchor,
         CancellationToken cancellationToken)
     {
-        var operation = _host.ShowStatus(
+        var operation = _host.ShowInteractiveStatus(
             fallbackAnchor,
             "正在选择区域");
         try
@@ -37,7 +37,7 @@ public sealed class OcrTranslationController
                 .ConfigureAwait(false);
             if (captured is null)
             {
-                _host.DismissActiveOperation();
+                _host.DismissOperation(operation);
                 return;
             }
 
@@ -61,7 +61,7 @@ public sealed class OcrTranslationController
             }
             catch (OperationCanceledException)
             {
-                _host.DismissActiveOperation();
+                _host.DismissOperation(operation);
                 return;
             }
             catch
@@ -97,7 +97,7 @@ public sealed class OcrTranslationController
                 cancellationToken).ConfigureAwait(false);
             if (response.FailureKind == TranslationFailureKind.Cancelled)
             {
-                _host.DismissActiveOperation();
+                _host.DismissOperation(operation);
                 return;
             }
 
@@ -105,7 +105,7 @@ public sealed class OcrTranslationController
         }
         catch (OperationCanceledException)
         {
-            _host.DismissActiveOperation();
+            _host.DismissOperation(operation);
         }
         catch
         {

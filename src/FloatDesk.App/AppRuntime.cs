@@ -139,8 +139,11 @@ internal sealed class AppRuntime : IDisposable
             OnReselectSubtitleRegionRequested;
         _translationOverlay.StopSubtitleRequested +=
             OnStopSubtitlesRequested;
+        _translationOverlay.InteractiveOperationDismissed +=
+            _translationRuntime.OnInteractiveOperationDismissed;
 
         _coordinator = new WindowCoordinator(factories, _orb, _panel);
+        _coordinator.RegisterCaptureHiddenWindow(_translationOverlay);
         _captureCoordinator = new CaptureCoordinator(
             _coordinator,
             _input,
@@ -283,9 +286,13 @@ internal sealed class AppRuntime : IDisposable
                 OnReselectSubtitleRegionRequested;
             _translationOverlay.StopSubtitleRequested -=
                 OnStopSubtitlesRequested;
+            _translationOverlay.InteractiveOperationDismissed -=
+                _translationRuntime.OnInteractiveOperationDismissed;
             _translationRuntime.Dispose();
             _translationRegionCapture.Dispose();
             _selectedTextReader.Dispose();
+            _coordinator?.UnregisterCaptureHiddenWindow(
+                _translationOverlay);
             if (_translationOverlay.IsLoaded)
                 _translationOverlay.Close();
 
@@ -986,6 +993,7 @@ internal sealed class AppRuntime : IDisposable
         {
             _orb.ApplySettings(_settings.Current);
             ApplyOrbPlacement(_settings.Current);
+            _translationRuntime.HandleDisplayTopologyChanged();
             ApplyOverlay(_foreground.Current);
         });
     }

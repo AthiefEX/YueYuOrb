@@ -8,6 +8,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using FloatDesk.App.Translation;
 using FloatDesk.Core.Geometry;
 using FloatDesk.Core.Models;
 using FloatDesk.Core.Translation;
@@ -55,6 +56,9 @@ public partial class TranslationOverlayWindow : Window
     private bool _isClosed;
     private long _activeOperationGeneration;
     private Point _dragPointerOffset;
+    private PixelRect? _subtitleCaptureRegion;
+    private PixelRect? _subtitleCaptureWorkArea;
+    private string? _subtitleRegionMonitorId;
 
     public TranslationOverlayWindow()
     {
@@ -76,10 +80,28 @@ public partial class TranslationOverlayWindow : Window
     public event Action? ReselectRegionRequested;
     public event Action? StopSubtitleRequested;
     public event Action? CopyRequested;
+    public event Action? InteractiveOperationDismissed;
 
     public bool IsSubtitleMode => _isSubtitleMode;
     public bool IsDismissed => _dismissed;
     public bool IsCaptureExcluded { get; private set; }
+    internal bool CanRestoreAfterCapture =>
+        !_isClosed &&
+        !_dismissed &&
+        _activeOperationGeneration != 0;
+    internal bool HasActiveOperation
+    {
+        get
+        {
+            var active = false;
+            RunOnUiThread(() =>
+                active =
+                    !_isClosed &&
+                    !_dismissed &&
+                    _activeOperationGeneration != 0);
+            return active;
+        }
+    }
     public string TranslatedText => TranslatedTextBlock.Text;
     public string StatusText => StatusTextBlock.Text;
 
@@ -115,6 +137,8 @@ public partial class TranslationOverlayWindow : Window
         RunOnUiThread(() =>
         {
             _settings = settings;
+            _subtitleRegionMonitorId =
+                settings.Translation.SubtitleRegion?.MonitorId;
             Topmost = settings.Overlay.AlwaysOnTop;
             Opacity = Math.Clamp(
                 settings.Translation.SubtitleOverlayOpacity,
@@ -272,6 +296,89 @@ public partial class TranslationOverlayWindow : Window
                 BeginContentTransition(initialReveal: true);
         });
 
+    internal TranslationSubtitlePlacementStatus PrepareSubtitleCaptureRegion(
+        TranslationCaptureRegion region)
+    {
+        ArgumentNullException.ThrowIfNull(region);
+        var status = TranslationSubtitlePlacementStatus.NoSafePlacement;
+        RunOnUiThread(() =>
+            status = PrepareSubtitleCaptureRegionCore(region));
+        return status;
+    }
+
+    internal bool IsOperationActive(
+        TranslationOverlayOperationToken operation)
+    {
+        var active = false;
+        RunOnUiThread(() => active = IsCurrentOperation(operation));
+        return active;
+    }
+
+    internal void DismissCurrentOperation() =>
+        RunOnUiThread(Dismiss);
+
+    internal void DismissOperation(
+        TranslationOverlayOperationToken operation) =>
+        RunOnUiThread(() =>
+        {
+            if (IsCurrentOperation(operation))
+                Dismiss();
+        });
+
+    private TranslationSubtitlePlacementStatus PrepareSubtitleCaptureRegionCore(
+        TranslationCaptureRegion region)
+    {
+        _subtitleRegionMonitorId = region.MonitorId;
+        DisplayMonitor? monitor;
+        try
+        {
+            monitor = DisplayTopology.GetMonitors().FirstOrDefault(item =>
+                string.Equals(
+                    item.DeviceName,
+                    region.MonitorId,
+                    StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or
+            ExternalException)
+        {
+            monitor = null;
+        }
+
+        if (monitor is null)
+        {
+            _subtitleCaptureRegion = null;
+            _subtitleCaptureWorkArea = null;
+            return TranslationSubtitlePlacementStatus.MonitorMissing;
+        }
+
+        _subtitleCaptureRegion = ToPixelBounds(monitor, region);
+        _subtitleCaptureWorkArea = monitor.WorkArea;
+        if (!_isSubtitleMode || !IsVisible || _isClosed)
+            return TranslationSubtitlePlacementStatus.Ready;
+
+        UpdateLayout();
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == 0 ||
+            !TryGetWindowBounds(handle, out var bounds))
+        {
+            return IsCaptureExcluded
+                ? TranslationSubtitlePlacementStatus.Ready
+                : TranslationSubtitlePlacementStatus.NoSafePlacement;
+        }
+
+        if (!TryResolveSubtitleTarget(
+                bounds,
+                monitor.WorkArea,
+                out var target))
+        {
+            return TranslationSubtitlePlacementStatus.NoSafePlacement;
+        }
+
+        MoveWindow(handle, target);
+        return TranslationSubtitlePlacementStatus.Ready;
+    }
+
     private void ResetOperationPresentation()
     {
         if (_isDragging)
@@ -283,6 +390,7 @@ public partial class TranslationOverlayWindow : Window
         _isSubtitleMode = false;
         _subtitlePaused = false;
         _canReselect = false;
+        ClearSubtitleCaptureSafety();
         SubtitleControlBar.Visibility = Visibility.Collapsed;
         PauseResumeButton.Content = "暂停";
         AutomationProperties.SetName(
@@ -429,7 +537,7 @@ public partial class TranslationOverlayWindow : Window
                 return;
 
             var target = subtitleMode
-                ? GetSubtitlePosition(bounds, monitor.WorkArea)
+                ? ResolveSubtitleTarget(bounds, monitor.WorkArea)
                 : GetAnchorPosition(bounds, monitor.WorkArea, anchor);
             MoveWindow(handle, target);
 
@@ -438,7 +546,7 @@ public partial class TranslationOverlayWindow : Window
                  moved.Height != bounds.Height))
             {
                 target = subtitleMode
-                    ? GetSubtitlePosition(moved, monitor.WorkArea)
+                    ? ResolveSubtitleTarget(moved, monitor.WorkArea)
                     : GetAnchorPosition(
                         moved,
                         monitor.WorkArea,
@@ -500,20 +608,60 @@ public partial class TranslationOverlayWindow : Window
             workArea);
     }
 
+    private PixelPoint ResolveSubtitleTarget(
+        PixelRect window,
+        PixelRect workArea) =>
+        TryResolveSubtitleTarget(window, workArea, out var target)
+            ? target
+            : GetSubtitlePosition(window, workArea);
+
+    private bool TryResolveSubtitleTarget(
+        PixelRect window,
+        PixelRect workArea,
+        out PixelPoint target)
+    {
+        var preferred = GetSubtitlePosition(window, workArea);
+        if (IsCaptureExcluded ||
+            _subtitleCaptureRegion is not { } captureRegion ||
+            _subtitleCaptureWorkArea is null)
+        {
+            target = preferred;
+            return true;
+        }
+
+        var placement = TranslationOverlayPlacementPolicy.PlaceOutside(
+            captureRegion,
+            window.Size,
+            workArea,
+            preferred);
+        if (placement is null)
+        {
+            target = preferred;
+            return false;
+        }
+
+        target = placement.Value.Location;
+        return true;
+    }
+
     private DisplayMonitor? ResolveSubtitleMonitor()
     {
         try
         {
             var monitors = DisplayTopology.GetMonitors();
-            var monitorId =
-                _settings.Translation.SubtitleOverlayPlacement?.MonitorId;
-            return monitors.FirstOrDefault(item =>
-                       !string.IsNullOrWhiteSpace(monitorId) &&
-                       string.Equals(
-                           item.DeviceName,
-                           monitorId,
-                           StringComparison.OrdinalIgnoreCase))
-                   ?? DisplayTopology.SelectPrimaryMonitor(monitors);
+            var monitorId = !string.IsNullOrWhiteSpace(
+                _subtitleRegionMonitorId)
+                ? _subtitleRegionMonitorId
+                : _settings.Translation.SubtitleOverlayPlacement?.MonitorId;
+            if (!string.IsNullOrWhiteSpace(monitorId))
+            {
+                return monitors.FirstOrDefault(item =>
+                    string.Equals(
+                        item.DeviceName,
+                        monitorId,
+                        StringComparison.OrdinalIgnoreCase));
+            }
+            return DisplayTopology.SelectPrimaryMonitor(monitors);
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or
@@ -566,6 +714,58 @@ public partial class TranslationOverlayWindow : Window
             Math.Clamp(desired.X, minimumLeft, maximumLeft),
             Math.Clamp(desired.Y, minimumTop, maximumTop));
     }
+
+    private static PixelRect ToPixelBounds(
+        DisplayMonitor monitor,
+        TranslationCaptureRegion region)
+    {
+        var monitorBounds = monitor.Bounds;
+        var left = ClampCoordinate(
+            monitorBounds.Left +
+            (int)Math.Round(region.RelativeX * monitorBounds.Width),
+            monitorBounds.Left,
+            monitorBounds.Right - 1);
+        var top = ClampCoordinate(
+            monitorBounds.Top +
+            (int)Math.Round(region.RelativeY * monitorBounds.Height),
+            monitorBounds.Top,
+            monitorBounds.Bottom - 1);
+        var right = ClampCoordinate(
+            left +
+            Math.Max(
+                1,
+                (int)Math.Round(
+                    region.RelativeWidth * monitorBounds.Width)),
+            left + 1,
+            monitorBounds.Right);
+        var bottom = ClampCoordinate(
+            top +
+            Math.Max(
+                1,
+                (int)Math.Round(
+                    region.RelativeHeight * monitorBounds.Height)),
+            top + 1,
+            monitorBounds.Bottom);
+        return new PixelRect(
+            left,
+            top,
+            right - left,
+            bottom - top);
+    }
+
+    private static int ClampCoordinate(
+        int value,
+        int minimum,
+        int maximum) =>
+        maximum < minimum
+            ? minimum
+            : Math.Clamp(value, minimum, maximum);
+
+    private static bool Intersects(PixelRect left, PixelRect right) =>
+        left.Left < right.Right &&
+        left.Right > right.Left &&
+        left.Top < right.Bottom &&
+        left.Bottom > right.Top;
 
     private void MoveWindow(nint handle, PixelPoint point)
     {
@@ -705,14 +905,18 @@ public partial class TranslationOverlayWindow : Window
 
     private void Dismiss()
     {
+        var wasSubtitleMode = _isSubtitleMode;
         _dismissed = true;
         InvalidateActiveOperation();
         _isSubtitleMode = false;
         _subtitlePaused = false;
         _canReselect = false;
+        ClearSubtitleCaptureSafety();
         _isDragging = false;
         SubtitleControlBar.Visibility = Visibility.Collapsed;
         HideAndClear();
+        if (!wasSubtitleMode)
+            InteractiveOperationDismissed?.Invoke();
     }
 
     private void OnPauseResumeClick(object sender, RoutedEventArgs e)
@@ -785,6 +989,19 @@ public partial class TranslationOverlayWindow : Window
                 (int)Math.Round(pointer.Y - _dragPointerOffset.Y)),
             current.Size,
             monitor.WorkArea);
+        if (!IsCaptureExcluded &&
+            _subtitleCaptureRegion is { } captureRegion &&
+            Intersects(
+                new PixelRect(
+                    target.X,
+                    target.Y,
+                    current.Width,
+                    current.Height),
+                captureRegion))
+        {
+            e.Handled = true;
+            return;
+        }
         MoveWindow(handle, target);
         e.Handled = true;
     }
@@ -812,6 +1029,8 @@ public partial class TranslationOverlayWindow : Window
             GWL_EXSTYLE,
             new nint(style | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE));
         IsCaptureExcluded = WindowCaptureExclusion.TryExclude(handle);
+        if (_isSubtitleMode && IsVisible)
+            PositionWindow(subtitleMode: true, default);
     }
 
     private void OnClosing(object? sender, CancelEventArgs e)
@@ -821,6 +1040,7 @@ public partial class TranslationOverlayWindow : Window
         InvalidateActiveOperation();
         _isSubtitleMode = false;
         _isDragging = false;
+        ClearSubtitleCaptureSafety();
         ClearTranslationContent();
         StatusTextBlock.Text = "";
     }
@@ -843,6 +1063,13 @@ public partial class TranslationOverlayWindow : Window
     private void InvalidateActiveOperation() =>
         _activeOperationGeneration =
             NextGeneration(_activeOperationGeneration);
+
+    private void ClearSubtitleCaptureSafety()
+    {
+        _subtitleCaptureRegion = null;
+        _subtitleCaptureWorkArea = null;
+        _subtitleRegionMonitorId = null;
+    }
 
     private static long NextGeneration(long generation)
     {

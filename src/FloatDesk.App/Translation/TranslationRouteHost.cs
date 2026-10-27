@@ -10,6 +10,13 @@ public readonly record struct TranslationRouteHandle(
     TranslationOverlayOperationToken Operation,
     PixelPoint Anchor);
 
+public enum TranslationSubtitlePlacementStatus
+{
+    Ready,
+    MonitorMissing,
+    NoSafePlacement
+}
+
 public interface ITranslationRouteHost
 {
     void ApplySettings(AppSettings settings);
@@ -22,6 +29,11 @@ public interface ITranslationRouteHost
     TranslationRouteHandle ShowStatus(
         PixelPoint anchor,
         string status);
+
+    TranslationRouteHandle ShowInteractiveStatus(
+        PixelPoint anchor,
+        string status) =>
+        ShowStatus(anchor, status);
 
     void ShowStatus(
         TranslationRouteHandle operation,
@@ -45,12 +57,23 @@ public interface ITranslationRouteHost
             DismissActiveOperation();
     }
 
+    TranslationSubtitlePlacementStatus PrepareSubtitleCaptureRegion(
+        TranslationCaptureRegion region) =>
+        TranslationSubtitlePlacementStatus.Ready;
+
+    bool IsOperationActive(TranslationRouteHandle operation) => true;
+
+    bool HasActiveOperation() => false;
+
     Task<TranslationResponse> TranslateAsync(
         string text,
         TranslationPurpose purpose,
         CancellationToken cancellationToken);
 
     void DismissActiveOperation();
+
+    void DismissOperation(TranslationRouteHandle operation) =>
+        DismissActiveOperation();
 }
 
 public sealed class TranslationRouteHost : ITranslationRouteHost
@@ -58,6 +81,7 @@ public sealed class TranslationRouteHost : ITranslationRouteHost
     private readonly TranslationOverlayWindow _overlay;
     private Func<string, TranslationPurpose, CancellationToken,
         Task<TranslationResponse>>? _translator;
+    private Func<bool>? _interactivePresentationAllowed;
 
     public TranslationRouteHost(TranslationOverlayWindow overlay)
     {
@@ -71,6 +95,13 @@ public sealed class TranslationRouteHost : ITranslationRouteHost
     {
         _translator = translator ??
             throw new ArgumentNullException(nameof(translator));
+    }
+
+    internal void SetInteractivePresentationAllowed(
+        Func<bool> isAllowed)
+    {
+        _interactivePresentationAllowed = isAllowed ??
+            throw new ArgumentNullException(nameof(isAllowed));
     }
 
     public void ApplySettings(AppSettings settings) =>
@@ -92,6 +123,15 @@ public sealed class TranslationRouteHost : ITranslationRouteHost
         var operation = _overlay.BeginOperation(subtitle: false);
         _overlay.ShowStatus(operation, status, anchor);
         return new TranslationRouteHandle(operation, anchor);
+    }
+
+    public TranslationRouteHandle ShowInteractiveStatus(
+        PixelPoint anchor,
+        string status)
+    {
+        if (_interactivePresentationAllowed?.Invoke() == false)
+            throw new OperationCanceledException();
+        return ShowStatus(anchor, status);
     }
 
     public void ShowStatus(
@@ -129,6 +169,16 @@ public sealed class TranslationRouteHost : ITranslationRouteHost
             paused,
             canReselect);
 
+    public TranslationSubtitlePlacementStatus PrepareSubtitleCaptureRegion(
+        TranslationCaptureRegion region) =>
+        _overlay.PrepareSubtitleCaptureRegion(region);
+
+    public bool IsOperationActive(TranslationRouteHandle operation) =>
+        _overlay.IsOperationActive(operation.Operation);
+
+    public bool HasActiveOperation() =>
+        _overlay.HasActiveOperation;
+
     public Task<TranslationResponse> TranslateAsync(
         string text,
         TranslationPurpose purpose,
@@ -147,7 +197,10 @@ public sealed class TranslationRouteHost : ITranslationRouteHost
     }
 
     public void DismissActiveOperation() =>
-        _overlay.BeginOperation(subtitle: false);
+        _overlay.DismissCurrentOperation();
+
+    public void DismissOperation(TranslationRouteHandle operation) =>
+        _overlay.DismissOperation(operation.Operation);
 }
 
 internal static class TranslationRoutePoint

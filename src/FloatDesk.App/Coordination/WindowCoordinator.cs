@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Threading;
 using FloatDesk.Core.Contracts;
 
 namespace FloatDesk.App.Coordination;
@@ -8,6 +9,7 @@ public sealed class WindowCoordinator : IWindowCoordinator
     private readonly Dictionary<ToolWindow, Func<Window>> _factories;
     private readonly Dictionary<ToolWindow, Window> _windows = [];
     private readonly Dictionary<Window, bool> _captureVisibility = [];
+    private readonly HashSet<Window> _captureHiddenWindows = [];
     private Window? _orb;
     private Window? _quickPanel;
 
@@ -23,10 +25,23 @@ public sealed class WindowCoordinator : IWindowCoordinator
 
     public event Action<Window>? WindowCreated;
 
+    public void RegisterCaptureHiddenWindow(Window window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        _captureHiddenWindows.Add(window);
+    }
+
+    public void UnregisterCaptureHiddenWindow(Window window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        _captureHiddenWindows.Remove(window);
+    }
+
     public async Task<IAsyncDisposable> HideForCaptureAsync(
         CancellationToken cancellationToken)
     {
-        await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+        var dispatcher = GetDispatcher();
+        await dispatcher.InvokeAsync(() =>
         {
             _captureVisibility.Clear();
             foreach (var window in EnumerateWindows())
@@ -39,7 +54,8 @@ public sealed class WindowCoordinator : IWindowCoordinator
                 }
                 window.Hide();
             }
-            System.Windows.Application.Current.MainWindow = _orb;
+            if (System.Windows.Application.Current is { } application)
+                application.MainWindow = _orb;
         });
         await Task.Delay(80, cancellationToken);
         return new RestoreScope(this);
@@ -47,7 +63,7 @@ public sealed class WindowCoordinator : IWindowCoordinator
 
     public void ShowTool(ToolWindow tool)
     {
-        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+        GetDispatcher().Invoke(() =>
         {
             if (!_windows.TryGetValue(tool, out var window))
             {
@@ -86,27 +102,52 @@ public sealed class WindowCoordinator : IWindowCoordinator
 
     private IEnumerable<Window> EnumerateWindows()
     {
-        if (_orb is not null) yield return _orb;
-        if (_quickPanel is not null) yield return _quickPanel;
-        foreach (var window in _windows.Values) yield return window;
+        var seen = new HashSet<Window>();
+        if (_orb is not null && seen.Add(_orb))
+            yield return _orb;
+        if (_quickPanel is not null && seen.Add(_quickPanel))
+            yield return _quickPanel;
+        foreach (var window in _windows.Values)
+        {
+            if (seen.Add(window))
+                yield return window;
+        }
+        foreach (var window in _captureHiddenWindows)
+        {
+            if (seen.Add(window))
+                yield return window;
+        }
     }
 
     private void Restore()
     {
-        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+        GetDispatcher().Invoke(() =>
         {
             foreach (var (window, wasVisible) in _captureVisibility)
             {
                 if (window == _quickPanel)
                     continue;
+                if (window is FloatDesk.App.Views.TranslationOverlayWindow
+                    overlay && !overlay.CanRestoreAfterCapture)
+                {
+                    continue;
+                }
                 if (wasVisible && !window.IsVisible)
                     window.Show();
             }
             _captureVisibility.Clear();
-            if (_orb is not null)
-                System.Windows.Application.Current.MainWindow = _orb;
+            if (_orb is not null &&
+                System.Windows.Application.Current is { } application)
+            {
+                application.MainWindow = _orb;
+            }
         });
     }
+
+    private Dispatcher GetDispatcher() =>
+        _orb?.Dispatcher
+        ?? System.Windows.Application.Current?.Dispatcher
+        ?? Dispatcher.CurrentDispatcher;
 
     private sealed class RestoreScope(WindowCoordinator owner) : IAsyncDisposable
     {

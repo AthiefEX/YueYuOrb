@@ -1,6 +1,7 @@
 using FloatDesk.App.Capture;
 using FloatDesk.App.Coordination;
 using FloatDesk.App.Translation;
+using FloatDesk.App.Views;
 using FloatDesk.Core.Contracts;
 using FloatDesk.Core.Geometry;
 using FloatDesk.Core.Models;
@@ -228,6 +229,148 @@ public sealed class SubtitleTranslationControllerTests
         Assert.Equal(1, flushCount);
     }
 
+    [Fact]
+    public async Task UnsafeOverlayPlacementPausesBeforeSubtitleSampling()
+    {
+        var source = new SequenceSubtitleSource(
+            [0x10, 0xE0],
+            finishedAfterCaptures: null);
+        var host = new RecordingSubtitleHost
+        {
+            PlacementStatus =
+                TranslationSubtitlePlacementStatus.NoSafePlacement
+        };
+        var controller = new SubtitleTranslationController(
+            new SequenceOcr(
+                new ScreenOcrResult("Hello subtitle", null, null)),
+            source,
+            host,
+            new ImmediateClock());
+
+        await controller.StartAsync(Settings(), CancellationToken.None);
+        await WaitUntilAsync(
+            () => controller.IsPaused,
+            TimeSpan.FromSeconds(2));
+
+        Assert.Equal(0, source.CaptureCount);
+        Assert.Contains(
+            "重新选择字幕区域",
+            host.LastStatus,
+            StringComparison.Ordinal);
+        await controller.StopAsync();
+    }
+
+    [Fact]
+    public async Task DisplayChangePausesWhenSavedMonitorDisappears()
+    {
+        var source = new SequenceSubtitleSource(
+            [0x10, 0xE0],
+            finishedAfterCaptures: null);
+        var host = new RecordingSubtitleHost();
+        var controller = new SubtitleTranslationController(
+            new SequenceOcr(
+                new ScreenOcrResult("Hello subtitle", null, null)),
+            source,
+            host,
+            new ImmediateClock());
+        await controller.StartAsync(Settings(), CancellationToken.None);
+        host.PlacementStatus =
+            TranslationSubtitlePlacementStatus.MonitorMissing;
+
+        controller.RefreshPlacement();
+        await WaitUntilAsync(
+            () => controller.IsPaused,
+            TimeSpan.FromSeconds(2));
+
+        Assert.Contains(
+            "显示器不可用",
+            host.LastStatus,
+            StringComparison.Ordinal);
+        await controller.StopAsync();
+    }
+
+    [Fact]
+    public async Task ResumeRechecksPlacementBeforeRestartingSamples()
+    {
+        var source = new SequenceSubtitleSource(
+            [0x10, 0xE0],
+            finishedAfterCaptures: null);
+        var host = new RecordingSubtitleHost
+        {
+            PlacementStatus =
+                TranslationSubtitlePlacementStatus.MonitorMissing
+        };
+        var controller = new SubtitleTranslationController(
+            new SequenceOcr(
+                new ScreenOcrResult("Hello subtitle", null, null)),
+            source,
+            host,
+            new ImmediateClock());
+        await controller.StartAsync(Settings(), CancellationToken.None);
+        await WaitUntilAsync(
+            () => controller.IsPaused,
+            TimeSpan.FromSeconds(2));
+
+        controller.Resume();
+
+        Assert.True(controller.IsPaused);
+        Assert.Equal(0, source.CaptureCount);
+        await controller.StopAsync();
+    }
+
+    [Fact]
+    public async Task ResumeRenewsOperationReplacedByInteractiveRoute()
+    {
+        var source = new SequenceSubtitleSource(
+            [0x10, 0xE0],
+            finishedAfterCaptures: null);
+        var host = new RecordingSubtitleHost();
+        var controller = new SubtitleTranslationController(
+            new SequenceOcr(
+                new ScreenOcrResult("Hello subtitle", null, null)),
+            source,
+            host,
+            new ImmediateClock());
+        await controller.StartAsync(Settings(), CancellationToken.None);
+
+        controller.Pause("截图进行中。");
+        host.OperationActive = false;
+        controller.Resume();
+
+        Assert.False(controller.IsPaused);
+        Assert.Equal(2, host.SubtitleStatusCount);
+        Assert.True(host.OperationActive);
+        await controller.StopAsync();
+    }
+
+    [Fact]
+    public async Task RenewedOperationReappliesCaptureSafePlacementBeforeSampling()
+    {
+        var source = new SequenceSubtitleSource(
+            [0x10, 0xE0],
+            finishedAfterCaptures: null);
+        var host = new RecordingSubtitleHost();
+        var controller = new SubtitleTranslationController(
+            new SequenceOcr(
+                new ScreenOcrResult("Hello subtitle", null, null)),
+            source,
+            host,
+            new ImmediateClock());
+        await controller.StartAsync(Settings(), CancellationToken.None);
+
+        controller.Pause("截图进行中。");
+        host.OperationActive = false;
+        host.FailSafePlacementWhenActive = true;
+        controller.Resume();
+
+        Assert.True(controller.IsPaused);
+        Assert.Contains(
+            "重新选择字幕区域",
+            host.LastStatus,
+            StringComparison.Ordinal);
+        await controller.StopAsync();
+    }
+
     private static TranslationSettings Settings() =>
         new(
             TranslationProviderKind.MyMemory,
@@ -379,6 +522,12 @@ public sealed class SubtitleTranslationControllerTests
         public int TranslateCount { get; private set; }
         public TranslationPurpose? LastPurpose { get; private set; }
         public bool IsPaused { get; private set; }
+        public int SubtitleStatusCount { get; private set; }
+        public bool OperationActive { get; set; } = true;
+        public bool FailSafePlacementWhenActive { get; set; }
+        public string LastStatus { get; private set; } = "";
+        public TranslationSubtitlePlacementStatus PlacementStatus { get; set; } =
+            TranslationSubtitlePlacementStatus.Ready;
 
         public void ApplySettings(AppSettings settings)
         {
@@ -386,8 +535,14 @@ public sealed class SubtitleTranslationControllerTests
 
         public TranslationRouteHandle ShowSubtitleStatus(
             PixelPoint anchor,
-            string status) =>
-            new(default, anchor);
+            string status)
+        {
+            SubtitleStatusCount++;
+            OperationActive = true;
+            return new TranslationRouteHandle(
+                new TranslationOverlayOperationToken(SubtitleStatusCount),
+                anchor);
+        }
 
         public TranslationRouteHandle ShowStatus(
             PixelPoint anchor,
@@ -398,6 +553,7 @@ public sealed class SubtitleTranslationControllerTests
             TranslationRouteHandle operation,
             string status)
         {
+            LastStatus = status;
         }
 
         public void ShowResult(
@@ -420,6 +576,15 @@ public sealed class SubtitleTranslationControllerTests
         {
             IsPaused = active && paused;
         }
+
+        public TranslationSubtitlePlacementStatus PrepareSubtitleCaptureRegion(
+            TranslationCaptureRegion region) =>
+            FailSafePlacementWhenActive && OperationActive
+                ? TranslationSubtitlePlacementStatus.NoSafePlacement
+                : PlacementStatus;
+
+        public bool IsOperationActive(TranslationRouteHandle operation) =>
+            OperationActive;
 
         public Task<TranslationResponse> TranslateAsync(
             string text,

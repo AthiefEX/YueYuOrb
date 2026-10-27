@@ -550,6 +550,234 @@ public sealed class TranslationRuntimeTests
     }
 
     [Fact]
+    public async Task SelectedTextRoutePausesSubtitleSamplingUntilCompletion()
+    {
+        var region = new TranslationCaptureRegion(
+            "monitor-1",
+            0.1,
+            0.7,
+            0.8,
+            0.2);
+        var capture = new SubtitleCaptureStub(region);
+        var reader = new GatedSelectedTextReader();
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("选中文字翻译")),
+            reader,
+            ocr: new RecordingOcr(),
+            regionCapture: capture);
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(SubtitleSettings(region));
+
+        try
+        {
+            await runtime.ToggleSubtitlesAsync(CancellationToken.None);
+            var translation = runtime.TranslateSelectionAsync(
+                ExternalTarget,
+                CancellationToken.None);
+            await reader.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert.True(host.SubtitleControlsPaused);
+
+            reader.Release.TrySetResult(
+                SelectedTextReadResult.Ok("Hello"));
+            await translation.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.True(host.SubtitleControlsPaused);
+
+            runtime.OnInteractiveOperationDismissed();
+            await WaitUntilAsync(
+                () => !host.SubtitleControlsPaused,
+                TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            await runtime.StopSubtitlesAsync();
+        }
+    }
+
+    [Fact]
+    public async Task NestedCapturePauseDismissesActiveSelectionOverlay()
+    {
+        var reader = new GatedSelectedTextReader();
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("选中文字翻译")),
+            reader);
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(AppSettings.CreateDefault());
+
+        var translation = runtime.TranslateSelectionAsync(
+            ExternalTarget,
+            CancellationToken.None);
+        await reader.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        runtime.PauseForCapture();
+        await translation.WaitAsync(TimeSpan.FromSeconds(2));
+        runtime.ResumeAfterCapture();
+
+        Assert.True(host.DismissCount >= 1);
+        Assert.False(host.IsOperationActive);
+    }
+
+    [Fact]
+    public async Task DismissingInteractiveOperationCancelsInFlightSelection()
+    {
+        var reader = new BlockingSelectedTextReader();
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("选中文字翻译")),
+            reader);
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(AppSettings.CreateDefault());
+
+        var translation = runtime.TranslateSelectionAsync(
+            ExternalTarget,
+            CancellationToken.None);
+        await reader.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        runtime.OnInteractiveOperationDismissed();
+        await translation.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(reader.WasCancelled);
+        Assert.Equal(0, host.TranslateCount);
+    }
+
+    [Fact]
+    public async Task DismissingOverlappingInteractiveOperationDoesNotResumeSubtitlesDuringCapture()
+    {
+        var region = new TranslationCaptureRegion(
+            "monitor-1",
+            0.1,
+            0.7,
+            0.8,
+            0.2);
+        var capture = new SubtitleCaptureStub(region);
+        var reader = new QueuedGatedSelectedTextReader(2);
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("选中文字翻译")),
+            reader,
+            ocr: new RecordingOcr(),
+            regionCapture: capture);
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(SubtitleSettings(region));
+
+        try
+        {
+            await runtime.ToggleSubtitlesAsync(CancellationToken.None);
+            await host.TranslationAttempted.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+            var first = runtime.TranslateSelectionAsync(
+                ExternalTarget,
+                CancellationToken.None);
+            await reader.WaitEnteredAsync(0, TimeSpan.FromSeconds(2));
+            reader.Release(0, SelectedTextReadResult.Ok("Hello"));
+            await first.WaitAsync(TimeSpan.FromSeconds(2));
+
+            var second = runtime.TranslateSelectionAsync(
+                ExternalTarget,
+                CancellationToken.None);
+            await reader.WaitEnteredAsync(1, TimeSpan.FromSeconds(2));
+
+            host.DismissActiveOperation();
+            runtime.OnInteractiveOperationDismissed();
+            var pausedAfterDismissal = host.SubtitleControlsPaused;
+
+            reader.Release(1, SelectedTextReadResult.Ok("Hello"));
+            await second.WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert.True(pausedAfterDismissal);
+            await WaitUntilAsync(
+                () => !host.SubtitleControlsPaused,
+                TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            await runtime.StopSubtitlesAsync();
+        }
+    }
+
+    [Fact]
+    public async Task CapturePauseResumesSubtitlesWhileSubtitleOperationRemainsActive()
+    {
+        var region = new TranslationCaptureRegion(
+            "monitor-1",
+            0.1,
+            0.7,
+            0.8,
+            0.2);
+        var capture = new SubtitleCaptureStub(region);
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("字幕翻译")),
+            ocr: new RecordingOcr(),
+            regionCapture: capture);
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(SubtitleSettings(region));
+
+        try
+        {
+            await runtime.ToggleSubtitlesAsync(CancellationToken.None);
+            await host.TranslationAttempted.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+
+            runtime.PauseForCapture();
+            Assert.True(host.SubtitleControlsPaused);
+            Assert.True(host.IsOperationActive);
+
+            runtime.ResumeAfterCapture();
+
+            Assert.False(host.SubtitleControlsPaused);
+            Assert.True(host.IsOperationActive);
+        }
+        finally
+        {
+            await runtime.StopSubtitlesAsync();
+        }
+    }
+
+    [Fact]
+    public async Task InvalidSelectionTargetReleasesInteractiveCaptureOwnership()
+    {
+        var ownTarget = ExternalTarget with { IsOwnInteractive = true };
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("选中文字翻译")),
+            currentForeground: () => ownTarget,
+            lastExternal: () => null);
+        runtime.ApplySettings(AppSettings.CreateDefault());
+
+        await runtime.TranslateSelectionAsync(
+            ownTarget,
+            CancellationToken.None);
+        host.DismissActiveOperation();
+        var dismissCount = host.DismissCount;
+
+        runtime.PauseForCapture();
+
+        Assert.Equal(dismissCount, host.DismissCount);
+        runtime.ResumeAfterCapture();
+    }
+
+    [Fact]
     public async Task FirstSubtitleStartSelectsAndPersistsRegion()
     {
         var initial = AppSettings.CreateDefault();
@@ -724,6 +952,57 @@ public sealed class TranslationRuntimeTests
         }
     }
 
+    private sealed class GatedSelectedTextReader : ISelectedTextReader
+    {
+        public TaskCompletionSource Entered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<SelectedTextReadResult> Release { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<SelectedTextReadResult> ReadAsync(
+            ForegroundSnapshot target,
+            CancellationToken cancellationToken)
+        {
+            Entered.TrySetResult();
+            return await Release.Task.WaitAsync(cancellationToken);
+        }
+    }
+
+    private sealed class QueuedGatedSelectedTextReader : ISelectedTextReader
+    {
+        private readonly TaskCompletionSource[] _entered;
+        private readonly TaskCompletionSource<SelectedTextReadResult>[] _release;
+
+        public QueuedGatedSelectedTextReader(int count)
+        {
+            _entered = Enumerable.Range(0, count)
+                .Select(_ => new TaskCompletionSource(
+                    TaskCreationOptions.RunContinuationsAsynchronously))
+                .ToArray();
+            _release = Enumerable.Range(0, count)
+                .Select(_ => new TaskCompletionSource<SelectedTextReadResult>(
+                    TaskCreationOptions.RunContinuationsAsynchronously))
+                .ToArray();
+        }
+
+        private int CallCount { get; set; }
+
+        public Task WaitEnteredAsync(int call, TimeSpan timeout) =>
+            _entered[call].Task.WaitAsync(timeout);
+
+        public void Release(int call, SelectedTextReadResult result) =>
+            _release[call].TrySetResult(result);
+
+        public async Task<SelectedTextReadResult> ReadAsync(
+            ForegroundSnapshot target,
+            CancellationToken cancellationToken)
+        {
+            var call = CallCount++;
+            _entered[call].TrySetResult();
+            return await _release[call].Task;
+        }
+    }
+
     private sealed class RecordingRouteHost : ITranslationRouteHost
     {
         private int _nextOperationId;
@@ -749,6 +1028,10 @@ public sealed class TranslationRuntimeTests
         public int DismissCount { get; private set; }
         public int RejectedResultAttempts { get; private set; }
         public bool IsOperationActive => _activeOperationToken is not null;
+        public bool SubtitleControlsPaused { get; private set; }
+
+        public bool HasActiveOperation() =>
+            IsOperationActive;
 
         public void ApplySettings(AppSettings settings)
         {
@@ -813,6 +1096,22 @@ public sealed class TranslationRuntimeTests
             _activeOperationToken = null;
             LastResult = null;
             LastError = null;
+        }
+
+        public void DismissOperation(TranslationRouteHandle operation)
+        {
+            if (IsCurrent(operation))
+                DismissActiveOperation();
+        }
+
+        public void SetSubtitleControls(
+            TranslationRouteHandle operation,
+            bool active,
+            bool paused,
+            bool canReselect)
+        {
+            if (active)
+                SubtitleControlsPaused = paused;
         }
 
         private bool IsCurrent(TranslationRouteHandle operation) =>
@@ -1023,6 +1322,19 @@ public sealed class TranslationRuntimeTests
                 WasCancelled = true;
                 throw;
             }
+        }
+    }
+
+    private static async Task WaitUntilAsync(
+        Func<bool> condition,
+        TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (!condition())
+        {
+            if (DateTime.UtcNow >= deadline)
+                throw new TimeoutException("Condition was not reached.");
+            await Task.Delay(10);
         }
     }
 }

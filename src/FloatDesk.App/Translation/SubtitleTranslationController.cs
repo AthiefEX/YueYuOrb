@@ -28,6 +28,7 @@ public sealed class SubtitleTranslationController : IDisposable
     private long _generation;
     private bool _running;
     private bool _paused;
+    private bool _placementFailurePaused;
     private bool _disposed;
 
     public SubtitleTranslationController(
@@ -89,6 +90,7 @@ public sealed class SubtitleTranslationController : IDisposable
             _previousSignature = null;
             _previousText = null;
             _paused = false;
+            _placementFailurePaused = false;
             _resumeSignal = null;
             _running = true;
             _sessionCancellation = session;
@@ -103,11 +105,16 @@ public sealed class SubtitleTranslationController : IDisposable
             active: true,
             paused: false,
             canReselect: true);
+        var placement = _host.PrepareSubtitleCaptureRegion(
+            settings.SubtitleRegion);
+        if (placement != TranslationSubtitlePlacementStatus.Ready)
+        {
+            PauseForPlacementFailure(placement);
+        }
         _loopTask = Task.Run(
             () => RunLoopAsync(
                 generation,
                 settings,
-                operation,
                 session),
             CancellationToken.None);
     }
@@ -122,6 +129,7 @@ public sealed class SubtitleTranslationController : IDisposable
                 return;
             _running = false;
             _paused = false;
+            _placementFailurePaused = false;
             loop = _loopTask;
             session = _sessionCancellation;
             _sessionCancellation = null;
@@ -144,18 +152,26 @@ public sealed class SubtitleTranslationController : IDisposable
         session?.Dispose();
     }
 
-    public void Pause(string reason)
+    public void Pause(string reason) =>
+        PauseCore(reason, placementFailure: false);
+
+    private void PauseCore(string reason, bool placementFailure)
     {
         TranslationRouteHandle? operation;
         lock (_sync)
         {
-            if (!_running || _paused)
+            if (!_running || (_paused && !placementFailure))
                 return;
+            var wasPaused = _paused;
             _paused = true;
-            _resumeSignal = new TaskCompletionSource(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-            _previousSignature = null;
-            CancelIterationLocked();
+            _placementFailurePaused = placementFailure;
+            if (!wasPaused)
+            {
+                _resumeSignal = new TaskCompletionSource(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                _previousSignature = null;
+                CancelIterationLocked();
+            }
             operation = _operation;
         }
 
@@ -176,16 +192,64 @@ public sealed class SubtitleTranslationController : IDisposable
 
     public void Resume()
     {
+        TranslationSettings? settings;
+        lock (_sync)
+        {
+            if (!_running || !_paused)
+                return;
+            settings = _settings;
+        }
+
+        if (settings?.SubtitleRegion is { } region)
+        {
+            var placement = _host.PrepareSubtitleCaptureRegion(region);
+            if (placement != TranslationSubtitlePlacementStatus.Ready)
+            {
+                PauseForPlacementFailure(placement);
+                return;
+            }
+        }
+
+        long generation;
         TranslationRouteHandle? operation;
         lock (_sync)
         {
             if (!_running || !_paused)
                 return;
-            _paused = false;
-            ResumeWaiterLocked();
+            generation = _generation;
             operation = _operation;
         }
 
+        var renewed = false;
+        if (operation is { } existing &&
+            !_host.IsOperationActive(existing))
+        {
+            var fresh = _host.ShowSubtitleStatus(
+                TranslationRoutePoint.GetCursorPosition(),
+                "字幕翻译已继续。");
+            var accepted = false;
+            lock (_sync)
+            {
+                if (IsCurrentGenerationLocked(generation))
+                {
+                    _operation = fresh;
+                    operation = fresh;
+                    accepted = true;
+                }
+            }
+            if (!accepted)
+            {
+                _host.SetSubtitleControls(
+                    fresh,
+                    active: false,
+                    paused: false,
+                    canReselect: false);
+                return;
+            }
+            renewed = true;
+        }
+
+        var resumed = false;
         if (operation is { } current)
         {
             _host.SetSubtitleControls(
@@ -193,8 +257,63 @@ public sealed class SubtitleTranslationController : IDisposable
                 active: true,
                 paused: false,
                 canReselect: true);
-            _host.ShowStatus(current, "字幕翻译已继续。");
+            if (settings?.SubtitleRegion is { } activeRegion)
+            {
+                var activePlacement =
+                    _host.PrepareSubtitleCaptureRegion(activeRegion);
+                if (activePlacement !=
+                    TranslationSubtitlePlacementStatus.Ready)
+                {
+                    PauseForPlacementFailure(activePlacement);
+                    return;
+                }
+            }
+            lock (_sync)
+            {
+                if (IsCurrentGenerationLocked(generation) && _paused)
+                {
+                    _paused = false;
+                    _placementFailurePaused = false;
+                    ResumeWaiterLocked();
+                    resumed = true;
+                }
+            }
+            if (resumed && !renewed)
+                _host.ShowStatus(current, "字幕翻译已继续。");
         }
+    }
+
+    public void RefreshPlacement()
+    {
+        TranslationSettings? settings;
+        lock (_sync)
+        {
+            if (!_running)
+                return;
+            if (_paused && !_placementFailurePaused)
+                return;
+            settings = _settings;
+        }
+        if (settings?.SubtitleRegion is not { } region)
+            return;
+
+        var placement = _host.PrepareSubtitleCaptureRegion(region);
+        if (placement != TranslationSubtitlePlacementStatus.Ready)
+        {
+            PauseForPlacementFailure(placement);
+            return;
+        }
+
+        bool shouldResume;
+        lock (_sync)
+        {
+            shouldResume =
+                _running &&
+                _paused &&
+                _placementFailurePaused;
+        }
+        if (shouldResume)
+            Resume();
     }
 
     public async Task ReselectAsync(
@@ -235,6 +354,7 @@ public sealed class SubtitleTranslationController : IDisposable
             _disposed = true;
             _running = false;
             _paused = false;
+            _placementFailurePaused = false;
             session = _sessionCancellation;
             _sessionCancellation = null;
             _loopTask = null;
@@ -248,7 +368,6 @@ public sealed class SubtitleTranslationController : IDisposable
     private async Task RunLoopAsync(
         long generation,
         TranslationSettings settings,
-        TranslationRouteHandle operation,
         CancellationTokenSource session)
     {
         var cancellationToken = session.Token;
@@ -328,7 +447,6 @@ public sealed class SubtitleTranslationController : IDisposable
                         {
                             ShowStatusIfCurrent(
                                 generation,
-                                operation,
                                 errorCode == "OcrNoText"
                                     ? "未识别到字幕文字。"
                                     : "无法识别字幕文字，稍后重试。");
@@ -342,7 +460,6 @@ public sealed class SubtitleTranslationController : IDisposable
                     {
                         ShowStatusIfCurrent(
                             generation,
-                            operation,
                             "未识别到字幕文字。");
                         continue;
                     }
@@ -351,14 +468,13 @@ public sealed class SubtitleTranslationController : IDisposable
 
                     ShowStatusIfCurrent(
                         generation,
-                        operation,
                         "正在翻译字幕…");
                     var response = await _host.TranslateAsync(
                             text,
                             TranslationPurpose.Subtitle,
                             iteration.Token)
                         .ConfigureAwait(false);
-                    if (!IsCurrentGeneration(generation) ||
+                    if (!IsCurrentUnpausedGeneration(generation) ||
                         cancellationToken.IsCancellationRequested)
                     {
                         continue;
@@ -372,19 +488,23 @@ public sealed class SubtitleTranslationController : IDisposable
                     if (response.Success)
                     {
                         MarkTextTranslated(generation, text);
-                        _host.ShowResult(operation, response);
+                        ShowResultIfCurrent(
+                            generation,
+                            response);
                         continue;
                     }
                     if (response.FailureKind ==
                         TranslationFailureKind.NoTranslationNeeded)
                     {
                         MarkTextTranslated(generation, text);
-                        _host.ShowResult(operation, response);
+                        ShowResultIfCurrent(
+                            generation,
+                            response);
                         continue;
                     }
 
-                    _host.ShowError(
-                        operation,
+                    ShowErrorIfCurrent(
+                        generation,
                         ResolveFailureMessage(response));
                     ResetSignatureIfCurrent(generation);
                     if (response.FailureKind is
@@ -412,13 +532,13 @@ public sealed class SubtitleTranslationController : IDisposable
                 }
                 catch (InvalidOperationException)
                 {
-                    Pause("字幕区域所在显示器不可用，请重新选择区域。");
+                    PauseForPlacementFailure(
+                        TranslationSubtitlePlacementStatus.MonitorMissing);
                 }
                 catch
                 {
                     ShowStatusIfCurrent(
                         generation,
-                        operation,
                         "字幕采样失败，稍后重试。");
                 }
                 finally
@@ -469,6 +589,7 @@ public sealed class SubtitleTranslationController : IDisposable
                 {
                     _running = false;
                     _paused = false;
+                    _placementFailurePaused = false;
                     _iterationCancellation = null;
                     _previousSignature = null;
                     _previousText = null;
@@ -560,11 +681,36 @@ public sealed class SubtitleTranslationController : IDisposable
 
     private void ShowStatusIfCurrent(
         long generation,
-        TranslationRouteHandle operation,
         string status)
     {
-        if (IsCurrentGeneration(generation))
+        if (GetCurrentOperation(generation) is { } operation)
             _host.ShowStatus(operation, status);
+    }
+
+    private void ShowResultIfCurrent(
+        long generation,
+        TranslationResponse response)
+    {
+        if (GetCurrentOperation(generation) is { } operation)
+            _host.ShowResult(operation, response);
+    }
+
+    private void ShowErrorIfCurrent(
+        long generation,
+        string message)
+    {
+        if (GetCurrentOperation(generation) is { } operation)
+            _host.ShowError(operation, message);
+    }
+
+    private TranslationRouteHandle? GetCurrentOperation(long generation)
+    {
+        lock (_sync)
+        {
+            return IsCurrentUnpausedGenerationLocked(generation)
+                ? _operation
+                : null;
+        }
     }
 
     private TranslationSettings? GetCurrentSettings(long generation)
@@ -583,10 +729,20 @@ public sealed class SubtitleTranslationController : IDisposable
             return IsCurrentGenerationLocked(generation);
     }
 
+    private bool IsCurrentUnpausedGeneration(long generation)
+    {
+        lock (_sync)
+            return IsCurrentUnpausedGenerationLocked(generation);
+    }
+
     private bool IsCurrentGenerationLocked(long generation) =>
         _running &&
         !_disposed &&
         _generation == generation;
+
+    private bool IsCurrentUnpausedGenerationLocked(long generation) =>
+        IsCurrentGenerationLocked(generation) &&
+        !_paused;
 
     private async Task WaitWhilePausedAsync(
         CancellationToken cancellationToken)
@@ -612,6 +768,14 @@ public sealed class SubtitleTranslationController : IDisposable
         _resumeSignal = null;
         waiter?.TrySetResult();
     }
+
+    private void PauseForPlacementFailure(
+        TranslationSubtitlePlacementStatus status) =>
+        PauseCore(
+            status == TranslationSubtitlePlacementStatus.MonitorMissing
+                ? "字幕区域所在显示器不可用，请重新选择区域。"
+                : "无法避开字幕捕获区域，请重新选择字幕区域。",
+            placementFailure: true);
 
     private void CancelIterationLocked()
     {

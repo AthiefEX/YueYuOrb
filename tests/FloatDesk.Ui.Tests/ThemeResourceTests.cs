@@ -123,6 +123,56 @@ public sealed class ThemeResourceTests
     }
 
     [Fact]
+    public void TranslationCaptureLifecycleIsWiredAcrossCoordinatorAndDisplayChanges()
+    {
+        var runtime = File.ReadAllText(FindRepoFile(
+            "src/FloatDesk.App/AppRuntime.cs"));
+        var coordinator = File.ReadAllText(FindRepoFile(
+            "src/FloatDesk.App/Coordination/WindowCoordinator.cs"));
+        var subtitle = File.ReadAllText(FindRepoFile(
+            "src/FloatDesk.App/Translation/SubtitleTranslationController.cs"));
+        var overlay = File.ReadAllText(FindRepoFile(
+            "src/FloatDesk.App/Views/TranslationOverlayWindow.xaml.cs"));
+
+        Assert.Contains(
+            "RegisterCaptureHiddenWindow(_translationOverlay)",
+            runtime,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "HandleDisplayTopologyChanged()",
+            runtime,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "PauseForCapture()",
+            runtime,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ResumeAfterCapture()",
+            runtime,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_captureHiddenWindows",
+            coordinator,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "PrepareSubtitleCaptureRegion",
+            subtitle,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "TranslationOverlayPlacementPolicy.PlaceOutside",
+            overlay,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_subtitleCaptureRegion",
+            overlay,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Intersects(",
+            overlay,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BrowserThemeChangesAlwaysReachOpenPopups()
     {
         var source = File.ReadAllText(FindRepoFile(

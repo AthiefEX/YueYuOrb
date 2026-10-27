@@ -21,7 +21,7 @@ public sealed class SelectedTextTranslationController
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(target);
-        var operation = _host.ShowStatus(
+        var operation = _host.ShowInteractiveStatus(
             TranslationRoutePoint.GetCursorPosition(),
             "正在读取选中文字。");
 
@@ -33,6 +33,7 @@ public sealed class SelectedTextTranslationController
         }
         catch (OperationCanceledException)
         {
+            _host.DismissOperation(operation);
             return;
         }
         catch
@@ -63,6 +64,7 @@ public sealed class SelectedTextTranslationController
         }
         catch (OperationCanceledException)
         {
+            _host.DismissOperation(operation);
             return;
         }
         catch
@@ -74,7 +76,10 @@ public sealed class SelectedTextTranslationController
         }
 
         if (response.FailureKind == TranslationFailureKind.Cancelled)
+        {
+            _host.DismissOperation(operation);
             return;
+        }
         _host.ShowResult(operation, response);
     }
 

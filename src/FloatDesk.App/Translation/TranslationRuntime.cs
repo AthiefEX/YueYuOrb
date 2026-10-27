@@ -28,6 +28,8 @@ public sealed class TranslationRuntime : IDisposable
     private CancellationTokenSource? _interactiveCancellation;
     private AppSettings _latestSettings = AppSettings.CreateDefault();
     private volatile bool _subtitlePauseOwnedByCapture;
+    private bool _deferSubtitleResumeUntilInteractiveDismissed;
+    private bool _subtitleResumePending;
     private long _configurationGeneration;
     private bool _sessionLocked;
     private bool _emergencyPaused;
@@ -101,7 +103,11 @@ public sealed class TranslationRuntime : IDisposable
                 _clock);
         }
         if (host is TranslationRouteHost routeHost)
+        {
             routeHost.SetTranslator(TranslateTextAsync);
+            routeHost.SetInteractivePresentationAllowed(
+                IsInteractivePresentationAllowed);
+        }
     }
 
     public void ApplySettings(AppSettings settings)
@@ -142,35 +148,28 @@ public sealed class TranslationRuntime : IDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(fallbackTarget);
-        if (IsPausedOrDisposed())
-            return;
-
-        var target = ResolveTarget(fallbackTarget);
-        if (target.TopLevelHwnd == 0 || target.IsOwnInteractive)
+        if (!TryBeginInteractiveCapture(
+                "选中文字翻译进行中，字幕采样已暂停。",
+                deferSubtitleResume: true,
+                out var operation,
+                cancellationToken) ||
+            operation is null)
         {
-            ShowRouteError("未检测到可翻译的前台应用。");
             return;
         }
-
-        var operation = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            _lifetime.Token);
-        CancellationTokenSource? previous;
-        lock (_sync)
-        {
-            if (_disposed || IsPausedLocked())
-            {
-                operation.Dispose();
-                return;
-            }
-
-            previous = _interactiveCancellation;
-            _interactiveCancellation = operation;
-        }
-        previous?.Cancel();
 
         try
         {
+            var target = ResolveTarget(fallbackTarget);
+            if (target.TopLevelHwnd == 0 || target.IsOwnInteractive)
+            {
+                ShowRouteError("未检测到可翻译的前台应用。");
+                return;
+            }
+
+            if (operation.IsCancellationRequested)
+                return;
+
             await _controller.RunAsync(target, operation.Token)
                 .ConfigureAwait(false);
         }
@@ -181,44 +180,41 @@ public sealed class TranslationRuntime : IDisposable
         {
             lock (_sync)
             {
-                if (ReferenceEquals(_interactiveCancellation, operation))
+                if (ReferenceEquals(
+                    _interactiveCancellation,
+                    operation))
+                {
                     _interactiveCancellation = null;
+                }
             }
             operation.Dispose();
+            ResumeAfterCapture();
         }
     }
 
     public async Task TranslateRegionAsync(
         CancellationToken cancellationToken)
     {
-        if (IsPausedOrDisposed())
+        if (!TryBeginInteractiveCapture(
+                "区域 OCR 翻译进行中，字幕采样已暂停。",
+                deferSubtitleResume: true,
+                out var operation,
+                cancellationToken) ||
+            operation is null)
             return;
-        var controller = _regionController;
-        if (controller is null)
-        {
-            ShowRouteError("区域 OCR 翻译尚未初始化。");
-            return;
-        }
 
-        var operation = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            _lifetime.Token);
-        CancellationTokenSource? previous;
-        lock (_sync)
+        var controller = _regionController;
+        try
         {
-            if (_disposed || IsPausedLocked())
+            if (controller is null)
             {
-                operation.Dispose();
+                ShowRouteError("区域 OCR 翻译尚未初始化。");
                 return;
             }
 
-            previous = _interactiveCancellation;
-            _interactiveCancellation = operation;
-        }
-        previous?.Cancel();
+            if (operation.IsCancellationRequested)
+                return;
 
-        try
-        {
             await controller.RunAsync(
                 TranslationRoutePoint.GetCursorPosition(),
                 operation.Token).ConfigureAwait(false);
@@ -231,9 +227,12 @@ public sealed class TranslationRuntime : IDisposable
             lock (_sync)
             {
                 if (ReferenceEquals(_interactiveCancellation, operation))
+                {
                     _interactiveCancellation = null;
+                }
             }
             operation.Dispose();
+            ResumeAfterCapture();
         }
     }
 
@@ -292,8 +291,15 @@ public sealed class TranslationRuntime : IDisposable
         }
     }
 
-    public Task StopSubtitlesAsync() =>
-        _subtitleController?.StopAsync() ?? Task.CompletedTask;
+    public Task StopSubtitlesAsync()
+    {
+        lock (_sync)
+        {
+            _deferSubtitleResumeUntilInteractiveDismissed = false;
+            _subtitleResumePending = false;
+        }
+        return _subtitleController?.StopAsync() ?? Task.CompletedTask;
+    }
 
     public void ToggleSubtitlePause()
     {
@@ -397,16 +403,24 @@ public sealed class TranslationRuntime : IDisposable
 
     public void PauseForCapture()
     {
+        _ = TryBeginCapturePause();
+    }
+
+    private bool TryBeginCapturePause(
+        string? subtitlePauseReason = null)
+    {
         var changed = false;
         var cancelledInteractive = false;
         lock (_sync)
         {
             if (_disposed)
-                return;
+                return false;
+            if (IsExternallyPausedLocked())
+                return false;
+            cancelledInteractive = CancelInteractiveLocked();
             if (_capturePauseDepth++ == 0)
             {
                 changed = true;
-                cancelledInteractive = CancelInteractiveLocked();
             }
         }
         if (changed)
@@ -415,29 +429,137 @@ public sealed class TranslationRuntime : IDisposable
                 { IsRunning: true, IsPaused: false } subtitles)
             {
                 _subtitlePauseOwnedByCapture = true;
-                subtitles.Pause("截图进行中，字幕翻译已暂停。");
+                subtitles.Pause(
+                    string.IsNullOrWhiteSpace(subtitlePauseReason)
+                        ? "截图进行中，字幕翻译已暂停。"
+                        : subtitlePauseReason);
             }
-            if (cancelledInteractive)
-                _host.DismissActiveOperation();
         }
+        if (cancelledInteractive)
+            _host.DismissActiveOperation();
+        return true;
+    }
+
+    private bool TryBeginInteractiveCapture(
+        string subtitlePauseReason,
+        bool deferSubtitleResume,
+        out CancellationTokenSource? operation,
+        CancellationToken cancellationToken)
+    {
+        var changed = false;
+        var cancelledInteractive = false;
+        CancellationTokenSource? candidate = null;
+        lock (_sync)
+        {
+            if (!_disposed &&
+                !IsExternallyPausedLocked() &&
+                (_capturePauseDepth == 0 ||
+                 _interactiveCancellation is not null))
+            {
+                candidate = CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken,
+                    _lifetime.Token);
+                cancelledInteractive = CancelInteractiveLocked();
+                if (_capturePauseDepth++ == 0)
+                    changed = true;
+                _interactiveCancellation = candidate;
+                _deferSubtitleResumeUntilInteractiveDismissed |=
+                    deferSubtitleResume;
+            }
+        }
+
+        if (candidate is null)
+        {
+            operation = null;
+            return false;
+        }
+
+        if (changed &&
+            _subtitleController is
+            {
+                IsRunning: true,
+                IsPaused: false
+            } subtitles)
+        {
+            _subtitlePauseOwnedByCapture = true;
+            subtitles.Pause(subtitlePauseReason);
+        }
+        if (cancelledInteractive)
+            _host.DismissActiveOperation();
+
+        operation = candidate;
+        return true;
     }
 
     public void ResumeAfterCapture()
     {
         var finalResume = false;
+        var deferSubtitleResume = false;
+        var resumeSubtitles = false;
+        var resumePending = false;
         lock (_sync)
         {
             if (!_disposed && _capturePauseDepth > 0)
             {
                 _capturePauseDepth--;
                 finalResume = _capturePauseDepth == 0;
+                if (finalResume)
+                {
+                    deferSubtitleResume =
+                        _deferSubtitleResumeUntilInteractiveDismissed;
+                    _deferSubtitleResumeUntilInteractiveDismissed = false;
+                    resumeSubtitles = _subtitlePauseOwnedByCapture;
+                    _subtitlePauseOwnedByCapture = false;
+                    if (resumeSubtitles && deferSubtitleResume)
+                        _subtitleResumePending = true;
+                    resumePending = _subtitleResumePending;
+                }
             }
         }
-        if (finalResume && _subtitlePauseOwnedByCapture)
+        if (!finalResume ||
+            (!resumePending &&
+             (!resumeSubtitles || deferSubtitleResume)))
         {
-            _subtitlePauseOwnedByCapture = false;
-            _subtitleController?.Resume();
+            return;
         }
+
+        if ((deferSubtitleResume || resumePending) &&
+            _host.HasActiveOperation())
+        {
+            return;
+        }
+
+        lock (_sync)
+        {
+            if (_disposed || _capturePauseDepth > 0)
+                return;
+            if (resumePending)
+                _subtitleResumePending = false;
+        }
+        _subtitleController?.Resume();
+    }
+
+    public void HandleDisplayTopologyChanged() =>
+        _subtitleController?.RefreshPlacement();
+
+    internal void OnInteractiveOperationDismissed()
+    {
+        var cancelledInteractive = false;
+        var resume = false;
+        lock (_sync)
+        {
+            cancelledInteractive = CancelInteractiveLocked();
+            if (_subtitleResumePending &&
+                !_disposed &&
+                !cancelledInteractive &&
+                _capturePauseDepth == 0)
+            {
+                _subtitleResumePending = false;
+                resume = true;
+            }
+        }
+        if (resume)
+            _subtitleController?.Resume();
     }
 
     public void Dispose()
@@ -798,6 +920,9 @@ public sealed class TranslationRuntime : IDisposable
             ShowRouteError("字幕区域选择尚未初始化。");
             return null;
         }
+        if (!TryBeginCapturePause(
+                "正在选择字幕区域，字幕采样已暂停。"))
+            return null;
 
         CapturedTranslationRegion? selected;
         try
@@ -819,6 +944,10 @@ public sealed class TranslationRuntime : IDisposable
         {
             ShowRouteError("无法截取字幕区域，请稍后重试。");
             return null;
+        }
+        finally
+        {
+            ResumeAfterCapture();
         }
 
         if (selected is null)
@@ -933,10 +1062,24 @@ public sealed class TranslationRuntime : IDisposable
             return _disposed || IsPausedLocked();
     }
 
+    private bool IsInteractivePresentationAllowed()
+    {
+        lock (_sync)
+        {
+            return !_disposed &&
+                   !IsExternallyPausedLocked() &&
+                   _interactiveCancellation is not null;
+        }
+    }
+
     private bool IsPausedLocked() =>
         _sessionLocked ||
         _emergencyPaused ||
         _capturePauseDepth > 0;
+
+    private bool IsExternallyPausedLocked() =>
+        _sessionLocked ||
+        _emergencyPaused;
 
     private static bool RequiresKey(
         TranslationProviderKind provider) =>
