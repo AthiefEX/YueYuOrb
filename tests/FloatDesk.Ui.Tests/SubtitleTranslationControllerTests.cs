@@ -61,7 +61,7 @@ public sealed class SubtitleTranslationControllerTests
 
         Assert.True(source.CaptureCount >= 3);
         Assert.Equal(0xE0, ocr.LastFrameValue);
-        Assert.Contains(TimeSpan.FromMilliseconds(120), clock.Delays);
+        Assert.Contains(TimeSpan.FromMilliseconds(90), clock.Delays);
         Assert.Equal(1, host.TranslateCount);
     }
 
@@ -185,6 +185,173 @@ public sealed class SubtitleTranslationControllerTests
         await controller.StopAsync();
 
         Assert.True(host.TranslateCount >= 2);
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task SlowTranslationDoesNotBlockNextCaptureOrOcr()
+    {
+        var source = new AlternatingSubtitleSource();
+        var ocr = new CallbackOcr((call, _) =>
+            Task.FromResult(
+                new ScreenOcrResult(
+                    $"Subtitle {call}",
+                    null,
+                    null)));
+        var firstTranslationEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstTranslation = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstTranslation = 1;
+        var host = new RecordingSubtitleHost
+        {
+            TranslationHandler = async (text, _) =>
+            {
+                if (Interlocked.Exchange(ref firstTranslation, 0) == 1)
+                {
+                    firstTranslationEntered.TrySetResult();
+                    await releaseFirstTranslation.Task
+                        .ConfigureAwait(false);
+                }
+
+                return TranslationResponse.Ok(
+                    text,
+                    "译文",
+                    "en",
+                    "Test provider");
+            }
+        };
+        var controller = new SubtitleTranslationController(
+            ocr,
+            source,
+            host,
+            new ImmediateClock());
+
+        await controller.StartAsync(Settings(), CancellationToken.None);
+        await firstTranslationEntered.Task.WaitAsync(
+            TimeSpan.FromSeconds(2));
+        await WaitUntilAsync(
+            () => source.CaptureCount >= 6 && ocr.CallCount >= 3,
+            TimeSpan.FromSeconds(2));
+
+        Assert.False(releaseFirstTranslation.Task.IsCompleted);
+        releaseFirstTranslation.TrySetResult();
+        await controller.StopAsync();
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task NewCaptionCancelsPreviousTranslation()
+    {
+        var source = new AlternatingSubtitleSource();
+        var ocr = new CallbackOcr((call, _) =>
+            Task.FromResult(
+                new ScreenOcrResult(
+                    call == 1 ? "First subtitle" : "Second subtitle",
+                    null,
+                    null)));
+        var firstStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstCancelled = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondAttempted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var host = new RecordingSubtitleHost
+        {
+            TranslationHandler = async (text, cancellationToken) =>
+            {
+                if (text == "First subtitle")
+                {
+                    firstStarted.TrySetResult();
+                    try
+                    {
+                        await Task.Delay(
+                                Timeout.InfiniteTimeSpan,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        firstCancelled.TrySetResult();
+                        return TranslationResponse.Fail(
+                            text,
+                            "en",
+                            "Test provider",
+                            TranslationFailureKind.Cancelled,
+                            "Cancelled",
+                            "已取消。");
+                    }
+                }
+
+                if (text == "Second subtitle")
+                    secondAttempted.TrySetResult();
+                return TranslationResponse.Ok(
+                    text,
+                    "译文",
+                    "en",
+                    "Test provider");
+            }
+        };
+        var controller = new SubtitleTranslationController(
+            ocr,
+            source,
+            host,
+            new ImmediateClock());
+
+        await controller.StartAsync(Settings(), CancellationToken.None);
+        await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await secondAttempted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await firstCancelled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(host.TranslateCount >= 2);
+        Assert.Contains("First subtitle", host.TranslatedTexts);
+        Assert.Contains("Second subtitle", host.TranslatedTexts);
+        await controller.StopAsync();
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task LateOcrForSupersededFrameDoesNotTranslate()
+    {
+        var source = new AlternatingSubtitleSource();
+        var firstEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirst = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var ocr = new CallbackOcr(async (call, _) =>
+        {
+            if (call == 1)
+            {
+                firstEntered.TrySetResult();
+                await releaseFirst.Task.ConfigureAwait(false);
+                return new ScreenOcrResult("Old subtitle", null, null);
+            }
+
+            secondEntered.TrySetResult();
+            return new ScreenOcrResult("New subtitle", null, null);
+        });
+        var host = new RecordingSubtitleHost();
+        var controller = new SubtitleTranslationController(
+            ocr,
+            source,
+            host,
+            new ImmediateClock());
+
+        await controller.StartAsync(Settings(), CancellationToken.None);
+        await firstEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await WaitUntilAsync(
+            () => source.CaptureCount >= 4,
+            TimeSpan.FromSeconds(2));
+        releaseFirst.TrySetResult();
+        await secondEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await WaitUntilAsync(
+            () => host.TranslatedTexts.Contains(
+                "New subtitle",
+                StringComparer.Ordinal),
+            TimeSpan.FromSeconds(2));
+        await controller.StopAsync();
+
+        Assert.DoesNotContain("Old subtitle", host.TranslatedTexts);
+        Assert.Contains("New subtitle", host.TranslatedTexts);
     }
 
     [Fact]
@@ -431,6 +598,52 @@ public sealed class SubtitleTranslationControllerTests
         }
     }
 
+    private sealed class AlternatingSubtitleSource : ITranslationSubtitleCapture
+    {
+        private int _captureCount;
+
+        public int CaptureCount => Volatile.Read(ref _captureCount);
+
+        public Task<CapturedTranslationRegion?> CaptureRegionAsync(
+            TranslationCaptureRegion region,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var call = Interlocked.Increment(ref _captureCount);
+            var value = (call & 1) == 0 ? (byte)0x10 : (byte)0xE0;
+            var frame = new CaptureFrame(
+                new PixelRect(0, 0, 4, 4),
+                16,
+                Enumerable.Repeat(value, 4 * 4 * 4).ToArray());
+            return Task.FromResult<CapturedTranslationRegion?>(
+                new CapturedTranslationRegion(
+                    frame,
+                    new PixelRect(0, 0, 4, 4),
+                    region));
+        }
+    }
+
+    private sealed class CallbackOcr(
+        Func<int, CancellationToken, Task<ScreenOcrResult>> recognize)
+        : IScreenOcrService
+    {
+        private int _callCount;
+
+        public IReadOnlyList<OcrLanguageOption> AvailableLanguages { get; } =
+            [new("en-US", "English")];
+        public int CallCount => Volatile.Read(ref _callCount);
+
+        public Task<ScreenOcrResult> RecognizeAsync(
+            CaptureFrame frame,
+            string? languageTag,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var call = Interlocked.Increment(ref _callCount);
+            return recognize(call, cancellationToken);
+        }
+    }
+
     private sealed class SequenceOcr(
         params ScreenOcrResult[] results) : IScreenOcrService
     {
@@ -519,7 +732,11 @@ public sealed class SubtitleTranslationControllerTests
         public TaskCompletionSource RetryAttempted { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Queue<TranslationResponse> TranslationResults { get; } = [];
-        public int TranslateCount { get; private set; }
+        public List<string> TranslatedTexts { get; } = [];
+        public Func<string, CancellationToken, Task<TranslationResponse>>?
+            TranslationHandler { get; init; }
+        private int _translateCount;
+        public int TranslateCount => Volatile.Read(ref _translateCount);
         public TranslationPurpose? LastPurpose { get; private set; }
         public bool IsPaused { get; private set; }
         public int SubtitleStatusCount { get; private set; }
@@ -608,11 +825,15 @@ public sealed class SubtitleTranslationControllerTests
             TranslationPurpose purpose,
             CancellationToken cancellationToken)
         {
-            TranslateCount++;
+            var count = Interlocked.Increment(ref _translateCount);
+            lock (TranslatedTexts)
+                TranslatedTexts.Add(text);
             LastPurpose = purpose;
             TranslationAttempted.TrySetResult();
-            if (TranslateCount >= 2)
+            if (count >= 2)
                 RetryAttempted.TrySetResult();
+            if (TranslationHandler is { } handler)
+                return handler(text, cancellationToken);
             return Task.FromResult(
                 TranslationResults.Count > 0
                     ? TranslationResults.Dequeue()

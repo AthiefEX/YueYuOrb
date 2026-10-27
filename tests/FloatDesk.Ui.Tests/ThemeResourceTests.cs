@@ -159,7 +159,7 @@ public sealed class ThemeResourceTests
             subtitle,
             StringComparison.Ordinal);
         Assert.Contains(
-            "TranslationOverlayPlacementPolicy.PlaceOutside",
+            "SubtitleOverlayPlacementPolicy.PlaceAnchored",
             overlay,
             StringComparison.Ordinal);
         Assert.Contains(

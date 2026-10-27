@@ -8,7 +8,7 @@ namespace FloatDesk.App.Translation;
 public sealed class SubtitleTranslationController : IDisposable
 {
     private static readonly TimeSpan StabilityDelay =
-        TimeSpan.FromMilliseconds(120);
+        TimeSpan.FromMilliseconds(90);
     private static readonly TimeSpan FailureBackoff =
         TimeSpan.FromSeconds(2);
 
@@ -18,14 +18,24 @@ public sealed class SubtitleTranslationController : IDisposable
     private readonly ITranslationRouteHost _host;
     private readonly IClock _clock;
     private CancellationTokenSource? _sessionCancellation;
-    private CancellationTokenSource? _iterationCancellation;
+    private CancellationTokenSource? _captureIterationCancellation;
+    private CancellationTokenSource? _ocrIterationCancellation;
+    private CancellationTokenSource? _translationCancellation;
     private TaskCompletionSource? _resumeSignal;
-    private Task? _loopTask;
+    private TaskCompletionSource? _firstCandidateObserved;
+    private TaskCompletionSource? _translationStartedSignal;
+    private Task? _captureTask;
+    private Task? _ocrTask;
+    private Task? _translationTask;
+    private LatestSubtitleWorkSlot<SubtitleOcrWork>? _ocrWork;
     private TranslationRouteHandle? _operation;
     private TranslationSettings? _settings;
     private FrameSignature? _previousSignature;
     private string? _previousText;
+    private string? _activeTranslationText;
     private long _generation;
+    private long _latestPublishedSequence;
+    private long _activeTranslationSequence;
     private bool _running;
     private bool _paused;
     private bool _placementFailurePaused;
@@ -79,6 +89,7 @@ public sealed class SubtitleTranslationController : IDisposable
 
         var session = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken);
+        var work = new LatestSubtitleWorkSlot<SubtitleOcrWork>();
         long generation;
         TranslationRouteHandle operation;
         lock (_sync)
@@ -89,11 +100,18 @@ public sealed class SubtitleTranslationController : IDisposable
             _settings = settings;
             _previousSignature = null;
             _previousText = null;
+            _activeTranslationText = null;
+            _latestPublishedSequence = 0;
+            _activeTranslationSequence = 0;
             _paused = false;
             _placementFailurePaused = false;
             _resumeSignal = null;
+            _firstCandidateObserved = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            _translationStartedSignal = null;
             _running = true;
             _sessionCancellation = session;
+            _ocrWork = work;
             operation = _host.ShowSubtitleStatus(
                 TranslationRoutePoint.GetCursorPosition(),
                 "字幕翻译准备中。");
@@ -105,50 +123,99 @@ public sealed class SubtitleTranslationController : IDisposable
             active: true,
             paused: false,
             canReselect: true);
+
         var placement = _host.PrepareSubtitleCaptureRegion(
             settings.SubtitleRegion);
         if (placement != TranslationSubtitlePlacementStatus.Ready)
-        {
             PauseForPlacementFailure(placement);
+
+        lock (_sync)
+        {
+            if (!IsCurrentGenerationLocked(generation))
+            {
+                CancelQuietly(session);
+                work.Dispose();
+            }
+            else
+            {
+                _captureTask = Task.Run(
+                    () => RunCaptureLoopAsync(
+                        generation,
+                        settings,
+                        session,
+                        work),
+                    CancellationToken.None);
+                _ocrTask = Task.Run(
+                    () => RunOcrLoopAsync(
+                        generation,
+                        settings,
+                        session,
+                        work),
+                    CancellationToken.None);
+            }
         }
-        _loopTask = Task.Run(
-            () => RunLoopAsync(
-                generation,
-                settings,
-                session),
-            CancellationToken.None);
     }
 
     public async Task StopAsync()
     {
-        Task? loop;
+        Task? capture;
+        Task? ocr;
+        Task? translation;
+        CancellationTokenSource? captureIteration;
+        CancellationTokenSource? ocrIteration;
+        CancellationTokenSource? translationCancellation;
         CancellationTokenSource? session;
+        LatestSubtitleWorkSlot<SubtitleOcrWork>? work;
         lock (_sync)
         {
-            if (!_running && _loopTask is null)
+            if (!_running &&
+                _captureTask is null &&
+                _ocrTask is null &&
+                _translationTask is null &&
+                _ocrWork is null)
+            {
                 return;
+            }
+
             _running = false;
             _paused = false;
             _placementFailurePaused = false;
-            loop = _loopTask;
+            _activeTranslationText = null;
+            _previousSignature = null;
+            _previousText = null;
+
+            capture = _captureTask;
+            ocr = _ocrTask;
+            translation = _translationTask;
+            _captureTask = null;
+            _ocrTask = null;
+            _translationTask = null;
+
+            captureIteration = _captureIterationCancellation;
+            ocrIteration = _ocrIterationCancellation;
+            translationCancellation = _translationCancellation;
+            _captureIterationCancellation = null;
+            _ocrIterationCancellation = null;
+            _translationCancellation = null;
+
             session = _sessionCancellation;
             _sessionCancellation = null;
-            _loopTask = null;
-            CancelIterationLocked();
+            work = _ocrWork;
+            _ocrWork = null;
             ResumeWaiterLocked();
+            ReleaseFirstCandidateObservationLocked();
+            ReleaseTranslationStartedLocked();
         }
 
         CancelQuietly(session);
-        if (loop is not null)
-        {
-            try
-            {
-                await loop.ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-            }
-        }
+        CancelQuietly(captureIteration);
+        CancelQuietly(ocrIteration);
+        CancelQuietly(translationCancellation);
+        work?.Dispose();
+
+        await AwaitTaskAsync(capture).ConfigureAwait(false);
+        await AwaitTaskAsync(ocr).ConfigureAwait(false);
+        await AwaitTaskAsync(translation).ConfigureAwait(false);
         session?.Dispose();
     }
 
@@ -158,10 +225,15 @@ public sealed class SubtitleTranslationController : IDisposable
     private void PauseCore(string reason, bool placementFailure)
     {
         TranslationRouteHandle? operation;
+        CancellationTokenSource? captureIteration;
+        CancellationTokenSource? ocrIteration;
+        CancellationTokenSource? translationCancellation;
+        Task? abandonedTranslation = null;
         lock (_sync)
         {
             if (!_running || (_paused && !placementFailure))
                 return;
+
             var wasPaused = _paused;
             _paused = true;
             _placementFailurePaused = placementFailure;
@@ -170,10 +242,32 @@ public sealed class SubtitleTranslationController : IDisposable
                 _resumeSignal = new TaskCompletionSource(
                     TaskCreationOptions.RunContinuationsAsynchronously);
                 _previousSignature = null;
-                CancelIterationLocked();
+                _activeTranslationText = null;
+
+                captureIteration = _captureIterationCancellation;
+                ocrIteration = _ocrIterationCancellation;
+                translationCancellation = _translationCancellation;
+                _captureIterationCancellation = null;
+                _ocrIterationCancellation = null;
+                _translationCancellation = null;
+                ReleaseTranslationStartedLocked();
+                abandonedTranslation = _translationTask;
+                _translationTask = null;
             }
+            else
+            {
+                captureIteration = null;
+                ocrIteration = null;
+                translationCancellation = null;
+            }
+
             operation = _operation;
         }
+
+        CancelQuietly(captureIteration);
+        CancelQuietly(ocrIteration);
+        CancelQuietly(translationCancellation);
+        ObserveAbandonedTask(abandonedTranslation);
 
         if (operation is { } current)
         {
@@ -275,6 +369,7 @@ public sealed class SubtitleTranslationController : IDisposable
                     _paused = false;
                     _placementFailurePaused = false;
                     ResumeWaiterLocked();
+                    ReleaseFirstCandidateObservationLocked();
                     resumed = true;
                 }
             }
@@ -347,6 +442,13 @@ public sealed class SubtitleTranslationController : IDisposable
     public void Dispose()
     {
         CancellationTokenSource? session;
+        CancellationTokenSource? captureIteration;
+        CancellationTokenSource? ocrIteration;
+        CancellationTokenSource? translationCancellation;
+        LatestSubtitleWorkSlot<SubtitleOcrWork>? work;
+        Task? capture;
+        Task? ocr;
+        Task? translation;
         lock (_sync)
         {
             if (_disposed)
@@ -355,20 +457,44 @@ public sealed class SubtitleTranslationController : IDisposable
             _running = false;
             _paused = false;
             _placementFailurePaused = false;
+            _activeTranslationText = null;
             session = _sessionCancellation;
             _sessionCancellation = null;
-            _loopTask = null;
-            CancelIterationLocked();
+            captureIteration = _captureIterationCancellation;
+            ocrIteration = _ocrIterationCancellation;
+            translationCancellation = _translationCancellation;
+            _captureIterationCancellation = null;
+            _ocrIterationCancellation = null;
+            _translationCancellation = null;
+            work = _ocrWork;
+            _ocrWork = null;
+            capture = _captureTask;
+            ocr = _ocrTask;
+            translation = _translationTask;
+            _captureTask = null;
+            _ocrTask = null;
+            _translationTask = null;
             ResumeWaiterLocked();
+            ReleaseFirstCandidateObservationLocked();
+            ReleaseTranslationStartedLocked();
         }
+
         CancelQuietly(session);
+        CancelQuietly(captureIteration);
+        CancelQuietly(ocrIteration);
+        CancelQuietly(translationCancellation);
+        work?.Dispose();
+        ObserveAbandonedTask(capture);
+        ObserveAbandonedTask(ocr);
+        ObserveAbandonedTask(translation);
         session?.Dispose();
     }
 
-    private async Task RunLoopAsync(
+    private async Task RunCaptureLoopAsync(
         long generation,
         TranslationSettings settings,
-        CancellationTokenSource session)
+        CancellationTokenSource session,
+        LatestSubtitleWorkSlot<SubtitleOcrWork> work)
     {
         var cancellationToken = session.Token;
         try
@@ -379,10 +505,9 @@ public sealed class SubtitleTranslationController : IDisposable
                     .ConfigureAwait(false);
                 if (cancellationToken.IsCancellationRequested)
                     break;
-                var currentSettings = GetCurrentSettings(
-                        generation)
-                    ?? settings;
 
+                var currentSettings = GetCurrentSettings(generation)
+                    ?? settings;
                 var iteration = CancellationTokenSource
                     .CreateLinkedTokenSource(cancellationToken);
                 lock (_sync)
@@ -392,10 +517,9 @@ public sealed class SubtitleTranslationController : IDisposable
                         iteration.Dispose();
                         break;
                     }
-                    _iterationCancellation = iteration;
+                    _captureIterationCancellation = iteration;
                 }
 
-                var retryWithBackoff = false;
                 try
                 {
                     using var first = await CaptureSignatureAsync(
@@ -421,113 +545,60 @@ public sealed class SubtitleTranslationController : IDisposable
                             StabilityDelay,
                             iteration.Token)
                         .ConfigureAwait(false);
-                    using var stable = await CaptureSignatureAsync(
+                    var stable = await CaptureSignatureAsync(
                             currentSettings.SubtitleRegion!,
                             iteration.Token)
                         .ConfigureAwait(false);
                     if (stable is null)
                         continue;
+
                     SetPreviousSignature(
                         generation,
                         stable.Signature);
-
-                    var ocrResult = await _ocr.RecognizeAsync(
-                            stable.Frame,
-                            currentSettings.OcrLanguage,
-                            iteration.Token)
-                        .ConfigureAwait(false);
-                    if (ocrResult.ErrorCode is { Length: > 0 } errorCode)
+                    var publishedCandidate = false;
+                    long publishedSequence = 0;
+                    lock (_sync)
                     {
-                        if (errorCode == "OcrLanguageUnavailable")
+                        if (IsCurrentUnpausedGenerationLocked(generation))
                         {
-                            Pause(
-                                "未安装可用的 OCR 语言包，请先在 Windows 设置中安装对应语言。");
+                            var sequence = NextGeneration(
+                                _latestPublishedSequence);
+                            _latestPublishedSequence = sequence;
+                            work.Publish(
+                                new SubtitleOcrWork(
+                                    generation,
+                                    sequence,
+                                    currentSettings.OcrLanguage,
+                                    stable));
+                            publishedCandidate = true;
+                            publishedSequence = sequence;
                         }
                         else
                         {
-                            ShowStatusIfCurrent(
-                                generation,
-                                errorCode == "OcrNoText"
-                                    ? "未识别到字幕文字。"
-                                    : "无法识别字幕文字，稍后重试。");
+                            stable.Dispose();
                         }
-                        continue;
                     }
-
-                    var text = TranslationTextProcessor.Normalize(
-                        ocrResult.Text ?? "");
-                    if (text.Length == 0)
+                    if (publishedCandidate)
                     {
-                        ShowStatusIfCurrent(
-                            generation,
-                            "未识别到字幕文字。");
-                        continue;
-                    }
-                    if (IsDuplicateText(text))
-                        continue;
-
-                    ShowStatusIfCurrent(
-                        generation,
-                        "正在翻译字幕…");
-                    var response = await _host.TranslateAsync(
-                            text,
-                            TranslationPurpose.Subtitle,
-                            iteration.Token)
-                        .ConfigureAwait(false);
-                    if (!IsCurrentUnpausedGeneration(generation) ||
-                        cancellationToken.IsCancellationRequested)
-                    {
-                        continue;
-                    }
-
-                    if (response.FailureKind ==
-                        TranslationFailureKind.Cancelled)
-                    {
-                        continue;
-                    }
-                    if (response.Success)
-                    {
-                        MarkTextTranslated(generation, text);
-                        ShowResultIfCurrent(
-                            generation,
-                            response);
-                        continue;
-                    }
-                    if (response.FailureKind ==
-                        TranslationFailureKind.NoTranslationNeeded)
-                    {
-                        MarkTextTranslated(generation, text);
-                        ShowResultIfCurrent(
-                            generation,
-                            response);
-                        continue;
-                    }
-
-                    ShowErrorIfCurrent(
-                        generation,
-                        ResolveFailureMessage(response));
-                    ResetSignatureIfCurrent(generation);
-                    if (response.FailureKind is
-                        TranslationFailureKind.Authentication or
-                        TranslationFailureKind.UnsupportedLanguage)
-                    {
-                        Pause(
-                            response.FailureKind ==
-                            TranslationFailureKind.Authentication
-                                ? "翻译服务认证失败，已暂停自动重试。"
-                                : "当前语言组合不受支持，已暂停自动重试。");
-                    }
-                    else if (response.FailureKind is
-                             TranslationFailureKind.Network or
-                             TranslationFailureKind.Quota or
-                             TranslationFailureKind.Timeout or
-                             TranslationFailureKind.ProviderError)
-                    {
-                        retryWithBackoff = true;
+                        if (publishedSequence == 1)
+                        {
+                            Task? firstObserved;
+                            lock (_sync)
+                                firstObserved =
+                                    _firstCandidateObserved?.Task;
+                            if (firstObserved is not null)
+                            {
+                                await firstObserved.WaitAsync(
+                                        cancellationToken)
+                                    .ConfigureAwait(false);
+                            }
+                        }
+                        await Task.Yield();
                     }
                 }
                 catch (OperationCanceledException)
-                    when (iteration.IsCancellationRequested)
+                    when (iteration.IsCancellationRequested ||
+                          cancellationToken.IsCancellationRequested)
                 {
                 }
                 catch (InvalidOperationException)
@@ -546,10 +617,10 @@ public sealed class SubtitleTranslationController : IDisposable
                     lock (_sync)
                     {
                         if (ReferenceEquals(
-                            _iterationCancellation,
+                            _captureIterationCancellation,
                             iteration))
                         {
-                            _iterationCancellation = null;
+                            _captureIterationCancellation = null;
                         }
                     }
                     iteration.Dispose();
@@ -557,22 +628,36 @@ public sealed class SubtitleTranslationController : IDisposable
 
                 if (cancellationToken.IsCancellationRequested)
                     break;
-                var delay = retryWithBackoff
-                    ? FailureBackoff
-                    : TimeSpan.FromMilliseconds(
-                        Math.Clamp(
-                            currentSettings.SubtitleRefreshIntervalMs,
-                            300,
-                            1500));
+
+                var delay = GetCaptureDelay(currentSettings);
+                using var delayCancellation =
+                    CancellationTokenSource.CreateLinkedTokenSource(
+                        cancellationToken);
+                lock (_sync)
+                    _captureIterationCancellation = delayCancellation;
                 try
                 {
-                    await _clock.DelayAsync(delay, cancellationToken)
+                    await _clock.DelayAsync(
+                            delay,
+                            delayCancellation.Token)
                         .ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
-                    when (cancellationToken.IsCancellationRequested)
+                    when (delayCancellation.IsCancellationRequested ||
+                          cancellationToken.IsCancellationRequested)
                 {
-                    break;
+                }
+                finally
+                {
+                    lock (_sync)
+                    {
+                        if (ReferenceEquals(
+                            _captureIterationCancellation,
+                            delayCancellation))
+                        {
+                            _captureIterationCancellation = null;
+                        }
+                    }
                 }
             }
         }
@@ -582,34 +667,337 @@ public sealed class SubtitleTranslationController : IDisposable
         }
         finally
         {
-            TranslationRouteHandle? dismissOperation = null;
-            lock (_sync)
+            CompleteSession(generation, session);
+        }
+    }
+
+    private async Task RunOcrLoopAsync(
+        long generation,
+        TranslationSettings settings,
+        CancellationTokenSource session,
+        LatestSubtitleWorkSlot<SubtitleOcrWork> work)
+    {
+        var cancellationToken = session.Token;
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
             {
-                if (_generation == generation)
+                SubtitleOcrWork? currentWork;
+                try
                 {
-                    _running = false;
-                    _paused = false;
-                    _placementFailurePaused = false;
-                    _iterationCancellation = null;
-                    _previousSignature = null;
-                    _previousText = null;
-                    ResumeWaiterLocked();
-                    dismissOperation = _operation;
-                    _operation = null;
-                    _settings = null;
-                    if (ReferenceEquals(_sessionCancellation, session))
-                        _sessionCancellation = null;
+                    currentWork = await work.TakeAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                    when (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                if (currentWork is null)
+                {
+                    ReleaseFirstCandidateObservation();
+                    break;
+                }
+
+                try
+                {
+                    await WaitWhilePausedAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                    if (!IsCurrentWork(generation, currentWork.Sequence))
+                    {
+                        ReleaseFirstCandidateObservation();
+                        continue;
+                    }
+
+                    var iteration = CancellationTokenSource
+                        .CreateLinkedTokenSource(cancellationToken);
+                    lock (_sync)
+                    {
+                        if (!IsCurrentWorkLocked(
+                                generation,
+                                currentWork.Sequence))
+                        {
+                            iteration.Dispose();
+                            ReleaseFirstCandidateObservation();
+                            continue;
+                        }
+                        _ocrIterationCancellation = iteration;
+                    }
+
+                    try
+                    {
+                        Task<ScreenOcrResult> ocrRequest;
+                        try
+                        {
+                            ocrRequest = _ocr.RecognizeAsync(
+                                currentWork.Frame,
+                                currentWork.LanguageTag ??
+                                    settings.OcrLanguage,
+                                iteration.Token);
+                        }
+                        finally
+                        {
+                            ReleaseFirstCandidateObservation();
+                        }
+                        var ocrResult = await ocrRequest
+                            .ConfigureAwait(false);
+                        if (iteration.IsCancellationRequested)
+                            continue;
+                        if (!IsCurrentWork(
+                                generation,
+                                currentWork.Sequence))
+                        {
+                            continue;
+                        }
+
+                        if (ocrResult.ErrorCode is { Length: > 0 } errorCode)
+                        {
+                            if (errorCode == "OcrLanguageUnavailable")
+                            {
+                                Pause(
+                                    "未安装可用的 OCR 语言包，请先在 Windows 设置中安装对应语言。");
+                            }
+                            else
+                            {
+                                ShowStatusIfCurrent(
+                                    generation,
+                                    errorCode == "OcrNoText"
+                                        ? "未识别到字幕文字。"
+                                        : "无法识别字幕文字，稍后重试。");
+                            }
+                            continue;
+                        }
+
+                        var text = TranslationTextProcessor.Normalize(
+                            ocrResult.Text ?? "");
+                        if (text.Length == 0)
+                        {
+                            ShowStatusIfCurrent(
+                                generation,
+                                "未识别到字幕文字。");
+                            continue;
+                        }
+                        if (IsDuplicateText(text))
+                            continue;
+
+                        ShowStatusIfCurrent(
+                            generation,
+                            "正在翻译字幕…");
+                        var translationStarted = StartTranslation(
+                            generation,
+                            text,
+                            cancellationToken);
+                        if (translationStarted is not null)
+                        {
+                            await translationStarted.WaitAsync(
+                                    cancellationToken)
+                                .ConfigureAwait(false);
+                        }
+                    }
+                    catch (OperationCanceledException)
+                        when (iteration.IsCancellationRequested ||
+                              cancellationToken.IsCancellationRequested)
+                    {
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        PauseForPlacementFailure(
+                            TranslationSubtitlePlacementStatus.MonitorMissing);
+                    }
+                    catch
+                    {
+                        ShowStatusIfCurrent(
+                            generation,
+                            "字幕采样失败，稍后重试。");
+                    }
+                    finally
+                    {
+                        lock (_sync)
+                        {
+                            if (ReferenceEquals(
+                                _ocrIterationCancellation,
+                                iteration))
+                            {
+                                _ocrIterationCancellation = null;
+                            }
+                        }
+                        iteration.Dispose();
+                    }
+                }
+                finally
+                {
+                    currentWork.Dispose();
                 }
             }
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
 
-            if (dismissOperation is { } current)
+    private Task? StartTranslation(
+        long generation,
+        string text,
+        CancellationToken sessionToken)
+    {
+        CancellationTokenSource cancellation;
+        CancellationTokenSource? abandonedCancellation;
+        Task? abandonedTask;
+        Task startedTask;
+        long sequence;
+        lock (_sync)
+        {
+            if (!IsCurrentUnpausedGenerationLocked(generation))
+                return null;
+
+            sequence = NextGeneration(_activeTranslationSequence);
+            _activeTranslationSequence = sequence;
+            _activeTranslationText = text;
+            ReleaseTranslationStartedLocked();
+            abandonedCancellation = _translationCancellation;
+            abandonedTask = _translationTask;
+            cancellation =
+                CancellationTokenSource.CreateLinkedTokenSource(
+                    sessionToken);
+            _translationCancellation = cancellation;
+            var started = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            _translationStartedSignal = started;
+            startedTask = started.Task;
+            _translationTask = Task.Run(
+                () => RunTranslationAsync(
+                    generation,
+                    sequence,
+                    text,
+                    cancellation),
+                CancellationToken.None);
+        }
+
+        CancelQuietly(abandonedCancellation);
+        ObserveAbandonedTask(abandonedTask);
+        return startedTask;
+    }
+
+    private async Task RunTranslationAsync(
+        long generation,
+        long sequence,
+        string text,
+        CancellationTokenSource cancellation)
+    {
+        var cancellationToken = cancellation.Token;
+        try
+        {
+            while (true)
             {
-                _host.SetSubtitleControls(
-                    current,
-                    active: false,
-                    paused: false,
-                    canReselect: false);
+                Task<TranslationResponse> request;
+                try
+                {
+                    request = _host.TranslateAsync(
+                        text,
+                        TranslationPurpose.Subtitle,
+                        cancellationToken);
+                }
+                finally
+                {
+                    SignalTranslationStarted(sequence);
+                }
+                var response = await request.ConfigureAwait(false);
+                if (!IsCurrentTranslation(
+                        generation,
+                        sequence,
+                        cancellationToken))
+                {
+                    return;
+                }
+
+                if (response.FailureKind ==
+                    TranslationFailureKind.Cancelled)
+                {
+                    return;
+                }
+
+                if (response.Success ||
+                    response.FailureKind ==
+                    TranslationFailureKind.NoTranslationNeeded)
+                {
+                    MarkTextTranslated(generation, sequence, text);
+                    ShowResultIfCurrent(generation, response);
+                    return;
+                }
+
+                if (response.FailureKind is
+                    TranslationFailureKind.Authentication or
+                    TranslationFailureKind.UnsupportedLanguage)
+                {
+                    Pause(
+                        response.FailureKind ==
+                        TranslationFailureKind.Authentication
+                            ? "翻译服务认证失败，已暂停自动重试。"
+                            : "当前语言组合不受支持，已暂停自动重试。");
+                    return;
+                }
+
+                ShowErrorIfCurrent(
+                    generation,
+                    ResolveFailureMessage(response));
+                ResetSignatureIfCurrent(generation);
+                if (response.FailureKind is
+                    TranslationFailureKind.Network or
+                    TranslationFailureKind.Quota or
+                    TranslationFailureKind.Timeout or
+                    TranslationFailureKind.ProviderError)
+                {
+                    await _clock.DelayAsync(
+                            FailureBackoff,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    if (!IsCurrentTranslation(
+                            generation,
+                            sequence,
+                            cancellationToken))
+                    {
+                        return;
+                    }
+                    continue;
+                }
+
+                MarkTranslationFailed(generation, sequence);
+                return;
             }
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch
+        {
+            if (IsCurrentTranslation(
+                    generation,
+                    sequence,
+                    cancellationToken))
+            {
+                ShowStatusIfCurrent(
+                    generation,
+                    "字幕翻译失败，稍后重试。");
+                ResetSignatureIfCurrent(generation);
+                MarkTranslationFailed(generation, sequence);
+            }
+        }
+        finally
+        {
+            lock (_sync)
+            {
+                if (ReferenceEquals(
+                    _translationCancellation,
+                    cancellation))
+                {
+                    _translationCancellation = null;
+                    _translationTask = null;
+                }
+            }
+            cancellation.Dispose();
         }
     }
 
@@ -641,21 +1029,40 @@ public sealed class SubtitleTranslationController : IDisposable
     {
         lock (_sync)
         {
-            return _previousText is { } previous &&
-                   TranslationTextProcessor.IsNearDuplicate(
-                       previous,
-                       text);
+            if (_previousText is { } previous &&
+                TranslationTextProcessor.IsNearDuplicate(
+                    previous,
+                    text))
+            {
+                return true;
+            }
+
+            return _activeTranslationText is { } active &&
+                TranslationTextProcessor.IsNearDuplicate(active, text);
         }
     }
 
     private void MarkTextTranslated(
         long generation,
+        long sequence,
         string text)
     {
         lock (_sync)
         {
-            if (IsCurrentGenerationLocked(generation))
+            if (IsCurrentTranslationLocked(generation, sequence))
+            {
                 _previousText = text;
+                _activeTranslationText = null;
+            }
+        }
+    }
+
+    private void MarkTranslationFailed(long generation, long sequence)
+    {
+        lock (_sync)
+        {
+            if (IsCurrentTranslationLocked(generation, sequence))
+                _activeTranslationText = null;
         }
     }
 
@@ -723,17 +1130,34 @@ public sealed class SubtitleTranslationController : IDisposable
         }
     }
 
-    private bool IsCurrentGeneration(long generation)
+    private bool IsCurrentWork(long generation, long sequence)
     {
         lock (_sync)
-            return IsCurrentGenerationLocked(generation);
+            return IsCurrentWorkLocked(generation, sequence);
     }
 
-    private bool IsCurrentUnpausedGeneration(long generation)
+    private bool IsCurrentWorkLocked(long generation, long sequence) =>
+        IsCurrentUnpausedGenerationLocked(generation) &&
+        _latestPublishedSequence == sequence;
+
+    private bool IsCurrentTranslation(
+        long generation,
+        long sequence,
+        CancellationToken cancellationToken)
     {
         lock (_sync)
-            return IsCurrentUnpausedGenerationLocked(generation);
+        {
+            return !cancellationToken.IsCancellationRequested &&
+                _activeTranslationSequence == sequence &&
+                IsCurrentUnpausedGenerationLocked(generation);
+        }
     }
+
+    private bool IsCurrentTranslationLocked(
+        long generation,
+        long sequence) =>
+        _activeTranslationSequence == sequence &&
+        IsCurrentUnpausedGenerationLocked(generation);
 
     private bool IsCurrentGenerationLocked(long generation) =>
         _running &&
@@ -769,6 +1193,40 @@ public sealed class SubtitleTranslationController : IDisposable
         waiter?.TrySetResult();
     }
 
+    private void ReleaseFirstCandidateObservation()
+    {
+        lock (_sync)
+            ReleaseFirstCandidateObservationLocked();
+    }
+
+    private void ReleaseFirstCandidateObservationLocked()
+    {
+        var signal = _firstCandidateObserved;
+        _firstCandidateObserved = null;
+        signal?.TrySetResult();
+    }
+
+    private void SignalTranslationStarted(long sequence)
+    {
+        TaskCompletionSource? signal = null;
+        lock (_sync)
+        {
+            if (_activeTranslationSequence == sequence)
+            {
+                signal = _translationStartedSignal;
+                _translationStartedSignal = null;
+            }
+        }
+        signal?.TrySetResult();
+    }
+
+    private void ReleaseTranslationStartedLocked()
+    {
+        var signal = _translationStartedSignal;
+        _translationStartedSignal = null;
+        signal?.TrySetResult();
+    }
+
     private void PauseForPlacementFailure(
         TranslationSubtitlePlacementStatus status) =>
         PauseCore(
@@ -777,11 +1235,104 @@ public sealed class SubtitleTranslationController : IDisposable
                 : "无法避开字幕捕获区域，请重新选择字幕区域。",
             placementFailure: true);
 
-    private void CancelIterationLocked()
+    private static TimeSpan GetCaptureDelay(TranslationSettings settings) =>
+        TimeSpan.FromMilliseconds(
+            Math.Clamp(
+                settings.SubtitleRefreshIntervalMs,
+                100,
+                1500));
+
+    private void CompleteSession(
+        long generation,
+        CancellationTokenSource session)
     {
-        var iteration = _iterationCancellation;
-        _iterationCancellation = null;
-        CancelQuietly(iteration);
+        TranslationRouteHandle? dismissOperation = null;
+        LatestSubtitleWorkSlot<SubtitleOcrWork>? work = null;
+        CancellationTokenSource? ocrIteration;
+        CancellationTokenSource? translationCancellation;
+        Task? translationTask;
+        lock (_sync)
+        {
+            if (_generation == generation)
+            {
+                _running = false;
+                _paused = false;
+                _placementFailurePaused = false;
+                _captureIterationCancellation = null;
+                ocrIteration = _ocrIterationCancellation;
+                _ocrIterationCancellation = null;
+                translationCancellation = _translationCancellation;
+                _translationCancellation = null;
+                translationTask = _translationTask;
+                _translationTask = null;
+                _previousSignature = null;
+                _previousText = null;
+                _activeTranslationText = null;
+                ResumeWaiterLocked();
+                ReleaseFirstCandidateObservationLocked();
+                ReleaseTranslationStartedLocked();
+                dismissOperation = _operation;
+                _operation = null;
+                _settings = null;
+                work = _ocrWork;
+                _ocrWork = null;
+                if (ReferenceEquals(_sessionCancellation, session))
+                    _sessionCancellation = null;
+            }
+            else
+            {
+                ocrIteration = null;
+                translationCancellation = null;
+                translationTask = null;
+            }
+        }
+
+        CancelQuietly(ocrIteration);
+        CancelQuietly(translationCancellation);
+        ObserveAbandonedTask(translationTask);
+        work?.Dispose();
+
+        if (dismissOperation is { } current)
+        {
+            _host.SetSubtitleControls(
+                current,
+                active: false,
+                paused: false,
+                canReselect: false);
+        }
+    }
+
+    private static void ObserveAbandonedTask(Task? task)
+    {
+        if (task is null)
+            return;
+        if (task.IsCompleted)
+        {
+            _ = task.Exception;
+            return;
+        }
+        _ = task.ContinueWith(
+            static completed => _ = completed.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    private static async Task AwaitTaskAsync(Task? task)
+    {
+        if (task is null)
+            return;
+        try
+        {
+            await task.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
+            // The task is owned by this controller; stop must remain best-effort.
+        }
     }
 
     private static void CancelQuietly(CancellationTokenSource? source)
@@ -825,5 +1376,27 @@ public sealed class SubtitleTranslationController : IDisposable
         FrameSignature Signature) : IDisposable
     {
         public void Dispose() => Frame.Dispose();
+    }
+
+    private sealed class SubtitleOcrWork(
+        long generation,
+        long sequence,
+        string? languageTag,
+        CapturedFrameSignature captured) : IDisposable
+    {
+        private bool _disposed;
+
+        public long Generation { get; } = generation;
+        public long Sequence { get; } = sequence;
+        public string? LanguageTag { get; } = languageTag;
+        public CaptureFrame Frame => captured.Frame;
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+            captured.Dispose();
+        }
     }
 }
