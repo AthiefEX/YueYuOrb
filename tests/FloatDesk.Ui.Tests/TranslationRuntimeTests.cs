@@ -910,6 +910,55 @@ public sealed class TranslationRuntimeTests
         Assert.Equal(1, factory.CreateCount);
     }
 
+    [Fact]
+    public async Task ShortcutSubtitleStartSelectsRegionEvenWhenRegionIsSaved()
+    {
+        var savedRegion = new TranslationCaptureRegion(
+            "monitor-1",
+            0.1,
+            0.7,
+            0.8,
+            0.2);
+        var selectedRegion = new TranslationCaptureRegion(
+            "monitor-2",
+            0.2,
+            0.75,
+            0.6,
+            0.18);
+        var initial = SubtitleSettings(savedRegion);
+        var settings = new MutableSettingsCoordinator(initial);
+        var capture = new SubtitleCaptureStub(selectedRegion);
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("字幕翻译")),
+            ocr: new RecordingOcr(),
+            regionCapture: capture,
+            settingsCoordinator: settings);
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(initial);
+
+        try
+        {
+            await runtime.ToggleSubtitlesAsync(
+                CancellationToken.None,
+                selectRegionOnStart: true);
+            await host.TranslationAttempted.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            await runtime.StopSubtitlesAsync();
+        }
+
+        Assert.Equal(1, capture.SelectionCount);
+        Assert.Equal(
+            selectedRegion,
+            settings.Current.Translation.SubtitleRegion);
+    }
+
     private static TranslationRuntime CreateRuntime(
         RecordingRouteHost host,
         MutableCredentialStore credentials,

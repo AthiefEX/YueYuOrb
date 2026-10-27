@@ -177,6 +177,47 @@ public sealed class SettingsWindowVisualTests
     }
 
     [Fact]
+    public void WheelSettingsExposeAllThreeTranslationActionToggles()
+    {
+        var document = XDocument.Load(FindRepoFile(
+            "src/FloatDesk.App/Views/SettingsWindow.xaml"));
+        var xName = XName.Get(
+            "Name",
+            "http://schemas.microsoft.com/winfx/2006/xaml");
+        var wheelTab = document
+            .Descendants()
+            .Single(element =>
+                element.Name.LocalName == "TabItem" &&
+                (string?)element.Attribute(xName) == "WheelSettingsTab");
+
+        foreach (var (name, binding) in new[]
+                 {
+                     (
+                         "ShowTranslateSelectionInWheelCheckBox",
+                         "ShowTranslateSelectionInWheel"),
+                     (
+                         "ShowTranslateRegionInWheelCheckBox",
+                         "ShowTranslateRegionInWheel"),
+                     (
+                         "ShowTranslateSubtitlesInWheelCheckBox",
+                         "ShowTranslateSubtitlesInWheel")
+                 })
+        {
+            var checkBox = wheelTab
+                .Descendants()
+                .Single(element =>
+                    element.Name.LocalName == "CheckBox" &&
+                    (string?)element.Attribute(xName) == name);
+            Assert.Equal(
+                $"{{Binding {binding}}}",
+                (string?)checkBox.Attribute("IsChecked"));
+            Assert.False(string.IsNullOrWhiteSpace(
+                (string?)checkBox.Attribute(
+                    "AutomationProperties.Name")));
+        }
+    }
+
+    [Fact]
     public void AboutPageIdentifiesAuthorRepositoryLicenseAndGplText()
     {
         var document = XDocument.Load(FindRepoFile(

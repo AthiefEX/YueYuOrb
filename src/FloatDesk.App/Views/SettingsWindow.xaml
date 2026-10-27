@@ -542,6 +542,47 @@
                                                 <CheckBox x:Name="ShowSettingsInWheelCheckBox" Grid.Row="2" Grid.Column="1" Content="设置" IsChecked="{Binding ShowSettingsInWheel}" Style="{StaticResource SettingsCheckBoxStyle}" VerticalAlignment="Center" />
                                             </Grid>
                                         </Border>
+                                        <Border Style="{StaticResource SettingsSubtleCardStyle}" Margin="0,12,0,0" Padding="18,14">
+                                            <StackPanel>
+                                                <TextBlock Text="实时翻译"
+                                                           Style="{StaticResource SettingsSectionTitleStyle}"
+                                                           FontSize="13"
+                                                           Margin="0,0,0,4" />
+                                                <TextBlock Text="将翻译选中、框选翻译和字幕翻译加入悬浮球轮盘。"
+                                                           Style="{StaticResource SettingsDescriptionStyle}"
+                                                           Margin="0,0,0,8" />
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="44" />
+                                                        <RowDefinition Height="44" />
+                                                    </Grid.RowDefinitions>
+                                                    <CheckBox x:Name="ShowTranslateSelectionInWheelCheckBox"
+                                                              Content="翻译选中"
+                                                              IsChecked="{Binding ShowTranslateSelectionInWheel}"
+                                                              Style="{StaticResource SettingsCheckBoxStyle}"
+                                                              AutomationProperties.Name="翻译选中显示在轮盘"
+                                                              VerticalAlignment="Center" />
+                                                    <CheckBox x:Name="ShowTranslateRegionInWheelCheckBox"
+                                                              Grid.Column="1"
+                                                              Content="框选翻译"
+                                                              IsChecked="{Binding ShowTranslateRegionInWheel}"
+                                                              Style="{StaticResource SettingsCheckBoxStyle}"
+                                                              AutomationProperties.Name="框选翻译显示在轮盘"
+                                                              VerticalAlignment="Center" />
+                                                    <CheckBox x:Name="ShowTranslateSubtitlesInWheelCheckBox"
+                                                              Grid.Row="1"
+                                                              Content="字幕翻译"
+                                                              IsChecked="{Binding ShowTranslateSubtitlesInWheel}"
+                                                              Style="{StaticResource SettingsCheckBoxStyle}"
+                                                              AutomationProperties.Name="字幕翻译显示在轮盘"
+                                                              VerticalAlignment="Center" />
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
                                     </StackPanel>
                                 </Border>
                                 <Border Style="{StaticResource SettingsCardStyle}" Margin="0,14,0,0">

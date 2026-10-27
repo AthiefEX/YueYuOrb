@@ -500,7 +500,8 @@ internal sealed class AppRuntime : IDisposable
         try
         {
             await _translationRuntime.ToggleSubtitlesAsync(
-                _lifetime.Token);
+                _lifetime.Token,
+                selectRegionOnStart: true);
         }
         catch (OperationCanceledException) when (
             _lifetime.IsCancellationRequested)

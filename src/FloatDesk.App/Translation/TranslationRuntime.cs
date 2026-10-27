@@ -245,7 +245,8 @@ public sealed class TranslationRuntime : IDisposable
     }
 
     public async Task ToggleSubtitlesAsync(
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool selectRegionOnStart = false)
     {
         if (IsPausedOrDisposed())
             return;
@@ -267,7 +268,8 @@ public sealed class TranslationRuntime : IDisposable
             }
 
             var settings = GetLatestSettings();
-            if (settings.Translation.SubtitleRegion is null)
+            if (selectRegionOnStart ||
+                settings.Translation.SubtitleRegion is null)
             {
                 settings = await SelectAndPersistSubtitleRegionAsync(
                         showStatus: true,
