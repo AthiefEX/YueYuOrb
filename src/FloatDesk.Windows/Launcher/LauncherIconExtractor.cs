@@ -122,8 +122,7 @@ public sealed class LauncherIconExtractor : IDisposable
             if (result < 0 || bitmapHandle == nint.Zero)
                 return null;
 
-            using var bitmap = Image.FromHbitmap(bitmapHandle);
-            return EncodePng(bitmap);
+            return EncodePngFromHBitmap(bitmapHandle);
         }
         catch (COMException)
         {
@@ -185,6 +184,70 @@ public sealed class LauncherIconExtractor : IDisposable
         return stream.ToArray();
     }
 
+    private static byte[]? EncodePngFromHBitmap(nint bitmapHandle)
+    {
+        if (GetObject(
+                bitmapHandle,
+                Marshal.SizeOf<NativeBitmap>(),
+                out var nativeBitmap) == 0 ||
+            nativeBitmap.Width <= 0 ||
+            nativeBitmap.Height == 0)
+        {
+            return null;
+        }
+
+        var width = nativeBitmap.Width;
+        var height = Math.Abs(nativeBitmap.Height);
+        var stride = checked(width * 4);
+        var pixels = new byte[checked(stride * height)];
+        var info = new BitmapInfoHeader
+        {
+            Size = (uint)Marshal.SizeOf<BitmapInfoHeader>(),
+            Width = width,
+            Height = -height,
+            Planes = 1,
+            BitCount = 32,
+            Compression = 0,
+            SizeImage = (uint)pixels.Length
+        };
+        var deviceContext = GetDC(nint.Zero);
+        try
+        {
+            var scannedLines = GetDIBits(
+                deviceContext,
+                bitmapHandle,
+                0,
+                (uint)height,
+                pixels,
+                ref info,
+                0);
+            if (scannedLines != height)
+                return null;
+        }
+        finally
+        {
+            _ = ReleaseDC(nint.Zero, deviceContext);
+        }
+
+        var pixelsHandle = GCHandle.Alloc(
+            pixels,
+            GCHandleType.Pinned);
+        try
+        {
+            using var bitmap = new Bitmap(
+                width,
+                height,
+                stride,
+                PixelFormat.Format32bppArgb,
+                pixelsHandle.AddrOfPinnedObject());
+            return EncodePng(bitmap);
+        }
+        finally
+        {
+            pixelsHandle.Free();
+        }
+    }
+
     private sealed record ExtractionRequest(
         string Path,
         TaskCompletionSource<byte[]?> Completion,
@@ -213,6 +276,34 @@ public sealed class LauncherIconExtractor : IDisposable
         internal string TypeName;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeBitmap
+    {
+        internal int Type;
+        internal int Width;
+        internal int Height;
+        internal int WidthBytes;
+        internal ushort Planes;
+        internal ushort BitsPerPixel;
+        internal nint Bits;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BitmapInfoHeader
+    {
+        internal uint Size;
+        internal int Width;
+        internal int Height;
+        internal ushort Planes;
+        internal ushort BitCount;
+        internal uint Compression;
+        internal uint SizeImage;
+        internal int XPelsPerMeter;
+        internal int YPelsPerMeter;
+        internal uint ColorsUsed;
+        internal uint ColorsImportant;
+    }
+
     [DllImport(
         "shell32.dll",
         CharSet = CharSet.Unicode,
@@ -233,6 +324,28 @@ public sealed class LauncherIconExtractor : IDisposable
         ref ShellFileInfo fileInfo,
         uint fileInfoSize,
         uint flags);
+
+    [DllImport("gdi32.dll", EntryPoint = "GetObjectW")]
+    private static extern int GetObject(
+        nint graphicsObject,
+        int objectSize,
+        out NativeBitmap bitmap);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern int GetDIBits(
+        nint deviceContext,
+        nint bitmap,
+        uint startScan,
+        uint scanLines,
+        [Out] byte[] bits,
+        ref BitmapInfoHeader bitmapInfo,
+        uint usage);
+
+    [DllImport("user32.dll")]
+    private static extern nint GetDC(nint window);
+
+    [DllImport("user32.dll")]
+    private static extern int ReleaseDC(nint window, nint deviceContext);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

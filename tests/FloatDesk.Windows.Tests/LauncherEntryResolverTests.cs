@@ -49,6 +49,40 @@ public sealed class LauncherEntryResolverTests
         Assert.Null(_resolver.Resolve(shortcut));
     }
 
+    [Fact]
+    public void ShortcutIconSourcesIncludeShortcutTargetAndCustomIcon()
+    {
+        using var temp = new TemporaryDirectory();
+        var target = temp.CreateFile("target.exe");
+        var icon = temp.CreateFile("custom.ico");
+        var shortcut = temp.CreateShortcut(
+            "browser.lnk",
+            target,
+            $"{icon},3");
+
+        var sources = LauncherEntryResolver.GetIconSources(shortcut);
+
+        Assert.Contains(
+            sources,
+            source => string.Equals(
+                source.Path,
+                shortcut,
+                StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            sources,
+            source => string.Equals(
+                source.Path,
+                target,
+                StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            sources,
+            source => string.Equals(
+                          source.Path,
+                          icon,
+                          StringComparison.OrdinalIgnoreCase) &&
+                      source.Index == 3);
+    }
+
     private sealed class TemporaryDirectory : IDisposable
     {
         public TemporaryDirectory()
@@ -69,7 +103,10 @@ public sealed class LauncherEntryResolverTests
             return path;
         }
 
-        public string CreateShortcut(string name, string targetPath)
+        public string CreateShortcut(
+            string name,
+            string targetPath,
+            string? iconLocation = null)
         {
             var path = System.IO.Path.Combine(Path, name);
             var shellType = Type.GetTypeFromProgID("WScript.Shell")
@@ -79,6 +116,8 @@ public sealed class LauncherEntryResolverTests
             dynamic shortcut = shell.CreateShortcut(path);
             shortcut.TargetPath = targetPath;
             shortcut.WorkingDirectory = Path;
+            if (iconLocation is not null)
+                shortcut.IconLocation = iconLocation;
             shortcut.Save();
             return path;
         }

@@ -102,6 +102,42 @@ public static class LauncherDropParser
             failed);
     }
 
+    public static LauncherDropResult ReconcileWithCurrent(
+        LauncherDropResult result,
+        IReadOnlyList<LauncherItem> current)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(current);
+
+        var seenPaths = new HashSet<string>(
+            current
+                .Select(item => NormalizeForComparison(item.Path))
+                .Where(path => path is not null)!,
+            StringComparer.OrdinalIgnoreCase);
+        var added = new List<LauncherItem>(result.Added.Count);
+        var duplicates = new List<string>(result.Duplicates);
+        var nextOrder = current.Count == 0
+            ? 0
+            : current.Max(item => item.Order) + 1;
+        foreach (var item in result.Added)
+        {
+            var path = NormalizeForComparison(item.Path);
+            if (path is null || !seenPaths.Add(path))
+            {
+                duplicates.Add(item.Path);
+                continue;
+            }
+
+            added.Add(item with { Order = nextOrder++ });
+        }
+
+        return result with
+        {
+            Added = added,
+            Duplicates = duplicates
+        };
+    }
+
     private static string? NormalizeForComparison(string? path)
     {
         if (string.IsNullOrWhiteSpace(path))

@@ -70,7 +70,8 @@ internal sealed class AppRuntime : IDisposable
         _launcherIconExtractor = new LauncherIconExtractor();
         _launcherIconCache = new LauncherIconCache(
             paths.LauncherIcons,
-            _launcherIconExtractor.ExtractPngAsync);
+            _launcherIconExtractor.ExtractPngAsync,
+            LauncherEntryResolver.GetIconSources);
         _logger = new FileLogger(paths.Logs);
         _settings = new SettingsCoordinator(new JsonSettingsStore(paths.Root));
         _notes = new SqliteNoteRepository(paths.NotesDatabase);
@@ -901,8 +902,7 @@ internal sealed class AppRuntime : IDisposable
         _orb?.ApplySettings(settings);
         KeepOrbOnCurrentMonitor();
         _translationRuntime.ApplySettings(settings);
-        _launcherIconCache.Preload(settings.Launchers);
-        _launcherIconCache.Prune(settings.Launchers);
+        _launcherIconCache.ScheduleMaintenance(settings.Launchers);
         _panel?.Apply(
             settings,
             _manualEnglish,

@@ -8,6 +8,8 @@ public sealed record LauncherImportResolution(
     string Path,
     string? WorkingDirectory);
 
+public sealed record LauncherIconSource(string Path, int Index = 0);
+
 public sealed record LauncherDropResult(
     IReadOnlyList<LauncherItem> Added,
     IReadOnlyList<string> Duplicates,

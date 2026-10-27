@@ -142,6 +142,59 @@ public sealed class LauncherDropParserTests
         Assert.Equal(8, Assert.Single(result.Added).Order);
     }
 
+    [Fact]
+    public void ReconcileDropsEntriesAddedWhileResolving()
+    {
+        using var temp = new TemporaryDirectory();
+        var existing = new LauncherItem(
+            Guid.NewGuid(),
+            "Existing",
+            LauncherKind.Exe,
+            temp.CreateFile("existing.exe"),
+            [],
+            null,
+            3);
+        var first = new LauncherItem(
+            Guid.NewGuid(),
+            "First",
+            LauncherKind.Exe,
+            temp.CreateFile("first.exe"),
+            [],
+            null,
+            4);
+        var duplicate = new LauncherItem(
+            Guid.NewGuid(),
+            "Duplicate",
+            LauncherKind.Exe,
+            existing.Path.ToUpperInvariant(),
+            [],
+            null,
+            5);
+        var second = new LauncherItem(
+            Guid.NewGuid(),
+            "Second",
+            LauncherKind.Exe,
+            temp.CreateFile("second.exe"),
+            [],
+            null,
+            6);
+        var parsed = new LauncherDropResult(
+            [first, duplicate, second],
+            ["original duplicate"],
+            [],
+            []);
+
+        var reconciled = LauncherDropParser.ReconcileWithCurrent(
+            parsed,
+            [existing]);
+
+        Assert.Equal(
+            ["First", "Second"],
+            reconciled.Added.Select(item => item.Name));
+        Assert.Equal([4, 5], reconciled.Added.Select(item => item.Order));
+        Assert.Equal(2, reconciled.Duplicates.Count);
+    }
+
     private sealed class FakeResolver(
         Func<string, LauncherImportResolution?> resolve) :
         ILauncherEntryResolver

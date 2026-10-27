@@ -2,6 +2,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using FloatDesk.App;
 using FloatDesk.App.Launcher;
+using FloatDesk.Core.Launcher;
 using FloatDesk.Core.Models;
 
 namespace FloatDesk.Ui.Tests;
@@ -53,6 +54,26 @@ public sealed class LauncherIconCacheTests
     }
 
     [Fact]
+    public async Task TruncatedImageHeaderFallsBackToFreshExtraction()
+    {
+        using var temp = new TemporaryDirectory();
+        var item = NewLauncher(temp.CreateFile("app.exe"));
+        var cache = new LauncherIconCache(
+            temp.Path,
+            (_, _) => Task.FromResult<byte[]?>(OnePixelPng));
+        var key = LauncherIconCache.CreateCacheKey(item);
+        var cachedPath = Path.Combine(temp.Path, $"{key}.png");
+        await File.WriteAllBytesAsync(cachedPath, [0xFF, 0xD8, 0xFF]);
+
+        var image = await cache.GetAsync(item, CancellationToken.None);
+
+        Assert.NotNull(image);
+        Assert.Equal(
+            OnePixelPng,
+            await File.ReadAllBytesAsync(cachedPath));
+    }
+
+    [Fact]
     public async Task ExtractorFailureReturnsNullWithoutWritingPng()
     {
         using var temp = new TemporaryDirectory();
@@ -68,7 +89,7 @@ public sealed class LauncherIconCacheTests
     }
 
     [Fact]
-    public async Task PruneRemovesOrphansAndTemporaryFilesButKeepsReferencedCache()
+    public async Task PruneRemovesOrphansAndExpiredTemporaryFilesButKeepsReferencedCache()
     {
         using var temp = new TemporaryDirectory();
         var item = NewLauncher(temp.CreateFile("app.exe"));
@@ -83,12 +104,82 @@ public sealed class LauncherIconCacheTests
         var temporary = Path.Combine(temp.Path, "orphan.tmp");
         await File.WriteAllBytesAsync(orphan, OnePixelPng);
         await File.WriteAllBytesAsync(temporary, OnePixelPng);
+        File.SetLastWriteTimeUtc(
+            temporary,
+            DateTime.UtcNow.AddHours(-2));
 
-        cache.Prune([item]);
+        await cache.PruneAsync([item]);
 
         Assert.True(File.Exists(referenced));
         Assert.False(File.Exists(orphan));
         Assert.False(File.Exists(temporary));
+    }
+
+    [Fact]
+    public async Task PruneKeepsRecentlyActiveTemporaryFile()
+    {
+        using var temp = new TemporaryDirectory();
+        var item = NewLauncher(temp.CreateFile("app.exe"));
+        var cache = new LauncherIconCache(
+            temp.Path,
+            (_, _) => Task.FromResult<byte[]?>(OnePixelPng));
+        var temporary = Path.Combine(temp.Path, "active.tmp");
+        await File.WriteAllBytesAsync(temporary, OnePixelPng);
+
+        await cache.PruneAsync([item]);
+
+        Assert.True(File.Exists(temporary));
+    }
+
+    [Fact]
+    public void CacheKeyChangesWhenShortcutIconSourceChanges()
+    {
+        using var temp = new TemporaryDirectory();
+        var shortcut = NewLauncher(
+            temp.CreateFile("app.lnk"),
+            LauncherKind.Shortcut);
+        var target = temp.CreateFile("target.exe");
+        IReadOnlyList<LauncherIconSource> sources =
+            [new(target, 0), new(target, 2)];
+
+        var first = LauncherIconCache.CreateCacheKey(
+            shortcut,
+            _ => sources);
+        sources = [new(target, 1), new(target, 2)];
+        var iconIndexChanged = LauncherIconCache.CreateCacheKey(
+            shortcut,
+            _ => sources);
+        File.SetLastWriteTimeUtc(
+            target,
+            File.GetLastWriteTimeUtc(target).AddMinutes(2));
+        var targetChanged = LauncherIconCache.CreateCacheKey(
+            shortcut,
+            _ => sources);
+
+        Assert.NotEqual(first, iconIndexChanged);
+        Assert.NotEqual(iconIndexChanged, targetChanged);
+    }
+
+    [Fact]
+    public async Task CacheKeyMetadataIsReadOffTheCallingThread()
+    {
+        using var temp = new TemporaryDirectory();
+        var item = NewLauncher(temp.CreateFile("app.exe"));
+        var callingThread = Environment.CurrentManagedThreadId;
+        var metadataThread = callingThread;
+        var cache = new LauncherIconCache(
+            temp.Path,
+            (_, _) => Task.FromResult<byte[]?>(OnePixelPng),
+            _ =>
+            {
+                metadataThread = Environment.CurrentManagedThreadId;
+                return [new LauncherIconSource(item.Path, 0)];
+            });
+
+        var image = await cache.GetAsync(item, CancellationToken.None);
+
+        Assert.NotNull(image);
+        Assert.NotEqual(callingThread, metadataThread);
     }
 
     [Fact]
@@ -187,11 +278,13 @@ public sealed class LauncherIconCacheTests
             paths.LauncherIcons);
     }
 
-    private static LauncherItem NewLauncher(string path) =>
+    private static LauncherItem NewLauncher(
+        string path,
+        LauncherKind kind = LauncherKind.Exe) =>
         new(
             Guid.NewGuid(),
             Path.GetFileNameWithoutExtension(path),
-            LauncherKind.Exe,
+            kind,
             path,
             [],
             Path.GetDirectoryName(path),

@@ -29,6 +29,62 @@ public sealed class LauncherEntryResolver : ILauncherEntryResolver
 
     private static LauncherImportResolution? ResolveShortcut(string path)
     {
+        var details = ReadShortcut(path);
+        if (details is null ||
+            string.IsNullOrWhiteSpace(details.TargetPath) ||
+            (!File.Exists(details.TargetPath) &&
+             !Directory.Exists(details.TargetPath)))
+            return null;
+
+        return new LauncherImportResolution(
+            Path.GetFileNameWithoutExtension(path),
+            LauncherKind.Shortcut,
+            path,
+            null);
+    }
+
+    public static IReadOnlyList<LauncherIconSource> GetIconSources(
+        string fullPath)
+    {
+        var sources = new List<LauncherIconSource>
+        {
+            new(NormalizePath(fullPath), 0)
+        };
+        if (!Path.GetExtension(fullPath).Equals(
+                ".lnk",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return sources;
+        }
+
+        var details = ReadShortcut(fullPath);
+        if (details is null)
+            return sources;
+        if (!string.IsNullOrWhiteSpace(details.TargetPath))
+        {
+            sources.Add(new(
+                NormalizePath(details.TargetPath),
+                0));
+        }
+        if (!string.IsNullOrWhiteSpace(details.IconPath))
+        {
+            sources.Add(new(
+                NormalizePath(
+                    ResolveShortcutRelativePath(
+                        fullPath,
+                        details.IconPath)),
+                details.IconIndex));
+        }
+
+        return sources
+            .DistinctBy(
+                source => $"{source.Path}\n{source.Index}",
+                StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static ShortcutDetails? ReadShortcut(string path)
+    {
         object? shellLinkObject = null;
         try
         {
@@ -38,18 +94,15 @@ public sealed class LauncherEntryResolver : ILauncherEntryResolver
 
             var target = new StringBuilder(32768);
             shellLink.GetPath(target, target.Capacity, nint.Zero, 0);
-            var targetPath = target.ToString();
-            if (string.IsNullOrWhiteSpace(targetPath) ||
-                (!File.Exists(targetPath) && !Directory.Exists(targetPath)))
-            {
-                return null;
-            }
-
-            return new LauncherImportResolution(
-                Path.GetFileNameWithoutExtension(path),
-                LauncherKind.Shortcut,
-                path,
-                null);
+            var iconPath = new StringBuilder(32768);
+            shellLink.GetIconLocation(
+                iconPath,
+                iconPath.Capacity,
+                out var iconIndex);
+            return new ShortcutDetails(
+                target.ToString(),
+                iconPath.ToString(),
+                iconIndex);
         }
         catch (COMException)
         {
@@ -72,6 +125,40 @@ public sealed class LauncherEntryResolver : ILauncherEntryResolver
             }
         }
     }
+
+    private static string ResolveShortcutRelativePath(
+        string shortcutPath,
+        string iconPath)
+    {
+        var expanded = Environment.ExpandEnvironmentVariables(iconPath);
+        if (Path.IsPathRooted(expanded))
+            return expanded;
+
+        var directory = Path.GetDirectoryName(shortcutPath);
+        return string.IsNullOrWhiteSpace(directory)
+            ? expanded
+            : Path.Combine(directory, expanded);
+    }
+
+    private static string NormalizePath(string path)
+    {
+        try
+        {
+            return Path.GetFullPath(path);
+        }
+        catch (Exception exception)
+            when (exception is ArgumentException or
+                NotSupportedException or
+                PathTooLongException)
+        {
+            return path;
+        }
+    }
+
+    private sealed record ShortcutDetails(
+        string TargetPath,
+        string IconPath,
+        int IconIndex);
 
     [ComImport]
     [Guid("00021401-0000-0000-C000-000000000046")]

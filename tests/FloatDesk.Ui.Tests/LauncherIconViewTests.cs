@@ -25,6 +25,7 @@ public sealed class LauncherIconViewTests
             };
 
             Assert.True(view.IsFallbackVisible);
+            Assert.Equal("\uE71D", view.FallbackGlyphText);
             await provider.WaitForRequestsAsync(1);
 
             var image = CreateImage(Colors.CornflowerBlue);
@@ -97,6 +98,31 @@ public sealed class LauncherIconViewTests
                 secondImage));
 
             Assert.False(view.IsFallbackVisible);
+        });
+
+    [Fact(Timeout = 10_000)]
+    public Task LoadedEventKeepsWarmedImageVisible() =>
+        RunOnStaAsync(async () =>
+        {
+            var image = CreateImage(Colors.Gold);
+            var provider = new FakeIconProvider(
+                (_, _) => Task.FromResult<ImageSource?>(image));
+            var view = new LauncherIconView
+            {
+                Launcher = NewLauncher("warm.exe"),
+                IconProvider = provider,
+                IconSize = 42
+            };
+            await WaitUntilAsync(() => ReferenceEquals(
+                view.DisplayedImage,
+                image));
+
+            view.RaiseEvent(new System.Windows.RoutedEventArgs(
+                System.Windows.FrameworkElement.LoadedEvent));
+
+            Assert.False(view.IsFallbackVisible);
+            Assert.Same(image, view.DisplayedImage);
+            Assert.Equal(1, provider.Requests);
         });
 
     private static async Task RunOnStaAsync(Func<Task> test)
@@ -202,6 +228,15 @@ public sealed class LauncherIconViewTests
             {
                 lock (_gate)
                     return _completedRequests;
+            }
+        }
+
+        public int Requests
+        {
+            get
+            {
+                lock (_gate)
+                    return _requests;
             }
         }
 

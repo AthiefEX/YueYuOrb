@@ -52,6 +52,7 @@ public sealed class LauncherIconView : Grid
             FontFamily = new FontFamily(
                 "Segoe Fluent Icons, Segoe MDL2 Assets"),
             Foreground = Brushes.White,
+            Text = "\uE71D",
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -77,7 +78,11 @@ public sealed class LauncherIconView : Grid
 
         Children.Add(_fallback);
         Children.Add(_image);
-        Loaded += (_, _) => RefreshIcon();
+        Loaded += (_, _) =>
+        {
+            if (_image.Source is null && _requestCancellation is null)
+                RefreshIcon();
+        };
         Unloaded += (_, _) => CancelRequest();
         UpdateSize(IconSize);
     }
@@ -104,6 +109,8 @@ public sealed class LauncherIconView : Grid
         _fallback.Visibility == Visibility.Visible;
 
     public ImageSource? DisplayedImage => _image.Source;
+
+    internal string FallbackGlyphText => _fallbackGlyph.Text;
 
     private static void OnIconInputChanged(
         DependencyObject dependencyObject,
@@ -193,6 +200,12 @@ public sealed class LauncherIconView : Grid
         }
         catch (Exception)
         {
+        }
+        finally
+        {
+            if (ReferenceEquals(_requestCancellation, cancellation))
+                _requestCancellation = null;
+            cancellation.Dispose();
         }
     }
 

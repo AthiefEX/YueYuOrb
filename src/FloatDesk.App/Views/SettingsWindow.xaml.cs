@@ -44,10 +44,10 @@ public partial class SettingsWindow : Window
     private readonly SettingsReloadCoordinator _reloadCoordinator;
     private readonly SettingsPreferenceWorkflow _preferenceWorkflow;
     private readonly LauncherEntryResolver _launcherEntryResolver = new();
+    private readonly LauncherDropOperationGate _launcherDropGate = new();
     private readonly ILauncherIconProvider? _launcherIconProvider;
     private SettingsViewModel _viewModel;
     private bool _applyInProgress;
-    private bool _launcherDropInProgress;
 
     public event Action<AppSettings>? Applied;
 
@@ -97,6 +97,7 @@ public partial class SettingsWindow : Window
         Loaded += OnSettingsWindowLoaded;
         Closing += (_, args) =>
         {
+            CancelLauncherDrop();
             CancelTranslationTest();
             ResetTranslationCredentialIntent();
             args.Cancel = true;
@@ -244,6 +245,7 @@ public partial class SettingsWindow : Window
                 SaveStatusText.Text = validationError;
                 return;
             }
+            CancelLauncherDrop();
             _applyInProgress = true;
             EnsureTranslationCredentialIntentTarget();
             AppSettings? savedSnapshot = null;
@@ -303,6 +305,7 @@ public partial class SettingsWindow : Window
 
     private void OnCancelClick(object sender, RoutedEventArgs e)
     {
+        CancelLauncherDrop();
         CancelTranslationTest();
         ResetTranslationCredentialIntent();
         _viewModel = SettingsViewModel.From(
@@ -467,6 +470,7 @@ public partial class SettingsWindow : Window
 
     private void ApplyReloadedViewModel(SettingsViewModel viewModel)
     {
+        CancelLauncherDrop();
         _viewModel = viewModel;
         _viewModel.LauncherIconProvider = _launcherIconProvider;
         DataContext = _viewModel;
@@ -717,7 +721,7 @@ public partial class SettingsWindow : Window
     private void OnLauncherDragOver(object sender, DragEventArgs e)
     {
         var acceptsFiles =
-            !_launcherDropInProgress &&
+            !_launcherDropGate.IsActive &&
             e.Data.GetDataPresent(DataFormats.FileDrop);
         e.Effects = acceptsFiles
             ? DragDropEffects.Copy
@@ -738,39 +742,63 @@ public partial class SettingsWindow : Window
     {
         LauncherDropHint.Visibility = Visibility.Collapsed;
         e.Handled = true;
-        if (_launcherDropInProgress ||
+        if (_launcherDropGate.IsActive ||
             !e.Data.GetDataPresent(DataFormats.FileDrop) ||
             e.Data.GetData(DataFormats.FileDrop) is not string[] droppedPaths)
         {
             return;
         }
 
-        _launcherDropInProgress = true;
+        var targetViewModel = _viewModel;
+        var operation = _launcherDropGate.TryStart(targetViewModel);
+        if (operation is null)
+            return;
         SaveStatusText.Text = "正在识别拖入的应用…";
         try
         {
             var paths = droppedPaths.ToArray();
-            var existing = _viewModel.Launchers.ToArray();
             var result = await Task.Run(() =>
                 LauncherDropParser.Parse(
                     paths,
-                    existing,
-                    _launcherEntryResolver));
+                    [],
+                    _launcherEntryResolver),
+                operation.Cancellation.Token);
+            if (!_launcherDropGate.IsCurrent(
+                    operation,
+                    targetViewModel))
+            {
+                return;
+            }
+
+            result = LauncherDropParser.ReconcileWithCurrent(
+                result,
+                targetViewModel.Launchers);
             foreach (var item in result.Added)
-                _viewModel.Launchers.Add(item);
+                targetViewModel.Launchers.Add(item);
             if (result.Added.Count > 0)
                 LauncherGrid.SelectedItem = result.Added[^1];
             SaveStatusText.Text = result.Summary;
         }
+        catch (OperationCanceledException)
+            when (operation.Cancellation.IsCancellationRequested)
+        {
+        }
         catch (Exception)
         {
-            SaveStatusText.Text = "拖放识别失败，请重试。";
+            if (_launcherDropGate.IsCurrent(
+                    operation,
+                    targetViewModel))
+            {
+                SaveStatusText.Text = "拖放识别失败，请重试。";
+            }
         }
         finally
         {
-            _launcherDropInProgress = false;
+            _launcherDropGate.Complete(operation);
         }
     }
+
+    private void CancelLauncherDrop() => _launcherDropGate.Cancel();
 
     private void OnRemoveLauncherClick(object sender, RoutedEventArgs e)
     {
