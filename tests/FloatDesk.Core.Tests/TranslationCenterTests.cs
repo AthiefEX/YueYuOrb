@@ -111,6 +111,34 @@ public sealed class TranslationCenterTests
         Assert.Equal(TranslationFailureKind.Cancelled, (await pending).FailureKind);
     }
 
+    [Fact]
+    public async Task ClearCachePreventsInflightCompletionFromRepopulating()
+    {
+        var provider = new BlockedProvider("Private text");
+        using var center = new TranslationCenter(provider, new ManualClock());
+        var first = center.TranslateAsync(
+            "Secret",
+            "en",
+            "fr",
+            TranslationPurpose.Interactive,
+            default);
+        await provider.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        center.ClearCache();
+        provider.Release();
+        await first;
+
+        Assert.Equal(0, RetainedCacheEntries(center));
+        var retry = await center.TranslateAsync(
+            "Secret",
+            "en",
+            "fr",
+            TranslationPurpose.Interactive,
+            default);
+        Assert.True(retry.Success);
+        Assert.Equal(2, provider.CallCount);
+    }
+
     private static int RetainedCacheEntries(TranslationCenter center) =>
         ((IDictionary)typeof(TranslationCenter).GetField("_cache", BindingFlags.Instance | BindingFlags.NonPublic)!
             .GetValue(center)!).Count;

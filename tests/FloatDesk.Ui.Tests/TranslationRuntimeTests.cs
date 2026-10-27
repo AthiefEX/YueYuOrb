@@ -246,11 +246,244 @@ public sealed class TranslationRuntimeTests
         Assert.Null(host.LastError);
     }
 
+    [Fact]
+    public async Task CurrentExternalForegroundWinsOverLastExternalAndFallback()
+    {
+        var fallback = ExternalTarget with
+        {
+            Epoch = 1,
+            TopLevelHwnd = (nint)0xA001,
+            ExePath = @"C:\Apps\fallback.exe"
+        };
+        var current = ExternalTarget with
+        {
+            Epoch = 2,
+            TopLevelHwnd = (nint)0xB001,
+            ExePath = @"C:\Apps\current.exe"
+        };
+        var lastExternal = ExternalTarget with
+        {
+            Epoch = 3,
+            TopLevelHwnd = (nint)0xC001,
+            ExePath = @"C:\Apps\wheel.exe"
+        };
+        ForegroundSnapshot? readTarget = null;
+        var reader = new DelegateSelectedTextReader((target, _) =>
+        {
+            readTarget = target;
+            return Task.FromResult(SelectedTextReadResult.Ok("Hello"));
+        });
+        var host = new RecordingRouteHost
+        {
+            TranslateHandler = (_, _, _) => Task.FromResult(
+                TranslationResponse.Ok(
+                    "Hello",
+                    "你好",
+                    "en",
+                    "Test provider"))
+        };
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("你好")),
+            reader,
+            currentForeground: () => current,
+            lastExternal: () => lastExternal);
+        runtime.ApplySettings(AppSettings.CreateDefault());
+
+        await runtime.TranslateSelectionAsync(
+            fallback,
+            CancellationToken.None);
+
+        Assert.Equal(current, readTarget);
+        Assert.NotEqual(fallback, readTarget);
+        Assert.NotEqual(lastExternal, readTarget);
+    }
+
+    [Fact]
+    public async Task LastExternalWinsOverFallbackWhenCurrentIsOwnWindow()
+    {
+        var fallback = ExternalTarget with
+        {
+            Epoch = 1,
+            TopLevelHwnd = (nint)0xA001,
+            ExePath = @"C:\Apps\fallback.exe"
+        };
+        var current = ExternalTarget with
+        {
+            Epoch = 2,
+            TopLevelHwnd = (nint)0xB001,
+            ExePath = @"C:\Apps\self.exe",
+            IsOwnInteractive = true
+        };
+        var lastExternal = ExternalTarget with
+        {
+            Epoch = 3,
+            TopLevelHwnd = (nint)0xC001,
+            ExePath = @"C:\Apps\wheel.exe"
+        };
+        ForegroundSnapshot? readTarget = null;
+        var reader = new DelegateSelectedTextReader((target, _) =>
+        {
+            readTarget = target;
+            return Task.FromResult(SelectedTextReadResult.Ok("Hello"));
+        });
+        using var runtime = CreateRuntime(
+            new RecordingRouteHost(),
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("你好")),
+            reader,
+            currentForeground: () => current,
+            lastExternal: () => lastExternal);
+        runtime.ApplySettings(AppSettings.CreateDefault());
+
+        await runtime.TranslateSelectionAsync(
+            fallback,
+            CancellationToken.None);
+
+        Assert.Equal(lastExternal, readTarget);
+        Assert.NotEqual(fallback, readTarget);
+    }
+
+    [Fact]
+    public async Task ProviderChangeDismissesActiveTranslationAndRejectsLateResult()
+    {
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<TranslationResponse>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var host = new RecordingRouteHost
+        {
+            TranslateHandler = async (_, _, _) =>
+            {
+                entered.TrySetResult();
+                return await release.Task;
+            }
+        };
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("旧结果")));
+        runtime.ApplySettings(AppSettings.CreateDefault());
+
+        var translation = runtime.TranslateSelectionAsync(
+            ExternalTarget,
+            CancellationToken.None);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.True(host.IsOperationActive);
+        Assert.Equal("正在翻译…", host.Statuses[^1]);
+
+        runtime.ApplySettings(AppSettings.CreateDefault() with
+        {
+            Translation = TranslationSettings.CreateDefault() with
+            {
+                Provider = TranslationProviderKind.LibreTranslate,
+                Endpoint = "https://example.test/translate"
+            }
+        });
+
+        Assert.Equal(1, host.DismissCount);
+        Assert.False(host.IsOperationActive);
+
+        release.SetResult(TranslationResponse.Ok(
+            "Hello",
+            "不应显示",
+            "en",
+            "Late provider"));
+        await translation.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(1, host.RejectedResultAttempts);
+        Assert.Null(host.LastResult);
+    }
+
+    [Fact]
+    public async Task OverlappingCapturePausesResumeOnlyAfterLastLease()
+    {
+        var reader = new CountingSelectedTextReader();
+        var host = new RecordingRouteHost
+        {
+            TranslateHandler = (_, _, _) => Task.FromResult(
+                TranslationResponse.Ok(
+                    "Hello",
+                    "你好",
+                    "en",
+                    "Test provider"))
+        };
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("你好")),
+            reader);
+        runtime.ApplySettings(AppSettings.CreateDefault());
+
+        runtime.PauseForCapture();
+        runtime.PauseForCapture();
+        runtime.ResumeAfterCapture();
+
+        await runtime.TranslateSelectionAsync(
+            ExternalTarget,
+            CancellationToken.None);
+        Assert.Equal(0, reader.ReadCount);
+
+        runtime.ResumeAfterCapture();
+        await runtime.TranslateSelectionAsync(
+            ExternalTarget,
+            CancellationToken.None);
+        Assert.Equal(1, reader.ReadCount);
+    }
+
+    [Fact]
+    public async Task SessionLockClearsTranslationCacheAndDisplayUntilUnlock()
+    {
+        var provider = new StaticTranslationProvider("你好");
+        var reader = new CountingSelectedTextReader();
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(provider),
+            reader);
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(AppSettings.CreateDefault());
+
+        await runtime.TranslateSelectionAsync(
+            ExternalTarget,
+            CancellationToken.None);
+        Assert.True(host.LastResult!.Success);
+        Assert.Equal(1, provider.TranslateCount);
+        Assert.Equal(1, reader.ReadCount);
+
+        runtime.SetSessionLocked(true);
+
+        Assert.Null(host.LastResult);
+        Assert.Null(host.LastError);
+        await runtime.TranslateSelectionAsync(
+            ExternalTarget,
+            CancellationToken.None);
+        Assert.Equal(1, provider.TranslateCount);
+        Assert.Equal(1, reader.ReadCount);
+
+        runtime.SetSessionLocked(false);
+        await runtime.TranslateSelectionAsync(
+            ExternalTarget,
+            CancellationToken.None);
+
+        Assert.True(host.LastResult!.Success);
+        Assert.Equal(2, provider.TranslateCount);
+        Assert.Equal(2, reader.ReadCount);
+    }
+
     private static TranslationRuntime CreateRuntime(
         RecordingRouteHost host,
         MutableCredentialStore credentials,
         RecordingProviderFactory factory,
-        ISelectedTextReader? reader = null) =>
+        ISelectedTextReader? reader = null,
+        Func<ForegroundSnapshot>? currentForeground = null,
+        Func<ForegroundSnapshot?>? lastExternal = null) =>
         new(
             host,
             reader ?? new DelegateSelectedTextReader(
@@ -258,8 +491,8 @@ public sealed class TranslationRuntimeTests
                     SelectedTextReadResult.Ok("Hello"))),
             factory,
             credentials,
-            () => ExternalTarget,
-            () => ExternalTarget);
+            currentForeground ?? (() => ExternalTarget),
+            lastExternal ?? (() => ExternalTarget));
 
     private static AppSettings CustomProviderSettings() =>
         AppSettings.CreateDefault() with
@@ -359,6 +592,9 @@ public sealed class TranslationRuntimeTests
 
     private sealed class RecordingRouteHost : ITranslationRouteHost
     {
+        private int _nextOperationId;
+        private PixelPoint? _activeOperationId;
+
         public Func<string, TranslationPurpose, CancellationToken,
             Task<TranslationResponse>> TranslateHandler { get; set; } =
             (_, _, _) => Task.FromResult(
@@ -373,6 +609,8 @@ public sealed class TranslationRuntimeTests
         public string? LastError { get; private set; }
         public int TranslateCount { get; private set; }
         public int DismissCount { get; private set; }
+        public int RejectedResultAttempts { get; private set; }
+        public bool IsOperationActive => _activeOperationId is not null;
 
         public void ApplySettings(AppSettings settings)
         {
@@ -382,24 +620,41 @@ public sealed class TranslationRuntimeTests
             PixelPoint anchor,
             string status)
         {
+            var operationId = new PixelPoint(++_nextOperationId, 0);
+            _activeOperationId = operationId;
             Statuses.Add(status);
-            return new TranslationRouteHandle(default, anchor);
+            return new TranslationRouteHandle(default, operationId);
         }
 
         public void ShowStatus(
             TranslationRouteHandle operation,
-            string status) =>
+            string status)
+        {
+            if (!IsCurrent(operation))
+                return;
             Statuses.Add(status);
+        }
 
         public void ShowResult(
             TranslationRouteHandle operation,
-            TranslationResponse response) =>
+            TranslationResponse response)
+        {
+            if (!IsCurrent(operation))
+            {
+                RejectedResultAttempts++;
+                return;
+            }
             LastResult = response;
+        }
 
         public void ShowError(
             TranslationRouteHandle operation,
-            string message) =>
+            string message)
+        {
+            if (!IsCurrent(operation))
+                return;
             LastError = message;
+        }
 
         public Task<TranslationResponse> TranslateAsync(
             string text,
@@ -410,7 +665,17 @@ public sealed class TranslationRuntimeTests
             return TranslateHandler(text, purpose, cancellationToken);
         }
 
-        public void DismissActiveOperation() => DismissCount++;
+        public void DismissActiveOperation()
+        {
+            DismissCount++;
+            _activeOperationId = null;
+            LastResult = null;
+            LastError = null;
+        }
+
+        private bool IsCurrent(TranslationRouteHandle operation) =>
+            _activeOperationId is { } active &&
+            operation.Anchor == active;
     }
 
     private sealed class MutableCredentialStore : ITranslationCredentialStore
@@ -466,8 +731,11 @@ public sealed class TranslationRuntimeTests
     private sealed class StaticTranslationProvider(
         string translatedText) : ITranslationProvider
     {
+        private int _translateCount;
+
         public string Id => "test";
         public string DisplayName => "Test provider";
+        public int TranslateCount => Volatile.Read(ref _translateCount);
         public TranslationProviderCapabilities Capabilities { get; } =
             new(
                 SupportsAutoDetect: true,
@@ -479,11 +747,14 @@ public sealed class TranslationRuntimeTests
 
         public Task<TranslationProviderResult> TranslateAsync(
             TranslationRequest request,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(
+            CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _translateCount);
+            return Task.FromResult(
                 TranslationProviderResult.Ok(
                     translatedText,
                     request.SourceLanguage));
+        }
     }
 
     private sealed class BlockingTranslationProvider : ITranslationProvider

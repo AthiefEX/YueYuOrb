@@ -24,7 +24,7 @@ public sealed class TranslationRuntime : IDisposable
     private long _configurationGeneration;
     private bool _sessionLocked;
     private bool _emergencyPaused;
-    private bool _capturePaused;
+    private int _capturePauseDepth;
     private bool _disposed;
 
     public TranslationRuntime(
@@ -74,6 +74,7 @@ public sealed class TranslationRuntime : IDisposable
     {
         ArgumentNullException.ThrowIfNull(settings);
         var rebuild = false;
+        var cancelledInteractive = false;
         lock (_sync)
         {
             if (_disposed)
@@ -84,7 +85,7 @@ public sealed class TranslationRuntime : IDisposable
                       _configuration.ProviderFingerprint != fingerprint;
             if (rebuild)
             {
-                CancelInteractiveLocked();
+                cancelledInteractive = CancelInteractiveLocked();
                 BeginConfigurationLocked(
                     settings.Translation,
                     fingerprint,
@@ -93,6 +94,8 @@ public sealed class TranslationRuntime : IDisposable
             }
         }
 
+        if (cancelledInteractive)
+            _host.DismissActiveOperation();
         _host.ApplySettings(settings);
     }
 
@@ -150,6 +153,7 @@ public sealed class TranslationRuntime : IDisposable
     public void SetSessionLocked(bool locked)
     {
         var changed = false;
+        TranslationCenter? center = null;
         lock (_sync)
         {
             if (_disposed || _sessionLocked == locked)
@@ -157,10 +161,16 @@ public sealed class TranslationRuntime : IDisposable
             _sessionLocked = locked;
             changed = true;
             if (locked)
+            {
                 CancelInteractiveLocked();
+                center = _configuration?.Center;
+            }
         }
         if (changed && locked)
+        {
+            center?.ClearCache();
             _host.DismissActiveOperation();
+        }
     }
 
     public void SetEmergencyPaused(bool paused)
@@ -184,11 +194,13 @@ public sealed class TranslationRuntime : IDisposable
         var changed = false;
         lock (_sync)
         {
-            if (_disposed || _capturePaused)
+            if (_disposed)
                 return;
-            _capturePaused = true;
-            changed = true;
-            CancelInteractiveLocked();
+            if (_capturePauseDepth++ == 0)
+            {
+                changed = true;
+                CancelInteractiveLocked();
+            }
         }
         if (changed)
             _host.DismissActiveOperation();
@@ -198,8 +210,8 @@ public sealed class TranslationRuntime : IDisposable
     {
         lock (_sync)
         {
-            if (!_disposed)
-                _capturePaused = false;
+            if (!_disposed && _capturePauseDepth > 0)
+                _capturePauseDepth--;
         }
     }
 
@@ -506,12 +518,6 @@ public sealed class TranslationRuntime : IDisposable
     private ForegroundSnapshot ResolveTarget(
         ForegroundSnapshot fallbackTarget)
     {
-        if (fallbackTarget.TopLevelHwnd != 0 &&
-            !fallbackTarget.IsOwnInteractive)
-        {
-            return fallbackTarget;
-        }
-
         try
         {
             var current = _currentForeground();
@@ -527,12 +533,21 @@ public sealed class TranslationRuntime : IDisposable
 
         try
         {
-            return _lastExternal() ?? fallbackTarget;
+            var lastExternal = _lastExternal();
+            if (lastExternal is
+                {
+                    TopLevelHwnd: not 0,
+                    IsOwnInteractive: false
+                })
+            {
+                return lastExternal;
+            }
         }
         catch
         {
-            return fallbackTarget;
         }
+
+        return fallbackTarget;
     }
 
     private void ShowRouteError(string message)
@@ -543,11 +558,14 @@ public sealed class TranslationRuntime : IDisposable
         _host.ShowError(operation, message);
     }
 
-    private void CancelInteractiveLocked()
+    private bool CancelInteractiveLocked()
     {
         var operation = _interactiveCancellation;
         _interactiveCancellation = null;
-        operation?.Cancel();
+        if (operation is null)
+            return false;
+        operation.Cancel();
+        return true;
     }
 
     private bool IsPausedOrDisposed()
@@ -559,7 +577,7 @@ public sealed class TranslationRuntime : IDisposable
     private bool IsPausedLocked() =>
         _sessionLocked ||
         _emergencyPaused ||
-        _capturePaused;
+        _capturePauseDepth > 0;
 
     private static bool RequiresKey(
         TranslationProviderKind provider) =>

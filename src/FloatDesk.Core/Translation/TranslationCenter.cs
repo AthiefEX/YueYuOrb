@@ -15,6 +15,7 @@ public sealed class TranslationCenter : IDisposable
     private readonly Timer _cleanupTimer;
     private int _activeOperations;
     private bool _disposed;
+    private long _cacheGeneration;
     private DateTimeOffset _nextRequest;
 
     private sealed class PendingOperation
@@ -25,6 +26,7 @@ public sealed class TranslationCenter : IDisposable
         public int Subscribers { get; set; }
         public bool Completed { get; set; }
         public bool Abandoned { get; set; }
+        public long CacheGeneration { get; init; }
     }
 
     public TranslationCenter(ITranslationProvider provider, IClock clock)
@@ -65,7 +67,10 @@ public sealed class TranslationCenter : IDisposable
             }
             if (!_pending.TryGetValue(key, out operation!))
             {
-                operation = new PendingOperation();
+                operation = new PendingOperation
+                {
+                    CacheGeneration = _cacheGeneration
+                };
                 _pending[key] = operation;
                 _activeOperations++;
                 start = true;
@@ -127,7 +132,11 @@ public sealed class TranslationCenter : IDisposable
             }
             lock (_sync)
             {
-                if (!_disposed && !operation.Abandoned && !operation.Cancellation.IsCancellationRequested && response.Success)
+                if (!_disposed &&
+                    !operation.Abandoned &&
+                    !operation.Cancellation.IsCancellationRequested &&
+                    operation.CacheGeneration == _cacheGeneration &&
+                    response.Success)
                 {
                     if (_cache.Count >= 128)
                     {
@@ -161,6 +170,17 @@ public sealed class TranslationCenter : IDisposable
                 .Select(entry => entry.Key).ToArray();
             foreach (var key in expired) _cache.Remove(key);
             return expired.Length;
+        }
+    }
+
+    public void ClearCache()
+    {
+        lock (_sync)
+        {
+            _cache.Clear();
+            _cacheGeneration = _cacheGeneration == long.MaxValue
+                ? 1
+                : _cacheGeneration + 1;
         }
     }
 
