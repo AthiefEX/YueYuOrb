@@ -41,24 +41,39 @@ public sealed class WindowCoordinator : IWindowCoordinator
         CancellationToken cancellationToken)
     {
         var dispatcher = GetDispatcher();
-        await dispatcher.InvokeAsync(() =>
+        try
         {
-            _captureVisibility.Clear();
-            foreach (var window in EnumerateWindows())
+            await dispatcher.InvokeAsync(() =>
             {
-                _captureVisibility[window] = window.IsVisible;
-                if (window is FloatDesk.App.Views.QuickPanelWindow panel)
+                _captureVisibility.Clear();
+                foreach (var window in EnumerateWindows())
                 {
-                    panel.PrepareForScreenCapture();
-                    continue;
+                    _captureVisibility[window] = window.IsVisible;
+                    if (window is FloatDesk.App.Views.QuickPanelWindow panel)
+                    {
+                        panel.PrepareForScreenCapture();
+                        continue;
+                    }
+                    window.Hide();
                 }
-                window.Hide();
+                if (System.Windows.Application.Current is { } application)
+                    application.MainWindow = _orb;
+            });
+            await Task.Delay(80, cancellationToken);
+            return new RestoreScope(this);
+        }
+        catch
+        {
+            try
+            {
+                Restore();
             }
-            if (System.Windows.Application.Current is { } application)
-                application.MainWindow = _orb;
-        });
-        await Task.Delay(80, cancellationToken);
-        return new RestoreScope(this);
+            catch
+            {
+                // Preserve the original hide failure.
+            }
+            throw;
+        }
     }
 
     public void ShowTool(ToolWindow tool)

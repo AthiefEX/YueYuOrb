@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using FloatDesk.Core.Models;
@@ -266,7 +268,9 @@ public sealed class SelectedTextReader :
             {
                 readResult = await _clipboard.WaitForTextAsync(
                         snapshot.SequenceNumber,
+                        identity.ProcessId,
                         _copyWaitTimeout,
+                        sequence => expectedRestoreSequence = sequence,
                         cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -705,6 +709,124 @@ internal readonly record struct ClipboardTextReadResult(
         new(true, observedSequenceNumber, null);
 }
 
+internal readonly record struct ClipboardWriteObservation(
+    uint SequenceNumber,
+    uint OwnerProcessId,
+    bool IsStable);
+
+internal static class ClipboardRestoreTransaction
+{
+    public static bool TryRestoreIfSequence(
+        uint expectedSequenceNumber,
+        Func<bool> openClipboard,
+        Func<uint> getSequenceNumber,
+        Func<bool> restore,
+        Action closeClipboard)
+    {
+        ArgumentNullException.ThrowIfNull(openClipboard);
+        ArgumentNullException.ThrowIfNull(getSequenceNumber);
+        ArgumentNullException.ThrowIfNull(restore);
+        ArgumentNullException.ThrowIfNull(closeClipboard);
+
+        if (!openClipboard())
+            return false;
+
+        try
+        {
+            if (getSequenceNumber() != expectedSequenceNumber)
+                return false;
+
+            return restore();
+        }
+        finally
+        {
+            closeClipboard();
+        }
+    }
+}
+
+internal static class ClipboardTextWaitLoop
+{
+    private static readonly TimeSpan PollInterval =
+        TimeSpan.FromMilliseconds(25);
+
+    public static ClipboardTextReadResult Wait(
+        uint baselineSequenceNumber,
+        uint targetProcessId,
+        TimeSpan timeout,
+        Func<ClipboardWriteObservation> observeWrite,
+        Func<string?> readText,
+        Func<long> getTimestamp,
+        Action<TimeSpan> delay,
+        Action<uint>? targetWriteObserved,
+        CancellationToken cancellationToken)
+    {
+        var startedAt = getTimestamp();
+        uint? targetSequenceNumber = null;
+        while (true)
+        {
+            try
+            {
+                var observation = observeWrite();
+                if (observation.IsStable &&
+                    observation.SequenceNumber != baselineSequenceNumber &&
+                    observation.OwnerProcessId == targetProcessId)
+                {
+                    if (targetSequenceNumber !=
+                        observation.SequenceNumber)
+                    {
+                        targetSequenceNumber =
+                            observation.SequenceNumber;
+                        targetWriteObserved?.Invoke(
+                            observation.SequenceNumber);
+                    }
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var text = readText();
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var confirmation = observeWrite();
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (confirmation.IsStable &&
+                        confirmation.SequenceNumber ==
+                            observation.SequenceNumber &&
+                        confirmation.OwnerProcessId == targetProcessId)
+                    {
+                        return string.IsNullOrWhiteSpace(text)
+                            ? ClipboardTextReadResult.WithoutText(
+                                observation.SequenceNumber)
+                            : ClipboardTextReadResult.WithText(
+                                text,
+                                observation.SequenceNumber);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return ClipboardTextReadResult.AccessDenied(
+                    targetSequenceNumber);
+            }
+
+            var elapsed = TimeSpan.FromSeconds(
+                (getTimestamp() - startedAt) /
+                (double)Stopwatch.Frequency);
+            if (elapsed >= timeout)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return ClipboardTextReadResult.WithoutText(
+                    targetSequenceNumber);
+            }
+
+            var remaining = timeout - elapsed;
+            delay(remaining < PollInterval ? remaining : PollInterval);
+        }
+    }
+}
+
 internal interface IClipboardSession
 {
     Task<ClipboardSessionSnapshot?> CaptureAsync(
@@ -715,7 +837,9 @@ internal interface IClipboardSession
 
     Task<ClipboardTextReadResult> WaitForTextAsync(
         uint baselineSequenceNumber,
+        uint targetProcessId,
         TimeSpan timeout,
+        Action<uint>? sequenceObserved,
         CancellationToken cancellationToken);
 
     Task<bool> RestoreIfSequenceAsync(
@@ -904,6 +1028,374 @@ internal static class ClipboardSnapshotMaterializer
     }
 }
 
+internal sealed class NativeClipboardRestorePlan : IDisposable
+{
+    private const uint CfText = 1;
+    private const uint CfBitmap = 2;
+    private const uint CfOemText = 7;
+    private const uint CfDib = 8;
+    private const uint CfUnicodeText = 13;
+    private const uint CfHDrop = 15;
+    private const uint CfDibV5 = 17;
+    private const int BitmapFileHeaderLength = 14;
+
+    private readonly List<Payload> _payloads;
+    private readonly bool _restoreEmpty;
+
+    private NativeClipboardRestorePlan(
+        List<Payload> payloads,
+        bool restoreEmpty)
+    {
+        _payloads = payloads;
+        _restoreEmpty = restoreEmpty;
+    }
+
+    public static NativeClipboardRestorePlan? TryCreate(
+        ClipboardSessionSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (snapshot.Formats.Count == 0)
+            return new NativeClipboardRestorePlan([], restoreEmpty: true);
+
+        var payloads = new List<Payload>();
+        var formats = new HashSet<uint>();
+        try
+        {
+            foreach (var format in snapshot.Formats)
+            {
+                var payload = TryCreatePayload(format);
+                if (payload is null)
+                    continue;
+                if (!formats.Add(payload.Format))
+                {
+                    payload.Dispose();
+                    continue;
+                }
+
+                payloads.Add(payload);
+            }
+
+            if (payloads.Count == 0)
+                return null;
+            return new NativeClipboardRestorePlan(
+                payloads,
+                restoreEmpty: false);
+        }
+        catch
+        {
+            DisposePayloads(payloads);
+            return null;
+        }
+    }
+
+    public bool RestoreWhileClipboardLocked()
+    {
+        if (!NativeClipboard.EmptyClipboard())
+            return false;
+        if (_restoreEmpty)
+            return true;
+
+        var restored = true;
+        foreach (var payload in _payloads)
+        {
+            if (NativeClipboard.SetClipboardData(
+                    payload.Format,
+                    payload.Handle) == 0)
+            {
+                restored = false;
+                continue;
+            }
+
+            payload.TransferOwnership();
+        }
+
+        return restored;
+    }
+
+    public void Dispose()
+    {
+        DisposePayloads(_payloads);
+    }
+
+    private static Payload? TryCreatePayload(
+        ClipboardFormatSnapshot snapshot)
+    {
+        if (snapshot.Data is null)
+            return null;
+
+        uint format;
+        try
+        {
+            var dataFormat = DataFormats.GetDataFormat(snapshot.Format);
+            if (dataFormat.Id <= 0)
+                return null;
+            format = unchecked((uint)dataFormat.Id);
+        }
+        catch
+        {
+            return null;
+        }
+
+        return format switch
+        {
+            CfText => CreateAnsiText(format, snapshot.Data, oem: false),
+            CfBitmap => CreateBitmap(format, snapshot.Data),
+            CfOemText => CreateAnsiText(format, snapshot.Data, oem: true),
+            CfDib or CfDibV5 => CreateDib(format, snapshot.Data),
+            CfUnicodeText => CreateUnicodeText(format, snapshot.Data),
+            CfHDrop => CreateFileDrop(format, snapshot.Data),
+            _ => CreateRegisteredFormat(
+                format,
+                snapshot.Format,
+                snapshot.Data)
+        };
+    }
+
+    private static Payload? CreateUnicodeText(
+        uint format,
+        object data)
+    {
+        if (data is not string text)
+            return null;
+        var bytes = Encoding.Unicode.GetBytes(text + '\0');
+        return CreateMemoryPayload(format, bytes);
+    }
+
+    private static Payload? CreateAnsiText(
+        uint format,
+        object data,
+        bool oem)
+    {
+        if (data is not string text)
+            return null;
+        try
+        {
+            var codePage = oem
+                ? CultureInfo.CurrentCulture.TextInfo.OEMCodePage
+                : 0;
+            var bytes = Encoding.GetEncoding(codePage)
+                .GetBytes(text + '\0');
+            return CreateMemoryPayload(format, bytes);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static Payload? CreateBitmap(
+        uint format,
+        object data)
+    {
+        if (data is not BitmapSource bitmap)
+            return null;
+
+        try
+        {
+            using var stream = new MemoryStream();
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            encoder.Save(stream);
+            stream.Position = 0;
+            using var drawingBitmap =
+                new System.Drawing.Bitmap(stream);
+            var handle = drawingBitmap.GetHbitmap();
+            return handle == 0
+                ? null
+                : new Payload(format, handle, isGdi: true);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static Payload? CreateDib(
+        uint format,
+        object data)
+    {
+        var bytes = data switch
+        {
+            byte[] array => array.ToArray(),
+            Stream stream => ReadStreamBytes(stream),
+            BitmapSource bitmap => EncodeBitmapFile(bitmap),
+            _ => null
+        };
+        if (bytes is null)
+            return null;
+
+        if (bytes.Length >= BitmapFileHeaderLength &&
+            bytes[0] == (byte)'B' &&
+            bytes[1] == (byte)'M')
+        {
+            bytes = bytes[BitmapFileHeaderLength..];
+        }
+
+        return bytes.Length == 0
+            ? null
+            : CreateMemoryPayload(format, bytes);
+    }
+
+    private static Payload? CreateFileDrop(
+        uint format,
+        object data)
+    {
+        if (data is not string[] paths || paths.Length == 0)
+            return null;
+
+        try
+        {
+            using var stream = new MemoryStream();
+            using (var writer = new BinaryWriter(
+                stream,
+                Encoding.Unicode,
+                leaveOpen: true))
+            {
+                writer.Write(20);
+                writer.Write(0);
+                writer.Write(0);
+                writer.Write(0);
+                writer.Write(1);
+                foreach (var path in paths)
+                {
+                    writer.Write(Encoding.Unicode.GetBytes(path));
+                    writer.Write((ushort)0);
+                }
+
+                writer.Write((ushort)0);
+            }
+
+            return CreateMemoryPayload(format, stream.ToArray());
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static Payload? CreateRegisteredFormat(
+        uint format,
+        string formatName,
+        object data)
+    {
+        var bytes = data switch
+        {
+            string text => Encoding.UTF8.GetBytes(text + '\0'),
+            byte[] array => array.ToArray(),
+            Stream stream => ReadStreamBytes(stream),
+            BitmapSource bitmap
+                when formatName.Contains(
+                    "png",
+                    StringComparison.OrdinalIgnoreCase) =>
+                EncodeBitmapPng(bitmap),
+            _ => null
+        };
+
+        return bytes is null || bytes.Length == 0
+            ? null
+            : CreateMemoryPayload(format, bytes);
+    }
+
+    private static Payload? CreateMemoryPayload(
+        uint format,
+        byte[] bytes)
+    {
+        var handle = NativeClipboard.AllocateMoveableMemory(bytes);
+        return handle == 0
+            ? null
+            : new Payload(format, handle, isGdi: false);
+    }
+
+    private static byte[]? ReadStreamBytes(Stream stream)
+    {
+        var originalPosition = stream.CanSeek ? stream.Position : 0;
+        try
+        {
+            if (stream.CanSeek)
+                stream.Position = 0;
+            using var copy = new MemoryStream();
+            stream.CopyTo(copy);
+            return copy.ToArray();
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            if (stream.CanSeek)
+                stream.Position = originalPosition;
+        }
+    }
+
+    private static byte[]? EncodeBitmapPng(BitmapSource bitmap)
+    {
+        try
+        {
+            using var stream = new MemoryStream();
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            encoder.Save(stream);
+            return stream.ToArray();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static byte[]? EncodeBitmapFile(BitmapSource bitmap)
+    {
+        try
+        {
+            using var stream = new MemoryStream();
+            var encoder = new BmpBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            encoder.Save(stream);
+            return stream.ToArray();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void DisposePayloads(
+        IEnumerable<Payload> payloads)
+    {
+        foreach (var payload in payloads)
+            payload.Dispose();
+    }
+
+    private sealed class Payload : IDisposable
+    {
+        private readonly bool _isGdi;
+
+        public Payload(uint format, nint handle, bool isGdi)
+        {
+            Format = format;
+            Handle = handle;
+            _isGdi = isGdi;
+        }
+
+        public uint Format { get; }
+        public nint Handle { get; private set; }
+
+        public void TransferOwnership() => Handle = 0;
+
+        public void Dispose()
+        {
+            if (Handle == 0)
+                return;
+            if (_isGdi)
+                NativeClipboard.DeleteGdiObject(Handle);
+            else
+                NativeClipboard.FreeClipboardHandle(Handle);
+            Handle = 0;
+        }
+    }
+}
+
 internal sealed class WpfClipboardSession :
     IClipboardSession,
     IDisposable,
@@ -953,16 +1445,20 @@ internal sealed class WpfClipboardSession :
 
     public Task<ClipboardTextReadResult> WaitForTextAsync(
         uint baselineSequenceNumber,
+        uint targetProcessId,
         TimeSpan timeout,
+        Action<uint>? sequenceObserved,
         CancellationToken cancellationToken)
     {
         var worker = EnsureWorker();
         return worker.InvokeAsync(
             () => WaitForTextOnSta(
                 baselineSequenceNumber,
+                targetProcessId,
                 timeout,
+                sequenceObserved,
                 cancellationToken),
-            cancellationToken);
+            CancellationToken.None);
     }
 
     public async Task<bool> RestoreIfSequenceAsync(
@@ -1105,78 +1601,72 @@ internal sealed class WpfClipboardSession :
 
     private static ClipboardTextReadResult WaitForTextOnSta(
         uint baselineSequenceNumber,
+        uint targetProcessId,
         TimeSpan timeout,
-        CancellationToken cancellationToken)
-    {
-        var startedAt = Stopwatch.GetTimestamp();
-        uint? observedSequenceNumber = null;
-        while (true)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            try
-            {
-                var sequence =
-                    NativeClipboard.GetClipboardSequenceNumber();
-                if (sequence != baselineSequenceNumber)
-                {
-                    observedSequenceNumber = sequence;
-                    var text = ReadUnicodeText();
-                    if (!string.IsNullOrWhiteSpace(text))
-                    {
-                        return ClipboardTextReadResult.WithText(
-                            text,
-                            sequence);
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch
-            {
-                return ClipboardTextReadResult.AccessDenied(
-                    observedSequenceNumber);
-            }
-
-            var elapsed = Stopwatch.GetElapsedTime(startedAt);
-            if (elapsed >= timeout)
-            {
-                return ClipboardTextReadResult.WithoutText(
-                    observedSequenceNumber);
-            }
-
-            var remaining = timeout - elapsed;
-            var delay = remaining < PollInterval
-                ? remaining
-                : PollInterval;
-            var milliseconds = Math.Max(
+        Action<uint>? sequenceObserved,
+        CancellationToken cancellationToken) =>
+        ClipboardTextWaitLoop.Wait(
+            baselineSequenceNumber,
+            targetProcessId,
+            timeout,
+            ObserveClipboardWrite,
+            ReadUnicodeText,
+            Stopwatch.GetTimestamp,
+            delay => Thread.Sleep(Math.Max(
                 1,
-                (int)Math.Ceiling(delay.TotalMilliseconds));
-            Thread.Sleep(milliseconds);
+                (int)Math.Ceiling(delay.TotalMilliseconds))),
+            sequenceObserved,
+            cancellationToken);
+
+    private static ClipboardWriteObservation ObserveClipboardWrite()
+    {
+        var sequenceBefore =
+            NativeClipboard.GetClipboardSequenceNumber();
+        var owner = NativeClipboard.GetClipboardOwner();
+        var ownerProcessId = 0u;
+        if (owner != 0)
+        {
+            var ownerThreadId =
+                NativeClipboard.GetWindowThreadProcessId(
+                    owner,
+                    out ownerProcessId);
+            if (ownerThreadId == 0)
+                ownerProcessId = 0;
         }
+        var sequenceAfter =
+            NativeClipboard.GetClipboardSequenceNumber();
+        return new ClipboardWriteObservation(
+            sequenceAfter,
+            ownerProcessId,
+            sequenceBefore == sequenceAfter);
     }
 
     private static bool RestoreIfSequenceOnSta(
         ClipboardSessionSnapshot snapshot,
         uint expectedSequenceNumber)
     {
-        if (NativeClipboard.GetClipboardSequenceNumber() !=
-            expectedSequenceNumber)
-        {
+        using var plan = NativeClipboardRestorePlan.TryCreate(snapshot);
+        if (plan is null)
             return false;
-        }
 
-        if (snapshot.Formats.Count == 0)
+        var ownerWindow = NativeClipboard.CreateMessageWindow();
+        if (ownerWindow == 0)
+            return false;
+
+        try
         {
-            Clipboard.Clear();
-            return true;
+            return ClipboardRestoreTransaction.TryRestoreIfSequence(
+                expectedSequenceNumber,
+                () => NativeClipboard.OpenClipboardWithRetry(
+                    ownerWindow),
+                NativeClipboard.GetClipboardSequenceNumber,
+                plan.RestoreWhileClipboardLocked,
+                () => NativeClipboard.CloseClipboard());
         }
-
-        var dataObject =
-            ClipboardSnapshotMaterializer.CreateDataObject(snapshot);
-        Clipboard.SetDataObject(dataObject, copy: true);
-        return true;
+        finally
+        {
+            NativeClipboard.DestroyWindow(ownerWindow);
+        }
     }
 
     private static string? ReadUnicodeText() =>
@@ -1281,8 +1771,158 @@ internal sealed class WpfClipboardSession :
 
 internal static class NativeClipboard
 {
+    private const uint GmemMoveable = 0x0002;
+    private const uint GmemZeroInit = 0x0040;
+    private const int OpenAttempts = 10;
+    private const int OpenRetryDelayMilliseconds = 10;
+    private static readonly nint HwndMessage = new(-3);
+
     [DllImport("user32.dll")]
     internal static extern uint GetClipboardSequenceNumber();
+
+    [DllImport("user32.dll")]
+    internal static extern nint GetClipboardOwner();
+
+    [DllImport("user32.dll")]
+    internal static extern uint GetWindowThreadProcessId(
+        nint hwnd,
+        out uint processId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool OpenClipboard(nint newOwner);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool CloseClipboard();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool EmptyClipboard();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern nint SetClipboardData(
+        uint format,
+        nint memory);
+
+    [DllImport(
+        "user32.dll",
+        CharSet = CharSet.Unicode,
+        SetLastError = true)]
+    internal static extern nint CreateWindowEx(
+        uint extendedStyle,
+        string className,
+        string windowName,
+        uint style,
+        int x,
+        int y,
+        int width,
+        int height,
+        nint parent,
+        nint menu,
+        nint instance,
+        nint parameter);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool DestroyWindow(nint window);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern nint GlobalAlloc(uint flags, nuint bytes);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern nint GlobalLock(nint memory);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GlobalUnlock(nint memory);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern nint GlobalFree(nint memory);
+
+    [DllImport("gdi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DeleteObject(nint handle);
+
+    internal static bool OpenClipboardWithRetry(nint owner)
+    {
+        for (var attempt = 0; attempt < OpenAttempts; attempt++)
+        {
+            if (OpenClipboard(owner))
+                return true;
+            if (attempt + 1 < OpenAttempts)
+                Thread.Sleep(OpenRetryDelayMilliseconds);
+        }
+
+        return false;
+    }
+
+    internal static nint CreateMessageWindow() =>
+        CreateWindowEx(
+            0,
+            "STATIC",
+            string.Empty,
+            0,
+            0,
+            0,
+            0,
+            0,
+            HwndMessage,
+            0,
+            0,
+            0);
+
+    internal static nint AllocateMoveableMemory(byte[] bytes)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        var memory = GlobalAlloc(
+            GmemMoveable | GmemZeroInit,
+            (nuint)bytes.Length);
+        if (memory == 0)
+            return 0;
+
+        var pointer = GlobalLock(memory);
+        if (pointer == 0)
+        {
+            FreeClipboardHandle(memory);
+            return 0;
+        }
+
+        var copied = false;
+        try
+        {
+            Marshal.Copy(bytes, 0, pointer, bytes.Length);
+            copied = true;
+        }
+        catch
+        {
+            // The allocation is released after the lock is removed.
+        }
+        finally
+        {
+            GlobalUnlock(memory);
+        }
+
+        if (!copied)
+        {
+            FreeClipboardHandle(memory);
+            return 0;
+        }
+
+        return memory;
+    }
+
+    internal static void FreeClipboardHandle(nint memory)
+    {
+        if (memory != 0)
+            GlobalFree(memory);
+    }
+
+    internal static void DeleteGdiObject(nint handle)
+    {
+        if (handle != 0)
+            DeleteObject(handle);
+    }
 }
 
 internal sealed class Win32HotkeyModifierState : IHotkeyModifierState

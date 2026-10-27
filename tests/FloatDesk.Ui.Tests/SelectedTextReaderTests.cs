@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Media;
@@ -438,6 +439,317 @@ public sealed class SelectedTextReaderTests
 
         Assert.Equal(1, sender.Count);
         Assert.Equal(1, clipboard.RestoreCount);
+    }
+
+    [Fact]
+    public async Task CancellationAfterCopyChangesSequenceStillRestoresClipboard()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var clipboard = new FakeClipboardSession();
+        clipboard.OnWait = () =>
+        {
+            clipboard.CurrentSequenceNumber = 11;
+            cancellation.Cancel();
+        };
+        clipboard.WaitException = new OperationCanceledException(
+            cancellation.Token);
+        var sender = new FakeCopySender();
+        var reader = CreateReader(
+            clipboard,
+            sender,
+            new FakeModifiers(),
+            new FakeActivator());
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            reader.ReadAsync(Target(), cancellation.Token));
+
+        Assert.Equal(1, sender.Count);
+        Assert.Equal(1, clipboard.RestoreAttemptCount);
+        Assert.Equal(1, clipboard.RestoreCount);
+        Assert.Equal(11u, clipboard.LastRestoreExpectedSequence);
+    }
+
+    [Fact]
+    public async Task LaterClipboardChangeAfterCopyIsNeverOverwrittenOnCancellation()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var clipboard = new FakeClipboardSession
+        {
+            SequenceObservedBeforeException = 11
+        };
+        clipboard.OnWait = () => clipboard.CurrentSequenceNumber = 12;
+        clipboard.WaitException = new OperationCanceledException(
+            cancellation.Token);
+        var sender = new FakeCopySender();
+        var reader = CreateReader(
+            clipboard,
+            sender,
+            new FakeModifiers(),
+            new FakeActivator());
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            reader.ReadAsync(Target(), cancellation.Token));
+
+        Assert.Equal(1, sender.Count);
+        Assert.Equal(1, clipboard.RestoreAttemptCount);
+        Assert.Equal(0, clipboard.RestoreCount);
+        Assert.Equal(12u, clipboard.CurrentSequenceNumber);
+    }
+
+    [Fact]
+    public void ClipboardWaitSkipsUnrelatedOwnerBeforeTargetWrite()
+    {
+        var observations = new Queue<ClipboardWriteObservation>(
+            new[]
+            {
+                new ClipboardWriteObservation(11, 99, true),
+                new ClipboardWriteObservation(12, 42, true),
+                new ClipboardWriteObservation(12, 42, true)
+            });
+        var observedSequences = new List<uint>();
+        var timestamp = 0L;
+
+        var result = ClipboardTextWaitLoop.Wait(
+            baselineSequenceNumber: 10,
+            targetProcessId: 42,
+            timeout: TimeSpan.FromSeconds(1),
+            observeWrite: observations.Dequeue,
+            readText: () => "selected",
+            getTimestamp: () => timestamp,
+            delay: delay => timestamp += ToTimestampTicks(delay),
+            targetWriteObserved: observedSequences.Add,
+            cancellationToken: CancellationToken.None);
+
+        Assert.False(result.Denied);
+        Assert.Equal("selected", result.Text);
+        Assert.Equal(12u, result.ObservedSequenceNumber);
+        Assert.Equal(new uint[] { 12 }, observedSequences);
+        Assert.Empty(observations);
+    }
+
+    [Fact]
+    public void ClipboardWaitNeverReadsUnrelatedOwnerContent()
+    {
+        var readCount = 0;
+        var observedSequences = new List<uint>();
+        var timestamp = 0L;
+
+        var result = ClipboardTextWaitLoop.Wait(
+            baselineSequenceNumber: 10,
+            targetProcessId: 42,
+            timeout: TimeSpan.FromMilliseconds(100),
+            observeWrite: () => new ClipboardWriteObservation(11, 99, true),
+            readText: () =>
+            {
+                readCount++;
+                return "external";
+            },
+            getTimestamp: () => timestamp,
+            delay: delay => timestamp += ToTimestampTicks(delay),
+            targetWriteObserved: observedSequences.Add,
+            cancellationToken: CancellationToken.None);
+
+        Assert.False(result.Denied);
+        Assert.Null(result.ObservedSequenceNumber);
+        Assert.Equal(0, readCount);
+        Assert.Empty(observedSequences);
+    }
+
+    [Fact]
+    public void ClipboardWaitCancellationStillDetectsDelayedTargetWrite()
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var observations = new Queue<ClipboardWriteObservation>(
+            new[]
+            {
+                new ClipboardWriteObservation(11, 99, true),
+                new ClipboardWriteObservation(12, 42, true)
+            });
+        var observedSequences = new List<uint>();
+        var readCount = 0;
+        var timestamp = 0L;
+
+        Assert.Throws<OperationCanceledException>(() =>
+            ClipboardTextWaitLoop.Wait(
+                baselineSequenceNumber: 10,
+                targetProcessId: 42,
+                timeout: TimeSpan.FromSeconds(1),
+                observeWrite: observations.Dequeue,
+                readText: () =>
+                {
+                    readCount++;
+                    return "selected";
+                },
+                getTimestamp: () => timestamp,
+                delay: delay => timestamp += ToTimestampTicks(delay),
+                targetWriteObserved: observedSequences.Add,
+                cancellationToken: cancellation.Token));
+
+        Assert.Equal(new uint[] { 12 }, observedSequences);
+        Assert.Equal(0, readCount);
+    }
+
+    [Fact]
+    public void ClipboardWaitDoesNotReturnTextWhenWriteChangesBeforeConfirmation()
+    {
+        var observations = new Queue<ClipboardWriteObservation>(
+            new[]
+            {
+                new ClipboardWriteObservation(12, 42, true),
+                new ClipboardWriteObservation(13, 99, true)
+            });
+        var observedSequences = new List<uint>();
+        var readCount = 0;
+        var timestamp = 0L;
+
+        var result = ClipboardTextWaitLoop.Wait(
+            baselineSequenceNumber: 10,
+            targetProcessId: 42,
+            timeout: TimeSpan.FromMilliseconds(100),
+            observeWrite: () => observations.Count > 0
+                ? observations.Dequeue()
+                : new ClipboardWriteObservation(13, 99, true),
+            readText: () =>
+            {
+                readCount++;
+                return "stale target text";
+            },
+            getTimestamp: () => timestamp,
+            delay: delay => timestamp += ToTimestampTicks(delay),
+            targetWriteObserved: observedSequences.Add,
+            cancellationToken: CancellationToken.None);
+
+        Assert.False(result.Denied);
+        Assert.Null(result.Text);
+        Assert.Equal(12u, result.ObservedSequenceNumber);
+        Assert.Equal(1, readCount);
+        Assert.Equal(new uint[] { 12 }, observedSequences);
+    }
+
+    [Fact]
+    public void ClipboardWaitObservesCancellationRaisedWhileReadingText()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var observations = new Queue<ClipboardWriteObservation>(
+            new[]
+            {
+                new ClipboardWriteObservation(12, 42, true),
+                new ClipboardWriteObservation(12, 42, true)
+            });
+        var observedSequences = new List<uint>();
+        var timestamp = 0L;
+
+        Assert.Throws<OperationCanceledException>(() =>
+            ClipboardTextWaitLoop.Wait(
+                baselineSequenceNumber: 10,
+                targetProcessId: 42,
+                timeout: TimeSpan.FromSeconds(1),
+                observeWrite: observations.Dequeue,
+                readText: () =>
+                {
+                    cancellation.Cancel();
+                    return "selected";
+                },
+                getTimestamp: () => timestamp,
+                delay: delay => timestamp += ToTimestampTicks(delay),
+                targetWriteObserved: observedSequences.Add,
+                cancellationToken: cancellation.Token));
+
+        Assert.Equal(new uint[] { 12 }, observedSequences);
+    }
+
+    [Fact]
+    public void ClipboardWaitObservesCancellationRaisedDuringConfirmation()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var observations = new Queue<ClipboardWriteObservation>(
+            new[]
+            {
+                new ClipboardWriteObservation(12, 42, true),
+                new ClipboardWriteObservation(12, 42, true)
+            });
+        var observedSequences = new List<uint>();
+        var timestamp = 0L;
+
+        Assert.Throws<OperationCanceledException>(() =>
+            ClipboardTextWaitLoop.Wait(
+                baselineSequenceNumber: 10,
+                targetProcessId: 42,
+                timeout: TimeSpan.FromSeconds(1),
+                observeWrite: () =>
+                {
+                    cancellation.Cancel();
+                    return observations.Dequeue();
+                },
+                readText: () => "selected",
+                getTimestamp: () => timestamp,
+                delay: delay => timestamp += ToTimestampTicks(delay),
+                targetWriteObserved: observedSequences.Add,
+                cancellationToken: cancellation.Token));
+
+        Assert.Equal(new uint[] { 12 }, observedSequences);
+    }
+
+    [Fact]
+    public void SequenceRestoreRevalidatesAndWritesWhileClipboardIsLocked()
+    {
+        var clipboardLocked = false;
+        var wrote = false;
+
+        var restored = ClipboardRestoreTransaction.TryRestoreIfSequence(
+            expectedSequenceNumber: 12,
+            openClipboard: () =>
+            {
+                clipboardLocked = true;
+                return true;
+            },
+            getSequenceNumber: () =>
+            {
+                Assert.True(clipboardLocked);
+                return 12;
+            },
+            restore: () =>
+            {
+                Assert.True(clipboardLocked);
+                wrote = true;
+                return true;
+            },
+            closeClipboard: () =>
+            {
+                Assert.True(clipboardLocked);
+                clipboardLocked = false;
+            });
+
+        Assert.True(restored);
+        Assert.True(wrote);
+        Assert.False(clipboardLocked);
+    }
+
+    [Fact]
+    public void SequenceRestoreDoesNotWriteWhenLockedSequenceChanged()
+    {
+        var clipboardLocked = false;
+        var wrote = false;
+
+        var restored = ClipboardRestoreTransaction.TryRestoreIfSequence(
+            expectedSequenceNumber: 12,
+            openClipboard: () =>
+            {
+                clipboardLocked = true;
+                return true;
+            },
+            getSequenceNumber: () => 13,
+            restore: () =>
+            {
+                wrote = true;
+                return true;
+            },
+            closeClipboard: () => clipboardLocked = false);
+
+        Assert.False(restored);
+        Assert.False(wrote);
+        Assert.False(clipboardLocked);
     }
 
     [Fact(Timeout = 10_000)]
@@ -996,6 +1308,12 @@ public sealed class SelectedTextReaderTests
             ExePath: @"C:\Apps\target.exe",
             IsOwnInteractive: false);
 
+    private static long ToTimestampTicks(TimeSpan delay) =>
+        Math.Max(
+            1,
+            (long)Math.Ceiling(
+                delay.TotalSeconds * Stopwatch.Frequency));
+
     private sealed class FakeClipboardSession : IClipboardSession
     {
         public Func<CancellationToken, Task<ClipboardSessionSnapshot?>>
@@ -1028,6 +1346,8 @@ public sealed class SelectedTextReaderTests
             set;
         }
         public Exception? WaitException { get; set; }
+        public uint? SequenceObservedBeforeException { get; set; }
+        public uint ClipboardOwnerProcessId { get; set; } = 42;
         public Exception? RestoreException { get; set; }
         public Action? OnCapture { get; set; }
         public Action? OnAfterCapture { get; set; }
@@ -1072,7 +1392,9 @@ public sealed class SelectedTextReaderTests
 
         public async Task<ClipboardTextReadResult> WaitForTextAsync(
             uint baselineSequenceNumber,
+            uint targetProcessId,
             TimeSpan timeout,
+            Action<uint>? sequenceObserved,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -1080,6 +1402,16 @@ public sealed class SelectedTextReaderTests
             LastSequenceNumber = baselineSequenceNumber;
             LastWaitTimeout = timeout;
             OnWait?.Invoke();
+            var observedBeforeException =
+                SequenceObservedBeforeException ??
+                (CurrentSequenceNumber != baselineSequenceNumber
+                    ? CurrentSequenceNumber
+                    : null);
+            if (observedBeforeException is uint observedSequence &&
+                ClipboardOwnerProcessId == targetProcessId)
+            {
+                sequenceObserved?.Invoke(observedSequence);
+            }
             if (WaitException is not null)
                 throw WaitException;
             var result = WaitFactory is not null
@@ -1091,8 +1423,17 @@ public sealed class SelectedTextReaderTests
                 : TextResults.Count > 0
                     ? TextResults.Dequeue()
                     : TextResult;
-            if (result.ObservedSequenceNumber is uint observedSequence)
-                CurrentSequenceNumber = observedSequence;
+            if (result.ObservedSequenceNumber is uint resultSequence)
+            {
+                CurrentSequenceNumber = resultSequence;
+                if (ClipboardOwnerProcessId != targetProcessId)
+                {
+                    return result.Denied
+                        ? ClipboardTextReadResult.AccessDenied()
+                        : ClipboardTextReadResult.WithoutText(null);
+                }
+                sequenceObserved?.Invoke(resultSequence);
+            }
             OnAfterWait?.Invoke();
             return result;
         }

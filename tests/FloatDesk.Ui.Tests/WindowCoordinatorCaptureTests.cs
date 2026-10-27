@@ -90,6 +90,47 @@ public sealed class WindowCoordinatorCaptureTests
         });
     }
 
+    [Fact]
+    public void CancellationDuringCaptureHidingRestoresWindows()
+    {
+        RunScenario(async () =>
+        {
+            var orb = new Window();
+            var quickPanel = new Window();
+            var transient = new Window();
+            using var cancellation = new CancellationTokenSource();
+            try
+            {
+                orb.Show();
+                quickPanel.Show();
+                transient.Show();
+                var coordinator = new WindowCoordinator(
+                    [],
+                    orb,
+                    quickPanel);
+                coordinator.RegisterCaptureHiddenWindow(transient);
+                orb.IsVisibleChanged += (_, _) =>
+                {
+                    if (!orb.IsVisible)
+                        cancellation.Cancel();
+                };
+
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                    coordinator.HideForCaptureAsync(cancellation.Token));
+
+                Assert.True(orb.IsVisible);
+                Assert.True(transient.IsVisible);
+                coordinator.UnregisterCaptureHiddenWindow(transient);
+            }
+            finally
+            {
+                transient.Close();
+                quickPanel.Close();
+                orb.Close();
+            }
+        });
+    }
+
     private static void RunScenario(Func<Task> scenario)
     {
         Exception? failure = null;
