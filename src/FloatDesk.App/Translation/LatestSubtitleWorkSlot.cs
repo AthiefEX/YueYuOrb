@@ -59,6 +59,18 @@ public sealed class LatestSubtitleWorkSlot<T> : IDisposable
         }
     }
 
+    public void Clear()
+    {
+        T? pending;
+        lock (_sync)
+        {
+            pending = _pending;
+            _pending = null;
+        }
+
+        pending?.Dispose();
+    }
+
     public void Dispose()
     {
         T? pending;

@@ -50,6 +50,13 @@ public partial class TranslationOverlayWindow : Window
     private const double MinimumInteractiveWidth = 340;
     private const double MaximumSubtitleWidth = 720;
 
+    private enum SubtitleTargetKind
+    {
+        Safe,
+        Fallback,
+        Unavailable
+    }
+
     private readonly Action<string> _clipboardWriter;
     private AppSettings _settings = AppSettings.CreateDefault();
     private bool _isSubtitleMode;
@@ -166,11 +173,7 @@ public partial class TranslationOverlayWindow : Window
                     _subtitleRegionMonitorId = previousMonitorId;
                     ApplySettingsVisuals(previousSettings);
                     UpdateLayout();
-                    if (PositionSubtitleSurfaceCore() !=
-                        TranslationSubtitlePlacementStatus.Ready)
-                    {
-                        HideWithoutClearingContent();
-                    }
+                    _ = PositionSubtitleSurfaceCore();
                 }
             }
         });
@@ -401,7 +404,13 @@ public partial class TranslationOverlayWindow : Window
         SubtitleNoticeTextBlock.Text = previousNotice;
         SubtitleNoticeTextBlock.Visibility = previousNoticeVisibility;
         if (!wasVisible)
+        {
             HideWithoutClearingContent();
+        }
+        else
+        {
+            _ = PositionSubtitleSurfaceCore();
+        }
         return new TranslationSubtitleDeliveryResult(
             Displayed: false,
             status);
@@ -435,16 +444,10 @@ public partial class TranslationOverlayWindow : Window
             SubtitleTranslationTextBlock.Text = previousText;
             SubtitleNoticeTextBlock.Text = previousNotice;
             SubtitleNoticeTextBlock.Visibility = previousVisibility;
-            if (!wasVisible ||
-                (_subtitleCaptureRegion is { } captureRegion &&
-                 !IsCaptureExcluded &&
-                 TryGetWindowBounds(
-                     new WindowInteropHelper(this).Handle,
-                     out var bounds) &&
-                 Intersects(bounds, captureRegion)))
-            {
+            if (!wasVisible)
                 HideWithoutClearingContent();
-            }
+            else
+                _ = PositionSubtitleSurfaceCore();
             return status;
         }
         else
@@ -631,7 +634,11 @@ public partial class TranslationOverlayWindow : Window
             return FailSubtitlePlacement();
         }
 
-        if (!TryGetSubtitleTarget(bounds, monitor.WorkArea, out var target))
+        var targetKind = TryGetSubtitleTarget(
+            bounds,
+            monitor.WorkArea,
+            out var target);
+        if (targetKind == SubtitleTargetKind.Unavailable)
             return FailSubtitlePlacement();
 
         MoveWindow(handle, target);
@@ -645,30 +652,44 @@ public partial class TranslationOverlayWindow : Window
                 _subtitleCaptureRegion,
                 monitor.WorkArea);
             UpdateLayout();
-            if (!TryGetWindowBounds(handle, out moved) ||
-                !TryGetSubtitleTarget(
-                    moved,
-                    monitor.WorkArea,
-                    out var adjusted))
+            if (!TryGetWindowBounds(handle, out moved))
             {
                 return FailSubtitlePlacement();
             }
+            var adjustedKind = TryGetSubtitleTarget(
+                moved,
+                monitor.WorkArea,
+                out var adjusted);
+            if (adjustedKind == SubtitleTargetKind.Unavailable)
+                return FailSubtitlePlacement();
+            if (adjustedKind == SubtitleTargetKind.Fallback)
+                targetKind = SubtitleTargetKind.Fallback;
             MoveWindow(handle, adjusted);
             if (!TryGetWindowBounds(handle, out moved))
                 return FailSubtitlePlacement();
         }
 
-        if (!IsFinalSubtitleBoundsSafe(moved, monitor.WorkArea))
-            return FailSubtitlePlacement();
+        if (targetKind == SubtitleTargetKind.Safe &&
+            !IsFinalSubtitleBoundsSafe(moved, monitor.WorkArea))
+        {
+            if (!TryGetFallbackSubtitleTarget(
+                    bounds,
+                    monitor.WorkArea,
+                    out var fallback))
+            {
+                return FailSubtitlePlacement();
+            }
+            MoveWindow(handle, fallback);
+            return TranslationSubtitlePlacementStatus.NoSafePlacement;
+        }
 
-        return TranslationSubtitlePlacementStatus.Ready;
+        return targetKind == SubtitleTargetKind.Safe
+            ? TranslationSubtitlePlacementStatus.Ready
+            : TranslationSubtitlePlacementStatus.NoSafePlacement;
     }
 
-    private TranslationSubtitlePlacementStatus FailSubtitlePlacement()
-    {
-        HideWithoutClearingContent();
-        return TranslationSubtitlePlacementStatus.NoSafePlacement;
-    }
+    private static TranslationSubtitlePlacementStatus FailSubtitlePlacement()
+        => TranslationSubtitlePlacementStatus.NoSafePlacement;
 
     private bool IsFinalSubtitleBoundsSafe(
         PixelRect bounds,
@@ -687,7 +708,7 @@ public partial class TranslationOverlayWindow : Window
             !Intersects(bounds, captureRegion);
     }
 
-    private bool TryGetSubtitleTarget(
+    private SubtitleTargetKind TryGetSubtitleTarget(
         PixelRect window,
         PixelRect workArea,
         out PixelPoint target)
@@ -695,7 +716,7 @@ public partial class TranslationOverlayWindow : Window
         if (_subtitleCaptureRegion is not { } captureRegion)
         {
             target = GetSubtitlePosition(window, workArea);
-            return true;
+            return SubtitleTargetKind.Safe;
         }
 
         var dpi = VisualTreeHelper.GetDpi(this);
@@ -711,11 +732,52 @@ public partial class TranslationOverlayWindow : Window
             allowCaptureOverlap: IsCaptureExcluded);
         if (placement is null)
         {
-            target = default;
-            return false;
+            if (TryGetFallbackSubtitleTarget(
+                    window,
+                    workArea,
+                    out target))
+            {
+                return SubtitleTargetKind.Fallback;
+            }
+            return SubtitleTargetKind.Unavailable;
         }
 
         target = placement.Value.Location;
+        return SubtitleTargetKind.Safe;
+    }
+
+    private bool TryGetFallbackSubtitleTarget(
+        PixelRect window,
+        PixelRect workArea,
+        out PixelPoint target)
+    {
+        if (_subtitleCaptureRegion is not { } captureRegion)
+        {
+            target = GetSubtitlePosition(window, workArea);
+            return true;
+        }
+
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var gap = Math.Max(
+            0,
+            (int)Math.Round(8 * dpi.DpiScaleY));
+        var fallback = SubtitleOverlayPlacementPolicy.PlaceAnchored(
+            captureRegion,
+            window.Size,
+            workArea,
+            _settings.Translation.SubtitleAttachment,
+            gap,
+            allowCaptureOverlap: true);
+        if (fallback is { } placement)
+        {
+            target = placement.Location;
+            return true;
+        }
+
+        target = ClampToWorkArea(
+            new PixelPoint(workArea.Left, workArea.Top),
+            window.Size,
+            workArea);
         return true;
     }
 

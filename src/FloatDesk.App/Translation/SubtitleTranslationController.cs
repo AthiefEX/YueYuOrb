@@ -315,6 +315,8 @@ public sealed class SubtitleTranslationController : IDisposable
                 _resumeSignal = new TaskCompletionSource(
                     TaskCreationOptions.RunContinuationsAsynchronously);
                 _previousSignature = null;
+                _latestPublishedSequence = NextGeneration(
+                    _latestPublishedSequence);
                 _activeTranslationText = null;
 
                 captureIteration = _captureIterationCancellation;
@@ -342,6 +344,7 @@ public sealed class SubtitleTranslationController : IDisposable
         CancelQuietly(captureIteration);
         CancelQuietly(ocrIteration);
         CancelQuietly(translationCancellation);
+        _ocrWork?.Clear();
         ObserveAbandonedTask(abandonedTranslation);
 
         if (operation is { } current)

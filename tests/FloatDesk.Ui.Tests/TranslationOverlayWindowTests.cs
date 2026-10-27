@@ -397,7 +397,7 @@ public sealed class TranslationOverlayWindowTests
                     TranslationSubtitlePlacementStatus.Ready,
                     status);
                 Assert.Equal("安全字幕", window.TranslatedText);
-                Assert.False(window.IsVisible);
+                Assert.True(window.IsVisible);
                 Assert.NotEqual(
                     TranslationSubtitlePlacementStatus.Ready,
                     window.PrepareSubtitleCaptureRegion(
@@ -407,6 +407,49 @@ public sealed class TranslationOverlayWindowTests
                             0,
                             1,
                             1)));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void SubtitleTextPlacementFailureKeepsPreviousTranslationVisible()
+    {
+        RunOnSta(() =>
+        {
+            var monitor = DisplayTopology.SelectPrimaryMonitor(
+                    DisplayTopology.GetMonitors())
+                ?? throw new InvalidOperationException("No monitor found.");
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                var operation = window.BeginOperation(subtitle: true);
+                window.SetSubtitleControls(
+                    operation,
+                    active: true,
+                    paused: false,
+                    canReselect: true);
+                window.PrepareSubtitleCaptureRegion(PrimaryCaptureRegion());
+                window.ShowSubtitleText(operation, "旧译文");
+                ForceCaptureExcluded(window, excluded: false);
+                window.PrepareSubtitleCaptureRegion(
+                    new TranslationCaptureRegion(
+                        monitor.DeviceName,
+                        0,
+                        0,
+                        1,
+                        1));
+
+                var status = window.ShowSubtitleText(operation, "新译文");
+
+                Assert.NotEqual(
+                    TranslationSubtitlePlacementStatus.Ready,
+                    status);
+                Assert.Equal("旧译文", window.TranslatedText);
+                Assert.True(window.IsVisible);
             }
             finally
             {
@@ -463,7 +506,8 @@ public sealed class TranslationOverlayWindowTests
                 Assert.NotEqual(
                     TranslationSubtitlePlacementStatus.Ready,
                     status);
-                Assert.False(window.IsVisible);
+                Assert.True(window.IsVisible);
+                Assert.NotEmpty(window.TranslatedText);
             }
             finally
             {

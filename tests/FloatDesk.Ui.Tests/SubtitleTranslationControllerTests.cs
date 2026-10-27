@@ -477,6 +477,35 @@ public sealed class SubtitleTranslationControllerTests
         Assert.False(controller.IsRunning);
     }
 
+    [Fact(Timeout = 10_000)]
+    public async Task PausingDiscardsQueuedOcrWorkBeforeResume()
+    {
+        var source = new GatedSequenceSubtitleSource(
+            [0x10, 0x10, 0xE0, 0xE0, 0xC0, 0xC0],
+            gateBeforeCapture: 5);
+        var ocr = new BlockingFirstOcr();
+        var host = new RecordingSubtitleHost();
+        using var controller = new SubtitleTranslationController(
+            ocr,
+            source,
+            host,
+            new ImmediateClock());
+
+        await controller.StartAsync(Settings(), CancellationToken.None);
+        await ocr.FirstEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await source.GateEntered.WaitAsync(TimeSpan.FromSeconds(2));
+        controller.Pause("字幕翻译已暂停。");
+        await ocr.FirstCancelled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        controller.Resume();
+        source.ReleaseGate();
+
+        await ocr.SecondEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(0xC0, ocr.SecondFrameValue);
+        Assert.Equal(2, ocr.CallCount);
+        await controller.StopAsync();
+    }
+
     [Fact]
     public async Task AuthenticationFailurePausesAutomaticRetries()
     {
@@ -1613,9 +1642,12 @@ public sealed class SubtitleTranslationControllerTests
     {
         private readonly TaskCompletionSource _gate =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _gateEntered =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _captureCount;
 
         public int CaptureCount => Volatile.Read(ref _captureCount);
+        public Task GateEntered => _gateEntered.Task;
 
         public async Task<CapturedTranslationRegion?> CaptureRegionAsync(
             TranslationCaptureRegion region,
@@ -1623,7 +1655,10 @@ public sealed class SubtitleTranslationControllerTests
         {
             var call = Interlocked.Increment(ref _captureCount);
             if (call >= gateBeforeCapture)
+            {
+                _gateEntered.TrySetResult();
                 await _gate.Task.WaitAsync(cancellationToken);
+            }
             cancellationToken.ThrowIfCancellationRequested();
             var value = values[Math.Min(call - 1, values.Count - 1)];
             var frame = new CaptureFrame(
@@ -1708,6 +1743,49 @@ public sealed class SubtitleTranslationControllerTests
                 throw;
             }
             return new ScreenOcrResult("unused", null, null);
+        }
+    }
+
+    private sealed class BlockingFirstOcr : IScreenOcrService
+    {
+        private int _callCount;
+
+        public IReadOnlyList<OcrLanguageOption> AvailableLanguages { get; } =
+            [new("en-US", "English")];
+        public TaskCompletionSource FirstEntered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource FirstCancelled { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource SecondEntered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int CallCount => Volatile.Read(ref _callCount);
+        public byte SecondFrameValue { get; private set; }
+
+        public async Task<ScreenOcrResult> RecognizeAsync(
+            CaptureFrame frame,
+            string? languageTag,
+            CancellationToken cancellationToken)
+        {
+            var call = Interlocked.Increment(ref _callCount);
+            if (call == 1)
+            {
+                FirstEntered.TrySetResult();
+                try
+                {
+                    await Task.Delay(
+                        Timeout.InfiniteTimeSpan,
+                        cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    FirstCancelled.TrySetResult();
+                    throw;
+                }
+            }
+
+            SecondFrameValue = frame.Bgra32.Span[0];
+            SecondEntered.TrySetResult();
+            return new ScreenOcrResult("Subtitle", null, null);
         }
     }
 
