@@ -18,6 +18,9 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
     private readonly CancellationTokenSource _workerCancellation = new();
     private readonly Thread _worker;
     private RecognitionWork? _activeWork;
+    private IWindowsOcrEngine? _cachedEngine;
+    private string? _cachedLanguageTag;
+    private bool _engineCacheInitialized;
     private int _disposed;
 
     public WindowsScreenOcrService()
@@ -197,11 +200,9 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
     private ScreenOcrResult? TryCreateRecognition(
         WindowsOcrBitmap bitmap,
         string? languageTag,
-        out IWindowsOcrEngine? engine,
         out Task<IReadOnlyList<string>>? recognition)
     {
-        engine = CreateEngine(languageTag);
-        if (engine is null)
+        if (!EnsureCachedEngine(languageTag))
         {
             recognition = null;
             return new ScreenOcrResult(
@@ -210,10 +211,36 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
                 "未安装可用的 Windows OCR 语言包。请在 Windows 设置中安装 OCR 语言。");
         }
 
-        recognition = engine.RecognizeLinesAsync(
+        recognition = _cachedEngine!.RecognizeLinesAsync(
             bitmap,
             _workerCancellation.Token);
         return null;
+    }
+
+    private bool EnsureCachedEngine(string? languageTag)
+    {
+        if (_engineCacheInitialized &&
+            string.Equals(
+                _cachedLanguageTag,
+                languageTag,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return _cachedEngine is not null;
+        }
+
+        DisposeCachedEngine();
+        _engineCacheInitialized = true;
+        _cachedLanguageTag = languageTag;
+        _cachedEngine = CreateEngine(languageTag);
+        return _cachedEngine is not null;
+    }
+
+    private void DisposeCachedEngine()
+    {
+        _cachedEngine?.Dispose();
+        _cachedEngine = null;
+        _cachedLanguageTag = null;
+        _engineCacheInitialized = false;
     }
 
     private IWindowsOcrEngine? CreateEngine(string? languageTag)
@@ -408,9 +435,7 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
                             null,
                             "OcrNoText",
                             "未识别到文字。")
-                        : RecognizeWorkAsync(work, bitmap)
-                        .GetAwaiter()
-                        .GetResult();
+                        : RecognizeWork(work, bitmap);
                     work.Completion.TrySetResult(result);
                 }
                 catch (ObjectDisposedException exception)
@@ -446,15 +471,15 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
         }
         finally
         {
+            DisposeCachedEngine();
             _workerCancellation.Dispose();
         }
     }
 
-    private async Task<ScreenOcrResult> RecognizeWorkAsync(
+    private ScreenOcrResult RecognizeWork(
         RecognitionWork work,
         WindowsOcrBitmap bitmap)
     {
-        IWindowsOcrEngine? engine;
         Task<IReadOnlyList<string>>? recognition;
         ScreenOcrResult? engineFailure;
         lock (_invokeSync)
@@ -466,26 +491,19 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
             engineFailure = TryCreateRecognition(
                 bitmap,
                 work.LanguageTag,
-                out engine,
                 out recognition);
         }
 
         if (engineFailure is not null)
             return engineFailure;
 
-        try
-        {
-            var lines = await recognition!
-                .ConfigureAwait(false);
-            var text = NormalizeLines(lines);
-            return text.Length == 0
-                ? new ScreenOcrResult(null, "OcrNoText", "未识别到文字。")
-                : new ScreenOcrResult(text, null, null);
-        }
-        finally
-        {
-            engine!.Dispose();
-        }
+        var lines = recognition!
+            .GetAwaiter()
+            .GetResult();
+        var text = NormalizeLines(lines);
+        return text.Length == 0
+            ? new ScreenOcrResult(null, "OcrNoText", "未识别到文字。")
+            : new ScreenOcrResult(text, null, null);
     }
 
     private void ClearActive(RecognitionWork work)

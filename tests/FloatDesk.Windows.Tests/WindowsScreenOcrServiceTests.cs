@@ -105,6 +105,72 @@ public sealed class WindowsScreenOcrServiceTests
     }
 
     [Fact]
+    public async Task RepeatedOcrWithSameLanguageReusesOneEngine()
+    {
+        var engine = new FakeOcrEngine(["识别结果"]);
+        var backend = new FakeOcrBackend
+        {
+            LanguageEngines = new Dictionary<string, FakeOcrEngine>
+            {
+                ["zh-Hans"] = engine
+            }
+        };
+        using var service = new WindowsScreenOcrService(backend);
+        using var frame = NonBlankFrame();
+
+        await service.RecognizeAsync(frame, "zh-Hans", CancellationToken.None);
+        await service.RecognizeAsync(frame, "zh-Hans", CancellationToken.None);
+
+        Assert.Equal(1, backend.CreatedEngineCount);
+        Assert.Equal(2, engine.CallCount);
+        Assert.Equal(0, engine.DisposeCount);
+    }
+
+    [Fact]
+    public async Task ChangingOcrLanguageDisposesAndRecreatesEngine()
+    {
+        var first = new FakeOcrEngine(["first"]);
+        var second = new FakeOcrEngine(["second"]);
+        var backend = new FakeOcrBackend
+        {
+            LanguageEngines = new Dictionary<string, FakeOcrEngine>
+            {
+                ["en-US"] = first,
+                ["zh-Hans"] = second
+            }
+        };
+        using var service = new WindowsScreenOcrService(backend);
+        using var frame = NonBlankFrame();
+
+        await service.RecognizeAsync(frame, "en-US", CancellationToken.None);
+        await service.RecognizeAsync(frame, "zh-Hans", CancellationToken.None);
+
+        Assert.Equal(2, backend.CreatedEngineCount);
+        Assert.Equal(1, first.DisposeCount);
+        Assert.Equal(0, second.DisposeCount);
+    }
+
+    [Fact]
+    public async Task DisposingServiceDisposesCachedEngine()
+    {
+        var engine = new FakeOcrEngine(["cached"]);
+        var backend = new FakeOcrBackend { ProfileEngine = engine };
+        var service = new WindowsScreenOcrService(backend);
+        using var frame = NonBlankFrame();
+
+        await service.RecognizeAsync(frame, null, CancellationToken.None);
+        Assert.Equal(1, backend.CreatedEngineCount);
+        Assert.Equal(0, engine.DisposeCount);
+
+        service.Dispose();
+        await WaitUntilAsync(
+            () => engine.DisposeCount == 1,
+            TimeSpan.FromSeconds(2));
+
+        Assert.Equal(1, engine.DisposeCount);
+    }
+
+    [Fact]
     public async Task ProfileThenLanguageListFallbackSelectsFirstAvailableEngine()
     {
         var engine = new FakeOcrEngine(["fallback text"]);
@@ -489,6 +555,19 @@ public sealed class WindowsScreenOcrServiceTests
             pixels);
     }
 
+    private static async Task WaitUntilAsync(
+        Func<bool> condition,
+        TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (!condition())
+        {
+            if (DateTime.UtcNow >= deadline)
+                throw new TimeoutException("Condition was not reached.");
+            await Task.Delay(10);
+        }
+    }
+
     private sealed class FakeOcrBackend : IWindowsOcrBackend
     {
         public int MaxImageDimension { get; init; } = 4096;
@@ -498,18 +577,24 @@ public sealed class WindowsScreenOcrServiceTests
             new Dictionary<string, FakeOcrEngine>();
         public string? LastRequestedLanguage { get; private set; }
         public int ProfileCallCount { get; private set; }
+        public int CreatedEngineCount { get; private set; }
         public List<string> RequestedLanguages { get; } = [];
 
         public IWindowsOcrEngine? TryCreateFromLanguage(string languageTag)
         {
             LastRequestedLanguage = languageTag;
             RequestedLanguages.Add(languageTag);
-            return LanguageEngines.GetValueOrDefault(languageTag);
+            var engine = LanguageEngines.GetValueOrDefault(languageTag);
+            if (engine is not null)
+                CreatedEngineCount++;
+            return engine;
         }
 
         public IWindowsOcrEngine? TryCreateFromUserProfileLanguages()
         {
             ProfileCallCount++;
+            if (ProfileEngine is not null)
+                CreatedEngineCount++;
             return ProfileEngine;
         }
     }
@@ -523,6 +608,7 @@ public sealed class WindowsScreenOcrServiceTests
         public FakeOcrEngine(Exception exception) => _exception = exception;
 
         public int CallCount { get; private set; }
+        public int DisposeCount { get; private set; }
         public WindowsOcrBitmap? LastBitmap { get; private set; }
 
         public Task<IReadOnlyList<string>> RecognizeLinesAsync(
@@ -539,6 +625,7 @@ public sealed class WindowsScreenOcrServiceTests
 
         public void Dispose()
         {
+            DisposeCount++;
         }
     }
 
