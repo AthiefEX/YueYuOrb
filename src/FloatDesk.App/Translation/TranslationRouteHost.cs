@@ -21,6 +21,13 @@ public interface ITranslationRouteHost
 {
     void ApplySettings(AppSettings settings);
 
+    TranslationSubtitlePlacementStatus ApplySettingsForSubtitle(
+        AppSettings settings)
+    {
+        ApplySettings(settings);
+        return TranslationSubtitlePlacementStatus.Ready;
+    }
+
     TranslationRouteHandle ShowSubtitleStatus(
         PixelPoint anchor,
         string status) =>
@@ -49,16 +56,22 @@ public interface ITranslationRouteHost
 
     TranslationSubtitlePlacementStatus ShowSubtitleText(
         TranslationRouteHandle operation,
-        string translatedText)
+        string translatedText,
+        Func<bool>? isCurrent = null)
     {
+        if (isCurrent?.Invoke() == false)
+            return TranslationSubtitlePlacementStatus.Ready;
         ShowStatus(operation, translatedText);
         return TranslationSubtitlePlacementStatus.Ready;
     }
 
-    void ShowSubtitleNotice(
+    TranslationSubtitlePlacementStatus ShowSubtitleNotice(
         TranslationRouteHandle operation,
-        string notice) =>
+        string notice)
+    {
         ShowStatus(operation, notice);
+        return TranslationSubtitlePlacementStatus.Ready;
+    }
 
     void SetSubtitleControls(
         TranslationRouteHandle operation,
@@ -120,6 +133,10 @@ public sealed class TranslationRouteHost : ITranslationRouteHost
     public void ApplySettings(AppSettings settings) =>
         _overlay.ApplySettings(settings);
 
+    public TranslationSubtitlePlacementStatus ApplySettingsForSubtitle(
+        AppSettings settings) =>
+        _overlay.ApplySettings(settings);
+
     public TranslationRouteHandle ShowSubtitleStatus(
         PixelPoint anchor,
         string status)
@@ -173,12 +190,14 @@ public sealed class TranslationRouteHost : ITranslationRouteHost
 
     public TranslationSubtitlePlacementStatus ShowSubtitleText(
         TranslationRouteHandle operation,
-        string translatedText) =>
+        string translatedText,
+        Func<bool>? isCurrent = null) =>
         _overlay.ShowSubtitleText(
             operation.Operation,
-            translatedText);
+            translatedText,
+            isCurrent);
 
-    public void ShowSubtitleNotice(
+    public TranslationSubtitlePlacementStatus ShowSubtitleNotice(
         TranslationRouteHandle operation,
         string notice) =>
         _overlay.ShowSubtitleNotice(

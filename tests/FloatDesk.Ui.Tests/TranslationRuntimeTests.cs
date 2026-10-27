@@ -1214,6 +1214,153 @@ public sealed class TranslationRuntimeTests
     }
 
     [Fact(Timeout = 10_000)]
+    public async Task TrayResumeDoesNotOverrideNestedCapturePause()
+    {
+        var region = new TranslationCaptureRegion(
+            "monitor-1",
+            0.1,
+            0.7,
+            0.8,
+            0.2);
+        var capture = new SubtitleCaptureStub(region);
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("字幕翻译")),
+            ocr: new RecordingOcr(),
+            regionCapture: capture);
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(SubtitleSettings(region));
+
+        try
+        {
+            await runtime.ToggleSubtitlesAsync(CancellationToken.None);
+            await WaitUntilAsync(
+                () => runtime.IsSubtitleRunning,
+                TimeSpan.FromSeconds(2));
+
+            runtime.PauseForCapture();
+            runtime.PauseForCapture();
+            runtime.ResumeAfterCapture();
+            runtime.ToggleSubtitlePause();
+            await Task.Delay(100);
+
+            Assert.True(runtime.IsSubtitlePaused);
+
+            runtime.ResumeAfterCapture();
+            await WaitUntilAsync(
+                () => !runtime.IsSubtitlePaused,
+                TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            await runtime.StopSubtitlesAsync();
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task TrayResumeDoesNotOverrideActiveInteractiveTranslation()
+    {
+        var region = new TranslationCaptureRegion(
+            "monitor-1",
+            0.1,
+            0.7,
+            0.8,
+            0.2);
+        var capture = new SubtitleCaptureStub(region);
+        var reader = new GatedSelectedTextReader();
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("交互译文")),
+            reader: reader,
+            ocr: new RecordingOcr(),
+            regionCapture: capture);
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(SubtitleSettings(region));
+
+        try
+        {
+            await runtime.ToggleSubtitlesAsync(CancellationToken.None);
+            await WaitUntilAsync(
+                () => runtime.IsSubtitleRunning,
+                TimeSpan.FromSeconds(2));
+
+            var interactive = runtime.TranslateSelectionAsync(
+                ExternalTarget,
+                CancellationToken.None);
+            await reader.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            runtime.ToggleSubtitlePause();
+            await Task.Delay(100);
+
+            Assert.True(runtime.IsSubtitlePaused);
+
+            reader.Release.TrySetResult(
+                SelectedTextReadResult.Ok("Hello"));
+            await interactive.WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            reader.Release.TrySetResult(
+                SelectedTextReadResult.Ok("Hello"));
+            await runtime.StopSubtitlesAsync();
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task SettingsPlacementFailurePausesSubtitleSampling()
+    {
+        var region = new TranslationCaptureRegion(
+            "monitor-1",
+            0.1,
+            0.7,
+            0.8,
+            0.2);
+        var capture = new SubtitleCaptureStub(region);
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("字幕翻译")),
+            ocr: new RecordingOcr(),
+            regionCapture: capture);
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(SubtitleSettings(region));
+
+        try
+        {
+            await runtime.ToggleSubtitlesAsync(CancellationToken.None);
+            await WaitUntilAsync(
+                () => host.SubtitleControlsActive,
+                TimeSpan.FromSeconds(2));
+
+            host.ApplySettingsPlacementStatus =
+                TranslationSubtitlePlacementStatus.NoSafePlacement;
+            runtime.ApplySettings(SubtitleSettings(region) with
+            {
+                Translation = SubtitleSettings(region).Translation with
+                {
+                    SubtitleFontSizeDip = 34
+                }
+            });
+
+            await WaitUntilAsync(
+                () => runtime.IsSubtitlePaused,
+                TimeSpan.FromSeconds(2));
+            Assert.True(runtime.IsSubtitlePaused);
+        }
+        finally
+        {
+            await runtime.StopSubtitlesAsync();
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
     public async Task CapturePauseCancelsInFlightOcrBeforeFinalResume()
     {
         var region = new TranslationCaptureRegion(
@@ -1789,12 +1936,24 @@ public sealed class TranslationRuntimeTests
         public bool SubtitleControlsPaused { get; private set; }
         public List<string> SubtitleTexts { get; } = [];
         public List<string> SubtitleNotices { get; } = [];
+        public TranslationSubtitlePlacementStatus ApplySettingsPlacementStatus
+        {
+            get;
+            set;
+        } = TranslationSubtitlePlacementStatus.Ready;
 
         public bool HasActiveOperation() =>
             IsOperationActive;
 
         public void ApplySettings(AppSettings settings)
         {
+        }
+
+        public TranslationSubtitlePlacementStatus
+            ApplySettingsForSubtitle(AppSettings settings)
+        {
+            ApplySettings(settings);
+            return ApplySettingsPlacementStatus;
         }
 
         public TranslationRouteHandle ShowStatus(
@@ -1840,20 +1999,25 @@ public sealed class TranslationRuntimeTests
 
         public TranslationSubtitlePlacementStatus ShowSubtitleText(
             TranslationRouteHandle operation,
-            string translatedText)
+            string translatedText,
+            Func<bool>? isCurrent = null)
         {
-            if (!IsCurrent(operation))
+            if (!IsCurrent(operation) ||
+                isCurrent?.Invoke() == false)
+            {
                 return TranslationSubtitlePlacementStatus.Ready;
+            }
             SubtitleTexts.Add(translatedText);
             return TranslationSubtitlePlacementStatus.Ready;
         }
 
-        public void ShowSubtitleNotice(
+        public TranslationSubtitlePlacementStatus ShowSubtitleNotice(
             TranslationRouteHandle operation,
             string notice)
         {
             if (IsCurrent(operation))
                 SubtitleNotices.Add(notice);
+            return TranslationSubtitlePlacementStatus.Ready;
         }
 
         public Task<TranslationResponse> TranslateAsync(

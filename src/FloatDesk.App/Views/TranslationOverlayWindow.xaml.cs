@@ -142,47 +142,69 @@ public partial class TranslationOverlayWindow : Window
         return operation;
     }
 
-    public void ApplySettings(AppSettings settings)
+    public TranslationSubtitlePlacementStatus ApplySettings(
+        AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        RunOnUiThread(() =>
+        var status = TranslationSubtitlePlacementStatus.Ready;
+        _ = RunOnUiThread(() =>
         {
+            var previousSettings = _settings;
+            var previousMonitorId = _subtitleRegionMonitorId;
             _settings = settings;
             _subtitleRegionMonitorId =
                 settings.Translation.SubtitleRegion?.MonitorId;
-            Topmost = settings.Overlay.AlwaysOnTop;
-            Opacity = Math.Clamp(
-                settings.Translation.SubtitleOverlayOpacity,
-                0.6,
-                1.0);
-            var fontSize = Math.Clamp(
-                settings.Translation.SubtitleFontSizeDip,
-                14,
-                36);
-            TranslatedTextBlock.FontSize = fontSize;
-            SubtitleTranslationTextBlock.FontSize = fontSize;
-            SubtitleNoticeTextBlock.FontSize = Math.Clamp(
-                fontSize * 0.62,
-                11,
-                16);
-            OriginalTextBlock.FontSize = Math.Max(12, fontSize - 5);
-            StatusTextBlock.FontSize = Math.Clamp(fontSize * 0.62, 11, 16);
-
-            if (Application.Current is { } application)
-            {
-                ThemeService.ApplyToResources(
-                    application.Resources,
-                    settings.General.Theme,
-                    SystemParameters.HighContrast,
-                    ThemeService.SystemUsesDarkTheme());
-            }
+            ApplySettingsVisuals(settings);
 
             if (_isSubtitleMode && IsVisible)
             {
                 UpdateLayout();
-                PositionWindow(subtitleMode: true, default);
+                status = PositionSubtitleSurfaceCore();
+                if (status != TranslationSubtitlePlacementStatus.Ready)
+                {
+                    _settings = previousSettings;
+                    _subtitleRegionMonitorId = previousMonitorId;
+                    ApplySettingsVisuals(previousSettings);
+                    UpdateLayout();
+                    if (PositionSubtitleSurfaceCore() !=
+                        TranslationSubtitlePlacementStatus.Ready)
+                    {
+                        HideWithoutClearingContent();
+                    }
+                }
             }
         });
+        return status;
+    }
+
+    private void ApplySettingsVisuals(AppSettings settings)
+    {
+        Topmost = settings.Overlay.AlwaysOnTop;
+        Opacity = Math.Clamp(
+            settings.Translation.SubtitleOverlayOpacity,
+            0.6,
+            1.0);
+        var fontSize = Math.Clamp(
+            settings.Translation.SubtitleFontSizeDip,
+            14,
+            36);
+        TranslatedTextBlock.FontSize = fontSize;
+        SubtitleTranslationTextBlock.FontSize = fontSize;
+        SubtitleNoticeTextBlock.FontSize = Math.Clamp(
+            fontSize * 0.62,
+            11,
+            16);
+        OriginalTextBlock.FontSize = Math.Max(12, fontSize - 5);
+        StatusTextBlock.FontSize = Math.Clamp(fontSize * 0.62, 11, 16);
+
+        if (Application.Current is { } application)
+        {
+            ThemeService.ApplyToResources(
+                application.Resources,
+                settings.General.Theme,
+                SystemParameters.HighContrast,
+                ThemeService.SystemUsesDarkTheme());
+        }
     }
 
     public void ShowStatus(
@@ -290,25 +312,35 @@ public partial class TranslationOverlayWindow : Window
 
     public TranslationSubtitlePlacementStatus ShowSubtitleText(
         TranslationOverlayOperationToken operation,
-        string translatedText)
+        string translatedText,
+        Func<bool>? isCurrent = null)
     {
         var status = TranslationSubtitlePlacementStatus.NoSafePlacement;
         RunOnUiThread(() =>
-            status = ShowSubtitleTextCore(operation, translatedText));
+            status = ShowSubtitleTextCore(
+                operation,
+                translatedText,
+                isCurrent));
         return status;
     }
 
-    public void ShowSubtitleNotice(
+    public TranslationSubtitlePlacementStatus ShowSubtitleNotice(
         TranslationOverlayOperationToken operation,
-        string notice) =>
+        string notice)
+    {
+        var status = TranslationSubtitlePlacementStatus.NoSafePlacement;
         RunOnUiThread(() =>
-            ShowSubtitleNoticeCore(operation, notice));
+            status = ShowSubtitleNoticeCore(operation, notice));
+        return status;
+    }
 
     private TranslationSubtitlePlacementStatus ShowSubtitleTextCore(
         TranslationOverlayOperationToken operation,
-        string translatedText)
+        string translatedText,
+        Func<bool>? isCurrent = null)
     {
         if (!IsCurrentOperation(operation) ||
+            isCurrent?.Invoke() == false ||
             string.IsNullOrWhiteSpace(translatedText))
         {
             return TranslationSubtitlePlacementStatus.Ready;
@@ -338,14 +370,18 @@ public partial class TranslationOverlayWindow : Window
         return status;
     }
 
-    private void ShowSubtitleNoticeCore(
+    private TranslationSubtitlePlacementStatus ShowSubtitleNoticeCore(
         TranslationOverlayOperationToken operation,
         string? notice)
     {
         if (!IsCurrentOperation(operation))
-            return;
+            return TranslationSubtitlePlacementStatus.Ready;
 
         ApplySubtitlePresentation();
+        var previousText = SubtitleTranslationTextBlock.Text;
+        var previousNotice = SubtitleNoticeTextBlock.Text;
+        var previousVisibility = SubtitleNoticeTextBlock.Visibility;
+        var wasVisible = IsVisible;
         SubtitleNoticeTextBlock.Text = notice ?? "";
         SubtitleNoticeTextBlock.Visibility =
             string.IsNullOrWhiteSpace(notice)
@@ -355,12 +391,30 @@ public partial class TranslationOverlayWindow : Window
             SubtitleNoticeTextBlock.Visibility == Visibility.Visible)
         {
             SubtitleSurface.Visibility = Visibility.Visible;
-            _ = PositionSubtitleSurfaceCore();
+            var status = PositionSubtitleSurfaceCore();
+            if (status == TranslationSubtitlePlacementStatus.Ready)
+                return status;
+
+            SubtitleTranslationTextBlock.Text = previousText;
+            SubtitleNoticeTextBlock.Text = previousNotice;
+            SubtitleNoticeTextBlock.Visibility = previousVisibility;
+            if (!wasVisible ||
+                (_subtitleCaptureRegion is { } captureRegion &&
+                 !IsCaptureExcluded &&
+                 TryGetWindowBounds(
+                     new WindowInteropHelper(this).Handle,
+                     out var bounds) &&
+                 Intersects(bounds, captureRegion)))
+            {
+                HideWithoutClearingContent();
+            }
+            return status;
         }
         else
         {
             SubtitleSurface.Visibility = Visibility.Collapsed;
             HideWithoutClearingContent();
+            return TranslationSubtitlePlacementStatus.Ready;
         }
     }
 
@@ -535,22 +589,63 @@ public partial class TranslationOverlayWindow : Window
         if (handle == 0 ||
             !TryGetWindowBounds(handle, out var bounds))
         {
-            return TranslationSubtitlePlacementStatus.NoSafePlacement;
+            return FailSubtitlePlacement();
         }
 
         if (!TryGetSubtitleTarget(bounds, monitor.WorkArea, out var target))
-            return TranslationSubtitlePlacementStatus.NoSafePlacement;
+            return FailSubtitlePlacement();
 
         MoveWindow(handle, target);
-        if (TryGetWindowBounds(handle, out var moved) &&
-            (moved.Width != bounds.Width ||
-             moved.Height != bounds.Height) &&
-            TryGetSubtitleTarget(moved, monitor.WorkArea, out var adjusted))
+        if (!TryGetWindowBounds(handle, out var moved))
+            return FailSubtitlePlacement();
+
+        if (moved.Width != bounds.Width ||
+            moved.Height != bounds.Height)
         {
+            ConstrainSubtitleWidth(
+                _subtitleCaptureRegion,
+                monitor.WorkArea);
+            UpdateLayout();
+            if (!TryGetWindowBounds(handle, out moved) ||
+                !TryGetSubtitleTarget(
+                    moved,
+                    monitor.WorkArea,
+                    out var adjusted))
+            {
+                return FailSubtitlePlacement();
+            }
             MoveWindow(handle, adjusted);
+            if (!TryGetWindowBounds(handle, out moved))
+                return FailSubtitlePlacement();
         }
 
+        if (!IsFinalSubtitleBoundsSafe(moved, monitor.WorkArea))
+            return FailSubtitlePlacement();
+
         return TranslationSubtitlePlacementStatus.Ready;
+    }
+
+    private TranslationSubtitlePlacementStatus FailSubtitlePlacement()
+    {
+        HideWithoutClearingContent();
+        return TranslationSubtitlePlacementStatus.NoSafePlacement;
+    }
+
+    private bool IsFinalSubtitleBoundsSafe(
+        PixelRect bounds,
+        PixelRect workArea)
+    {
+        if (bounds.Left < workArea.Left ||
+            bounds.Top < workArea.Top ||
+            bounds.Right > workArea.Right ||
+            bounds.Bottom > workArea.Bottom)
+        {
+            return false;
+        }
+
+        return _subtitleCaptureRegion is not { } captureRegion ||
+            IsCaptureExcluded ||
+            !Intersects(bounds, captureRegion);
     }
 
     private bool TryGetSubtitleTarget(

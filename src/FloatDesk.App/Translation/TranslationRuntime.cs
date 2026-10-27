@@ -163,7 +163,13 @@ public sealed class TranslationRuntime : IDisposable
             _ = StopSubtitlesAsync();
         if (cancelledInteractive)
             _host.DismissActiveOperation();
-        _host.ApplySettings(settings);
+        var subtitlePlacement =
+            _host.ApplySettingsForSubtitle(settings);
+        if (subtitlePlacement != TranslationSubtitlePlacementStatus.Ready)
+        {
+            _subtitleController?.ReportPlacementStatus(
+                subtitlePlacement);
+        }
     }
 
     public async Task TranslateSelectionAsync(
@@ -347,10 +353,26 @@ public sealed class TranslationRuntime : IDisposable
         var controller = _subtitleController;
         if (controller is not { IsRunning: true })
             return;
-        if (controller.IsPaused)
-            controller.Resume();
-        else
+        if (!controller.IsPaused)
+        {
             controller.Pause("字幕翻译已暂停。");
+            return;
+        }
+
+        var canResume = false;
+        lock (_sync)
+        {
+            canResume =
+                !_disposed &&
+                !IsExternallyPausedLocked() &&
+                _capturePauseDepth == 0 &&
+                _interactiveCancellation is null &&
+                !_subtitlePauseOwnedByCapture &&
+                !_deferSubtitleResumeUntilInteractiveDismissed &&
+                !_subtitleResumePending;
+        }
+        if (canResume)
+            controller.Resume();
     }
 
     public async Task ReselectSubtitleRegionAsync(

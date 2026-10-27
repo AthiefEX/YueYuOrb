@@ -190,7 +190,8 @@ public sealed class TranslationPrivacyTests
 
         public TranslationSubtitlePlacementStatus ShowSubtitleText(
             TranslationRouteHandle operation,
-            string text)
+            string text,
+            Func<bool>? isCurrent = null)
         {
             return TranslationSubtitlePlacementStatus.Ready;
         }

@@ -468,6 +468,13 @@ public sealed class SubtitleTranslationController : IDisposable
             Resume();
     }
 
+    internal void ReportPlacementStatus(
+        TranslationSubtitlePlacementStatus status)
+    {
+        if (status != TranslationSubtitlePlacementStatus.Ready)
+            PauseForPlacementFailure(status);
+    }
+
     public async Task ReselectAsync(
         TranslationSettings settings,
         CancellationToken cancellationToken)
@@ -595,7 +602,13 @@ public sealed class SubtitleTranslationController : IDisposable
                             iteration.Token)
                         .ConfigureAwait(false);
                     if (first is null)
+                    {
+                        await DelayCaptureIterationAsync(
+                                currentSettings,
+                                cancellationToken)
+                            .ConfigureAwait(false);
                         continue;
+                    }
 
                     FrameSignature? previous;
                     lock (_sync)
@@ -606,6 +619,10 @@ public sealed class SubtitleTranslationController : IDisposable
                         SetPreviousSignature(
                             generation,
                             first.Signature);
+                        await DelayCaptureIterationAsync(
+                                currentSettings,
+                                cancellationToken)
+                            .ConfigureAwait(false);
                         continue;
                     }
 
@@ -618,12 +635,19 @@ public sealed class SubtitleTranslationController : IDisposable
                             iteration.Token)
                         .ConfigureAwait(false);
                     if (stable is null)
+                    {
+                        await DelayCaptureIterationAsync(
+                                currentSettings,
+                                cancellationToken)
+                            .ConfigureAwait(false);
                         continue;
+                    }
 
                     SetPreviousSignature(
                         generation,
                         stable.Signature);
                     var publishedCandidate = false;
+                    CancellationTokenSource? supersededOcr = null;
                     long publishedSequence = 0;
                     lock (_sync)
                     {
@@ -638,6 +662,8 @@ public sealed class SubtitleTranslationController : IDisposable
                                     sequence,
                                     currentSettings.OcrLanguage,
                                     stable));
+                            supersededOcr = _ocrIterationCancellation;
+                            _ocrIterationCancellation = null;
                             publishedCandidate = true;
                             publishedSequence = sequence;
                         }
@@ -646,6 +672,7 @@ public sealed class SubtitleTranslationController : IDisposable
                             stable.Dispose();
                         }
                     }
+                    CancelQuietly(supersededOcr);
                     if (publishedCandidate)
                     {
                         EmitDiagnostic(
@@ -713,36 +740,10 @@ public sealed class SubtitleTranslationController : IDisposable
                 if (cancellationToken.IsCancellationRequested)
                     break;
 
-                var delay = GetCaptureDelay(currentSettings);
-                using var delayCancellation =
-                    CancellationTokenSource.CreateLinkedTokenSource(
-                        cancellationToken);
-                lock (_sync)
-                    _captureIterationCancellation = delayCancellation;
-                try
-                {
-                    await _clock.DelayAsync(
-                            delay,
-                            delayCancellation.Token)
-                        .ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                    when (delayCancellation.IsCancellationRequested ||
-                          cancellationToken.IsCancellationRequested)
-                {
-                }
-                finally
-                {
-                    lock (_sync)
-                    {
-                        if (ReferenceEquals(
-                            _captureIterationCancellation,
-                            delayCancellation))
-                        {
-                            _captureIterationCancellation = null;
-                        }
-                    }
-                }
+                await DelayCaptureIterationAsync(
+                        currentSettings,
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -752,6 +753,41 @@ public sealed class SubtitleTranslationController : IDisposable
         finally
         {
             CompleteSession(generation, session);
+        }
+    }
+
+    private async Task DelayCaptureIterationAsync(
+        TranslationSettings settings,
+        CancellationToken sessionToken)
+    {
+        using var delayCancellation =
+            CancellationTokenSource.CreateLinkedTokenSource(
+                sessionToken);
+        lock (_sync)
+            _captureIterationCancellation = delayCancellation;
+        try
+        {
+            await _clock.DelayAsync(
+                    GetCaptureDelay(settings),
+                    delayCancellation.Token)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+            when (delayCancellation.IsCancellationRequested ||
+                  sessionToken.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            lock (_sync)
+            {
+                if (ReferenceEquals(
+                    _captureIterationCancellation,
+                    delayCancellation))
+                {
+                    _captureIterationCancellation = null;
+                }
+            }
         }
     }
 
@@ -860,7 +896,7 @@ public sealed class SubtitleTranslationController : IDisposable
                             InvalidateCaption(generation);
                             continue;
                         }
-                        if (IsDuplicateText(text))
+                        if (IsDuplicateText(generation, text))
                             continue;
 
                         var translationStarted = StartTranslation(
@@ -1133,21 +1169,52 @@ public sealed class SubtitleTranslationController : IDisposable
         }
     }
 
-    private bool IsDuplicateText(string text)
+    private bool IsDuplicateText(long generation, string text)
     {
+        CancellationTokenSource? supersededCancellation = null;
+        Task? supersededTask = null;
+        bool duplicate;
         lock (_sync)
         {
+            if (!IsCurrentUnpausedGenerationLocked(generation))
+                return true;
+
+            if (_activeTranslationText is { } active &&
+                TranslationTextProcessor.IsNearDuplicate(active, text))
+            {
+                return true;
+            }
+
             if (_previousText is { } previous &&
                 TranslationTextProcessor.IsNearDuplicate(
                     previous,
                     text))
             {
-                return true;
+                duplicate = true;
+                if (_activeTranslationText is not null ||
+                    _translationCancellation is not null)
+                {
+                    _activeTranslationSequence = NextGeneration(
+                        _activeTranslationSequence);
+                    _activeTranslationText = null;
+                    _transientFailureCount = 0;
+                    _transientNoticeShown = false;
+                    supersededCancellation = _translationCancellation;
+                    _translationCancellation = null;
+                    supersededTask = _translationTask;
+                    _translationTask = null;
+                    ReleaseTranslationStartedLocked();
+                }
             }
-
-            return _activeTranslationText is { } active &&
-                TranslationTextProcessor.IsNearDuplicate(active, text);
+            else
+            {
+                duplicate = false;
+            }
         }
+
+        CancelQuietly(supersededCancellation);
+        ObserveAbandonedTask(supersededTask);
+        return duplicate;
     }
 
     private void InvalidateCaption(long generation)
@@ -1200,7 +1267,13 @@ public sealed class SubtitleTranslationController : IDisposable
         if (operation is not { } current)
             return;
 
-        var placement = _host.ShowSubtitleText(current, text);
+        var placement = _host.ShowSubtitleText(
+            current,
+            text,
+            () => IsCurrentTranslation(
+                generation,
+                sequence,
+                CancellationToken.None));
         if (placement != TranslationSubtitlePlacementStatus.Ready)
         {
             PauseForPlacementFailure(generation, placement);
@@ -1349,8 +1422,12 @@ public sealed class SubtitleTranslationController : IDisposable
         long generation,
         string notice)
     {
-        if (GetCurrentOperation(generation) is { } operation)
-            _host.ShowSubtitleNotice(operation, notice);
+        if (GetCurrentOperation(generation) is not { } operation)
+            return;
+
+        var placement = _host.ShowSubtitleNotice(operation, notice);
+        if (placement != TranslationSubtitlePlacementStatus.Ready)
+            PauseForPlacementFailure(generation, placement);
     }
 
     private void ShowResultIfCurrent(

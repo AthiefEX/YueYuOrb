@@ -219,20 +219,24 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
 
     private bool EnsureCachedEngine(string? languageTag)
     {
-        if (_engineCacheInitialized &&
+        if (_cachedEngine is not null &&
+            _engineCacheInitialized &&
             string.Equals(
                 _cachedLanguageTag,
                 languageTag,
                 StringComparison.OrdinalIgnoreCase))
         {
-            return _cachedEngine is not null;
+            return true;
         }
 
         DisposeCachedEngine();
-        _engineCacheInitialized = true;
-        _cachedLanguageTag = languageTag;
         _cachedEngine = CreateEngine(languageTag);
-        return _cachedEngine is not null;
+        if (_cachedEngine is null)
+            return false;
+
+        _cachedLanguageTag = languageTag;
+        _engineCacheInitialized = true;
+        return true;
     }
 
     private void DisposeCachedEngine()

@@ -220,6 +220,30 @@ public sealed class WindowsScreenOcrServiceTests
     }
 
     [Fact]
+    public async Task FailedEngineCreationIsRetriedAfterLanguageBecomesAvailable()
+    {
+        var engine = new FakeOcrEngine(["recovered"]);
+        var backend = new RecoveringOcrBackend(engine);
+        using var service = new WindowsScreenOcrService(backend);
+        using var frame = NonBlankFrame();
+
+        var unavailable = await service.RecognizeAsync(
+            frame,
+            "de-DE",
+            CancellationToken.None);
+        var recovered = await service.RecognizeAsync(
+            frame,
+            "de-DE",
+            CancellationToken.None);
+
+        Assert.Equal("OcrLanguageUnavailable", unavailable.ErrorCode);
+        Assert.Null(recovered.ErrorCode);
+        Assert.Equal("recovered", recovered.Text);
+        Assert.Equal(2, backend.CreateAttempts);
+        Assert.Equal(1, engine.CallCount);
+    }
+
+    [Fact]
     public async Task RecognizeStripsFramePaddingAndPreservesOcrLineOrder()
     {
         var engine = new FakeOcrEngine(["first", " ", " second ", "third"]);
@@ -597,6 +621,22 @@ public sealed class WindowsScreenOcrServiceTests
                 CreatedEngineCount++;
             return ProfileEngine;
         }
+    }
+
+    private sealed class RecoveringOcrBackend(
+        IWindowsOcrEngine engine) : IWindowsOcrBackend
+    {
+        public int MaxImageDimension => 4096;
+        public IReadOnlyList<OcrLanguageOption> AvailableLanguages => [];
+        public int CreateAttempts { get; private set; }
+
+        public IWindowsOcrEngine? TryCreateFromLanguage(string languageTag)
+        {
+            CreateAttempts++;
+            return CreateAttempts >= 2 ? engine : null;
+        }
+
+        public IWindowsOcrEngine? TryCreateFromUserProfileLanguages() => null;
     }
 
     private sealed class FakeOcrEngine : IWindowsOcrEngine

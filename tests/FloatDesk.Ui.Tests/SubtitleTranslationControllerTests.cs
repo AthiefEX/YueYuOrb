@@ -90,6 +90,268 @@ public sealed class SubtitleTranslationControllerTests
         Assert.Equal(1, host.TranslateCount);
     }
 
+    [Fact(Timeout = 10_000)]
+    public async Task CaptionValidityIsCheckedAtSubtitleDelivery()
+    {
+        var source = new GatedSequenceSubtitleSource(
+            [0x10, 0x10, 0xE0, 0xE0],
+            gateBeforeCapture: 3);
+        var ocr = new SequenceOcr(
+            new ScreenOcrResult("Hello A", null, null),
+            new ScreenOcrResult("Hello B", null, null));
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondShown = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var deliveryCount = 0;
+        var host = new RecordingSubtitleHost
+        {
+            TranslationHandler = (text, _) =>
+                Task.FromResult(
+                    TranslationResponse.Ok(
+                        text,
+                        text == "Hello A" ? "译文 A" : "译文 B",
+                        "en",
+                        "Test provider")),
+            SubtitleTextHandler = (_, _) =>
+            {
+                var delivery = Interlocked.Increment(ref deliveryCount);
+                if (delivery == 1)
+                {
+                    entered.TrySetResult();
+                    release.Task.GetAwaiter().GetResult();
+                }
+                else if (delivery == 2)
+                {
+                    secondShown.TrySetResult();
+                }
+
+                return TranslationSubtitlePlacementStatus.Ready;
+            }
+        };
+        using var controller = new SubtitleTranslationController(
+            ocr,
+            source,
+            host,
+            new ImmediateClock());
+
+        await controller.StartAsync(Settings(), CancellationToken.None);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        source.ReleaseGate();
+        try
+        {
+            await secondShown.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        catch (TimeoutException exception)
+        {
+            throw new Xunit.Sdk.XunitException(
+                $"Second delivery timed out; captures={source.CaptureCount}, " +
+                $"ocr={ocr.CallCount}, translations={host.TranslateCount}. " +
+                exception.Message);
+        }
+
+        release.TrySetResult();
+        await WaitUntilAsync(
+            () => !controller.IsRunning ||
+                  host.SubtitleTexts.Count >= 1,
+            TimeSpan.FromSeconds(2));
+
+        Assert.DoesNotContain("译文 A", host.SubtitleTexts);
+        Assert.Equal(["译文 B"], host.SubtitleTexts);
+        await controller.StopAsync();
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task ReturningToDisplayedCaptionCancelsInterveningTranslation()
+    {
+        var source = new GatedSequenceSubtitleSource(
+            [0x10, 0x10, 0xE0, 0xE0, 0x10, 0x10],
+            gateBeforeCapture: 5);
+        var ocr = new SequenceOcr(
+            new ScreenOcrResult("Hello A", null, null),
+            new ScreenOcrResult("Hello B", null, null),
+            new ScreenOcrResult("Hello A", null, null));
+        var secondTranslationEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondTranslationCancelled = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var host = new RecordingSubtitleHost
+        {
+            TranslationHandler = async (text, cancellationToken) =>
+            {
+                if (text == "Hello A")
+                {
+                    return TranslationResponse.Ok(
+                        text,
+                        "译文 A",
+                        "en",
+                        "Test provider");
+                }
+
+                secondTranslationEntered.TrySetResult();
+                try
+                {
+                    await Task.Delay(
+                        Timeout.InfiniteTimeSpan,
+                        cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    secondTranslationCancelled.TrySetResult();
+                    throw;
+                }
+
+                return TranslationResponse.Ok(
+                    text,
+                    "译文 B",
+                    "en",
+                    "Test provider");
+            }
+        };
+        using var controller = new SubtitleTranslationController(
+            ocr,
+            source,
+            host,
+            new ImmediateClock());
+
+        await controller.StartAsync(Settings(), CancellationToken.None);
+        await host.FirstSubtitleTextShown.Task.WaitAsync(
+            TimeSpan.FromSeconds(2));
+        await secondTranslationEntered.Task.WaitAsync(
+            TimeSpan.FromSeconds(2));
+        source.ReleaseGate();
+        try
+        {
+            await secondTranslationCancelled.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+        }
+        catch (TimeoutException exception)
+        {
+            throw new Xunit.Sdk.XunitException(
+                $"Second translation was not canceled; " +
+                $"captures={source.CaptureCount}, ocr={ocr.CallCount}, " +
+                $"translations={host.TranslateCount}. {exception.Message}");
+        }
+
+        Assert.Equal(["译文 A"], host.SubtitleTexts);
+        await controller.StopAsync();
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task UnchangedFramesRespectSamplingInterval()
+    {
+        var source = new SequenceSubtitleSource(
+            [0x80],
+            finishedAfterCaptures: null);
+        var ocr = new SequenceOcr(
+            new ScreenOcrResult("Stable subtitle", null, null));
+        var clock = new ControlledIntervalClock(
+            TimeSpan.FromMilliseconds(300));
+        var host = new RecordingSubtitleHost();
+        using var controller = new SubtitleTranslationController(
+            ocr,
+            source,
+            host,
+            clock);
+
+        try
+        {
+            await controller.StartAsync(Settings(), CancellationToken.None);
+            await clock.FirstIntervalEntered.WaitAsync(
+                TimeSpan.FromSeconds(2));
+            clock.ReleaseFirstInterval();
+            await clock.SecondIntervalEntered.WaitAsync(
+                TimeSpan.FromSeconds(2));
+            clock.ReleaseSecondInterval();
+        }
+        finally
+        {
+            clock.ReleaseAll();
+            await controller.StopAsync();
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task NewFrameCancelsSupersededOcr()
+    {
+        var source = new AlternatingSubtitleSource();
+        var firstEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstCancelled = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var ocr = new CallbackOcr(async (call, cancellationToken) =>
+        {
+            if (call > 1)
+                return new ScreenOcrResult("Subtitle 2", null, null);
+
+            firstEntered.TrySetResult();
+            try
+            {
+                await Task.Delay(
+                    Timeout.InfiniteTimeSpan,
+                    cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                firstCancelled.TrySetResult();
+                throw;
+            }
+
+            return new ScreenOcrResult("Subtitle 1", null, null);
+        });
+        var host = new RecordingSubtitleHost();
+        using var controller = new SubtitleTranslationController(
+            ocr,
+            source,
+            host,
+            new ImmediateClock());
+
+        await controller.StartAsync(Settings(), CancellationToken.None);
+        await firstEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await firstCancelled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await WaitUntilAsync(
+            () => ocr.CallCount >= 2,
+            TimeSpan.FromSeconds(2));
+        await controller.StopAsync();
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task NoticePlacementFailurePausesSampling()
+    {
+        var source = new SequenceSubtitleSource(
+            [0x10, 0xE0, 0x10, 0xE0, 0x10],
+            finishedAfterCaptures: null);
+        var ocr = new SequenceOcr(
+            new ScreenOcrResult("Hello subtitle", null, null));
+        var host = new RecordingSubtitleHost
+        {
+            TranslationResult = TranslationResponse.Fail(
+                "Hello subtitle",
+                "en",
+                "Test provider",
+                TranslationFailureKind.ProviderError,
+                "ProviderError",
+                "翻译失败。"),
+            NoticePlacementStatus =
+                TranslationSubtitlePlacementStatus.NoSafePlacement
+        };
+        using var controller = new SubtitleTranslationController(
+            ocr,
+            source,
+            host,
+            new ImmediateClock());
+
+        await controller.StartAsync(Settings(), CancellationToken.None);
+        await WaitUntilAsync(
+            () => controller.IsPaused,
+            TimeSpan.FromSeconds(2));
+
+        Assert.True(controller.IsPaused);
+        await controller.StopAsync();
+    }
+
     [Fact]
     public async Task PauseCancelsInFlightOcrWithoutEndingSubtitleSession()
     {
@@ -1223,6 +1485,38 @@ public sealed class SubtitleTranslationControllerTests
         }
     }
 
+    private sealed class GatedSequenceSubtitleSource(
+        IReadOnlyList<byte> values,
+        int gateBeforeCapture) : ITranslationSubtitleCapture
+    {
+        private readonly TaskCompletionSource _gate =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _captureCount;
+
+        public int CaptureCount => Volatile.Read(ref _captureCount);
+
+        public async Task<CapturedTranslationRegion?> CaptureRegionAsync(
+            TranslationCaptureRegion region,
+            CancellationToken cancellationToken)
+        {
+            var call = Interlocked.Increment(ref _captureCount);
+            if (call == gateBeforeCapture)
+                await _gate.Task.WaitAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            var value = values[Math.Min(call - 1, values.Count - 1)];
+            var frame = new CaptureFrame(
+                new PixelRect(0, 0, 4, 4),
+                16,
+                Enumerable.Repeat(value, 4 * 4 * 4).ToArray());
+            return new CapturedTranslationRegion(
+                frame,
+                new PixelRect(0, 0, 4, 4),
+                region);
+        }
+
+        public void ReleaseGate() => _gate.TrySetResult();
+    }
+
     private sealed class CallbackOcr(
         Func<int, CancellationToken, Task<ScreenOcrResult>> recognize)
         : IScreenOcrService
@@ -1319,6 +1613,59 @@ public sealed class SubtitleTranslationControllerTests
         }
     }
 
+    private sealed class ControlledIntervalClock(
+        TimeSpan interval) : IClock
+    {
+        private readonly object _sync = new();
+        private readonly TaskCompletionSource _firstIntervalEntered =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _secondIntervalEntered =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _firstRelease =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _secondRelease =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _intervalCount;
+
+        public DateTimeOffset UtcNow => DateTimeOffset.UtcNow;
+        public Task FirstIntervalEntered => _firstIntervalEntered.Task;
+        public Task SecondIntervalEntered => _secondIntervalEntered.Task;
+
+        public Task DelayAsync(
+            TimeSpan delay,
+            CancellationToken cancellationToken)
+        {
+            if (delay != interval)
+                return Task.CompletedTask;
+
+            int count;
+            lock (_sync)
+                count = ++_intervalCount;
+            if (count == 1)
+            {
+                _firstIntervalEntered.TrySetResult();
+                return _firstRelease.Task.WaitAsync(cancellationToken);
+            }
+            if (count == 2)
+            {
+                _secondIntervalEntered.TrySetResult();
+                return _secondRelease.Task.WaitAsync(cancellationToken);
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public void ReleaseFirstInterval() => _firstRelease.TrySetResult();
+
+        public void ReleaseSecondInterval() => _secondRelease.TrySetResult();
+
+        public void ReleaseAll()
+        {
+            _firstRelease.TrySetResult();
+            _secondRelease.TrySetResult();
+        }
+    }
+
     private sealed class RecordingSubtitleHost : ITranslationRouteHost
     {
         public TranslationResponse TranslationResult { get; init; } =
@@ -1350,7 +1697,19 @@ public sealed class SubtitleTranslationControllerTests
         public List<string> SubtitleNotices { get; } = [];
         public TranslationSubtitlePlacementStatus PlacementStatus { get; set; } =
             TranslationSubtitlePlacementStatus.Ready;
-
+        public TranslationSubtitlePlacementStatus NoticePlacementStatus
+        {
+            get;
+            init;
+        } = TranslationSubtitlePlacementStatus.Ready;
+        public Func<
+            string,
+            Func<bool>?,
+            TranslationSubtitlePlacementStatus>? SubtitleTextHandler
+        {
+            get;
+            init;
+        }
         public void ApplySettings(AppSettings settings)
         {
         }
@@ -1392,18 +1751,31 @@ public sealed class SubtitleTranslationControllerTests
 
         public TranslationSubtitlePlacementStatus ShowSubtitleText(
             TranslationRouteHandle operation,
-            string translatedText)
+            string translatedText,
+            Func<bool>? isCurrent = null)
         {
+            if (SubtitleTextHandler is { } handler)
+            {
+                var handled = handler(translatedText, isCurrent);
+                if (handled == TranslationSubtitlePlacementStatus.Ready &&
+                    isCurrent?.Invoke() != false)
+                {
+                    SubtitleTexts.Add(translatedText);
+                    FirstSubtitleTextShown.TrySetResult();
+                }
+                return handled;
+            }
             SubtitleTexts.Add(translatedText);
             FirstSubtitleTextShown.TrySetResult();
             return PlacementStatus;
         }
 
-        public void ShowSubtitleNotice(
+        public TranslationSubtitlePlacementStatus ShowSubtitleNotice(
             TranslationRouteHandle operation,
             string notice)
         {
             SubtitleNotices.Add(notice);
+            return NoticePlacementStatus;
         }
 
         public void SetSubtitleControls(

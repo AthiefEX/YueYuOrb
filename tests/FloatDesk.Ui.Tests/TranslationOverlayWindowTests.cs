@@ -322,6 +322,108 @@ public sealed class TranslationOverlayWindowTests
     }
 
     [Fact]
+    public void SubtitleNoticePlacementFailureRestoresSafeContent()
+    {
+        RunOnSta(() =>
+        {
+            var monitor = DisplayTopology.SelectPrimaryMonitor(
+                    DisplayTopology.GetMonitors())
+                ?? throw new InvalidOperationException("No monitor found.");
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                var operation = window.BeginOperation(subtitle: true);
+                window.SetSubtitleControls(
+                    operation,
+                    active: true,
+                    paused: false,
+                    canReselect: true);
+                window.PrepareSubtitleCaptureRegion(PrimaryCaptureRegion());
+                window.ShowSubtitleText(operation, "安全字幕");
+                ForceCaptureExcluded(window, excluded: false);
+
+                window.PrepareSubtitleCaptureRegion(
+                    new TranslationCaptureRegion(
+                        monitor.DeviceName,
+                        0,
+                        0,
+                        1,
+                        1));
+                var status = window.ShowSubtitleNotice(
+                    operation,
+                    "无法安全显示提示。");
+
+                Assert.NotEqual(
+                    TranslationSubtitlePlacementStatus.Ready,
+                    status);
+                Assert.Equal("安全字幕", window.TranslatedText);
+                Assert.False(window.IsVisible);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void SettingsChangeReportsUnsafeSubtitlePlacement()
+    {
+        RunOnSta(() =>
+        {
+            var monitor = DisplayTopology.SelectPrimaryMonitor(
+                    DisplayTopology.GetMonitors())
+                ?? throw new InvalidOperationException("No monitor found.");
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                var operation = window.BeginOperation(subtitle: true);
+                window.SetSubtitleControls(
+                    operation,
+                    active: true,
+                    paused: false,
+                    canReselect: true);
+                window.PrepareSubtitleCaptureRegion(
+                    new TranslationCaptureRegion(
+                        monitor.DeviceName,
+                        0,
+                        0,
+                        1,
+                        1));
+                ForceCaptureExcluded(window, excluded: true);
+                Assert.Equal(
+                    TranslationSubtitlePlacementStatus.Ready,
+                    window.ShowSubtitleText(
+                        operation,
+                        string.Concat(
+                            Enumerable.Repeat(
+                                "用于验证设置变更后字幕重新定位的长句。",
+                                12))));
+
+                ForceCaptureExcluded(window, excluded: false);
+                var status = window.ApplySettings(
+                    AppSettings.CreateDefault() with
+                    {
+                        Translation =
+                            TranslationSettings.CreateDefault() with
+                            {
+                                SubtitleFontSizeDip = 36
+                            }
+                    });
+
+                Assert.NotEqual(
+                    TranslationSubtitlePlacementStatus.Ready,
+                    status);
+                Assert.False(window.IsVisible);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
     public void SubtitleTextUsesConfiguredFontSize()
     {
         RunOnSta(() =>
@@ -1329,6 +1431,19 @@ public sealed class TranslationOverlayWindowTests
             0.7,
             0.8,
             0.15);
+    }
+
+    private static void ForceCaptureExcluded(
+        TranslationOverlayWindow window,
+        bool excluded)
+    {
+        var property = typeof(TranslationOverlayWindow).GetProperty(
+            nameof(TranslationOverlayWindow.IsCaptureExcluded),
+            BindingFlags.Instance | BindingFlags.Public |
+            BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(
+                "Capture exclusion state was not found.");
+        property.SetValue(window, excluded);
     }
 
     private static void RunOnSta(Action action)
