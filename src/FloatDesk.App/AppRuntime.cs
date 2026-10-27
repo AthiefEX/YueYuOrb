@@ -86,7 +86,9 @@ internal sealed class AppRuntime : IDisposable
             () => _wheelTranslationTarget ?? _lastExternal,
             ocr: _ocr,
             regionCapture: _translationRegionCapture,
-            settingsCoordinator: _settings);
+            settingsCoordinator: _settings,
+            diagnostics: (eventName, properties) =>
+                _ = _logger.WriteAsync(eventName, properties));
         _foreground = new ForegroundMonitor();
         _input = new InputLockEngine(
             new WindowsInputBackend(),

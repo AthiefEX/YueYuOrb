@@ -23,6 +23,8 @@ public sealed class TranslationRuntime : IDisposable
     private readonly ITranslationRegionCapture? _subtitleCapture;
     private readonly IClock _clock;
     private readonly ISettingsCoordinator? _settingsCoordinator;
+    private readonly Action<string, IReadOnlyDictionary<string, object?>?>?
+        _diagnostics;
     private readonly SemaphoreSlim _subtitleGate = new(1, 1);
     private ConfigurationState? _configuration;
     private CancellationTokenSource? _interactiveCancellation;
@@ -46,7 +48,9 @@ public sealed class TranslationRuntime : IDisposable
         IClock? clock = null,
         IScreenOcrService? ocr = null,
         ITranslationRegionCapture? regionCapture = null,
-        ISettingsCoordinator? settingsCoordinator = null)
+        ISettingsCoordinator? settingsCoordinator = null,
+        Action<string, IReadOnlyDictionary<string, object?>?>?
+            diagnostics = null)
         : this(
             new TranslationRouteHost(overlay),
             reader,
@@ -57,7 +61,8 @@ public sealed class TranslationRuntime : IDisposable
             clock,
             ocr,
             regionCapture,
-            settingsCoordinator)
+            settingsCoordinator,
+            diagnostics)
     {
     }
 
@@ -71,7 +76,9 @@ public sealed class TranslationRuntime : IDisposable
         IClock? clock = null,
         IScreenOcrService? ocr = null,
         ITranslationRegionCapture? regionCapture = null,
-        ISettingsCoordinator? settingsCoordinator = null)
+        ISettingsCoordinator? settingsCoordinator = null,
+        Action<string, IReadOnlyDictionary<string, object?>?>?
+            diagnostics = null)
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _providers = providers ??
@@ -84,6 +91,7 @@ public sealed class TranslationRuntime : IDisposable
             throw new ArgumentNullException(nameof(lastExternal));
         _clock = clock ?? new SystemClock();
         _settingsCoordinator = settingsCoordinator;
+        _diagnostics = diagnostics;
         _controller = new SelectedTextTranslationController(reader, host);
         if (ocr is not null && regionCapture is not null)
         {
@@ -595,61 +603,89 @@ public sealed class TranslationRuntime : IDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(text);
+        var provider = GetLatestSettings().Translation.Provider;
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             var configuration =
                 await EnsureConfigurationAsync(cancellationToken)
                     .ConfigureAwait(false);
+            provider = configuration.Settings.Provider;
             if (configuration.ErrorMessage is { } error)
             {
-                return TranslationResponse.Fail(
+                return Complete(TranslationResponse.Fail(
                     text,
                     configuration.Settings.SourceLanguage,
                     ProviderName(configuration.Settings.Provider),
                     TranslationFailureKind.InvalidRequest,
                     "TranslationConfiguration",
-                    error);
+                    error));
             }
 
             var center = configuration.Center;
             if (center is null)
             {
-                return TranslationResponse.Fail(
+                return Complete(TranslationResponse.Fail(
                     text,
                     configuration.Settings.SourceLanguage,
                     ProviderName(configuration.Settings.Provider),
                     TranslationFailureKind.ProviderError,
                     "TranslationConfiguration",
-                    "翻译服务尚未准备完成，请稍后重试。");
+                    "翻译服务尚未准备完成，请稍后重试。"));
             }
 
-            return await center.TranslateAsync(
+            return Complete(await center.TranslateAsync(
                     text,
                     configuration.Settings.SourceLanguage,
                     configuration.Settings.TargetLanguage,
                     purpose,
                     cancellationToken)
-                .ConfigureAwait(false);
+                .ConfigureAwait(false));
         }
         catch (OperationCanceledException)
         {
-            return TranslationResponse.Fail(
+            return Complete(TranslationResponse.Fail(
                 text,
                 "",
                 "翻译服务",
                 TranslationFailureKind.Cancelled,
                 "Cancelled",
-                "Cancelled");
+                "Cancelled"));
         }
         catch
         {
-            return TranslationResponse.Fail(
+            return Complete(TranslationResponse.Fail(
                 text,
                 "",
                 "翻译服务",
                 TranslationFailureKind.ProviderError,
                 "TranslationRuntimeFailed",
-                "翻译失败，请稍后重试。");
+                "翻译失败，请稍后重试。"));
+        }
+
+        TranslationResponse Complete(TranslationResponse response)
+        {
+            var diagnostics = _diagnostics;
+            if (diagnostics is not null)
+            {
+                try
+                {
+                    diagnostics(
+                        "translation.completed",
+                        TranslationDiagnostics.Build(
+                            provider,
+                            purpose,
+                            text.Length,
+                            stopwatch.ElapsedMilliseconds,
+                            response.FailureKind,
+                            retryCount: 0));
+                }
+                catch
+                {
+                    // Diagnostics must never change translation behavior.
+                }
+            }
+            return response;
         }
     }
 

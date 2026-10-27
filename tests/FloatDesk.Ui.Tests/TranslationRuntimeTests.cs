@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FloatDesk.App.Translation;
 using FloatDesk.App.Views;
 using FloatDesk.Core.Contracts;
@@ -117,6 +118,94 @@ public sealed class TranslationRuntimeTests
         Assert.True(host.LastResult!.Success);
         Assert.DoesNotContain("top-secret-key", host.LastResult.Message);
         Assert.Equal(1, factory.CreateCount);
+    }
+
+    [Fact]
+    public async Task TranslationDiagnosticsReportBucketsWithoutContent()
+    {
+        var diagnostics =
+            new List<(string EventName,
+                IReadOnlyDictionary<string, object?>? Properties)>();
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("你好")),
+            diagnostics: (eventName, properties) =>
+                diagnostics.Add((eventName, properties)));
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(AppSettings.CreateDefault());
+
+        await runtime.TranslateSelectionAsync(
+            ExternalTarget,
+            CancellationToken.None);
+
+        var entry = Assert.Single(diagnostics);
+        Assert.Equal("translation.completed", entry.EventName);
+        var serialized = JsonSerializer.Serialize(entry.Properties);
+        Assert.Contains("characterBucket", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("Hello", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain("你好", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "apiKey",
+            serialized,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ThrowingTranslationDiagnosticsDoNotChangeTranslationResult()
+    {
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("你好")),
+            diagnostics: (_, _) =>
+                throw new InvalidOperationException("diagnostics failed"));
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(AppSettings.CreateDefault());
+
+        await runtime.TranslateSelectionAsync(
+            ExternalTarget,
+            CancellationToken.None);
+
+        Assert.NotNull(host.LastResult);
+        Assert.True(host.LastResult!.Success);
+    }
+
+    [Fact]
+    public async Task CancelledTranslationDiagnosticsRemainContentFree()
+    {
+        var diagnostics =
+            new List<(string EventName,
+                IReadOnlyDictionary<string, object?>? Properties)>();
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("你好")),
+            diagnostics: (eventName, properties) =>
+                diagnostics.Add((eventName, properties)));
+        runtime.ApplySettings(AppSettings.CreateDefault());
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var response = await runtime.TranslateTextAsync(
+            "sensitive source",
+            TranslationPurpose.Interactive,
+            cancellation.Token);
+
+        Assert.Equal(TranslationFailureKind.Cancelled, response.FailureKind);
+        var entry = Assert.Single(diagnostics);
+        var serialized = JsonSerializer.Serialize(entry.Properties);
+        Assert.Contains("Cancelled", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "sensitive source",
+            serialized,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -830,7 +919,9 @@ public sealed class TranslationRuntimeTests
         Func<ForegroundSnapshot?>? lastExternal = null,
         IScreenOcrService? ocr = null,
         ITranslationRegionCapture? regionCapture = null,
-        ISettingsCoordinator? settingsCoordinator = null) =>
+        ISettingsCoordinator? settingsCoordinator = null,
+        Action<string, IReadOnlyDictionary<string, object?>?>?
+            diagnostics = null) =>
         new(
             host,
             reader ?? new DelegateSelectedTextReader(
@@ -843,7 +934,8 @@ public sealed class TranslationRuntimeTests
             clock: null,
             ocr: ocr,
             regionCapture: regionCapture,
-            settingsCoordinator: settingsCoordinator);
+            settingsCoordinator: settingsCoordinator,
+            diagnostics: diagnostics);
 
     private static AppSettings SubtitleSettings(
         TranslationCaptureRegion region) =>
