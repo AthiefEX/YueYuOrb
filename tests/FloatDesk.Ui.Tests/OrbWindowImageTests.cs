@@ -176,6 +176,110 @@ public sealed class OrbWindowImageTests
             throw new Xunit.Sdk.XunitException(failure.ToString());
     }
 
+    [Fact(Timeout = 10_000)]
+    public async Task ClockHasNoBackdropOrOutline()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new OrbWindow(
+                    () => { },
+                    _ => { },
+                    () => { },
+                    () => { },
+                    () => { },
+                    () => { },
+                    () => { },
+                    () => { });
+                var defaults = AppSettings.CreateDefault();
+                window.ApplySettings(defaults with
+                {
+                    Orb = defaults.Orb with { ShowClock = true }
+                });
+
+                var clockBorder = Assert.IsType<Border>(
+                    window.FindName("ClockBorder"));
+                var background = Assert.IsAssignableFrom<SolidColorBrush>(
+                    clockBorder.Background);
+
+                Assert.Equal(Colors.Transparent, background.Color);
+                Assert.Equal(new Thickness(0), clockBorder.BorderThickness);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task ApplyingSettingsReloadsReplacedImageFile()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "FloatDeskTests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "orb.png");
+        WriteSolidPng(path, Colors.Red);
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new OrbWindow(
+                    () => { },
+                    _ => { },
+                    () => { },
+                    () => { },
+                    () => { },
+                    () => { },
+                    () => { },
+                    () => { },
+                    path);
+                var settings = AppSettings.CreateDefault();
+                window.ApplySettings(settings);
+                Assert.Equal(
+                    Colors.Red,
+                    ReadCenterPixel(GetField<Image>(window, "OrbImage")));
+
+                WriteSolidPng(path, Colors.Blue);
+                window.ApplySettings(settings);
+
+                Assert.Equal(
+                    Colors.Blue,
+                    ReadCenterPixel(GetField<Image>(window, "OrbImage")));
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(5)), "STA test thread timed out.");
+        await Task.CompletedTask;
+        try
+        {
+            if (failure is not null)
+                throw new Xunit.Sdk.XunitException(failure.ToString());
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static void WriteTransparentPng(string path)
     {
         var bitmap = BitmapSource.Create(
@@ -191,6 +295,48 @@ public sealed class OrbWindowImageTests
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
         using var stream = File.Create(path);
         encoder.Save(stream);
+    }
+
+    private static void WriteSolidPng(string path, Color color)
+    {
+        var bitmap = BitmapSource.Create(
+            2,
+            2,
+            96,
+            96,
+            PixelFormats.Bgra32,
+            null,
+            new byte[]
+            {
+                color.B, color.G, color.R, color.A,
+                color.B, color.G, color.R, color.A,
+                color.B, color.G, color.R, color.A,
+                color.B, color.G, color.R, color.A
+            },
+            8);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var stream = File.Create(path);
+        encoder.Save(stream);
+    }
+
+    private static Color ReadCenterPixel(Image image)
+    {
+        var source = Assert.IsAssignableFrom<BitmapSource>(image.Source);
+        var converted = source.Format == PixelFormats.Bgra32
+            ? source
+            : new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
+        var pixel = new byte[4];
+        converted.CopyPixels(
+            new Int32Rect(
+                converted.PixelWidth / 2,
+                converted.PixelHeight / 2,
+                1,
+                1),
+            pixel,
+            4,
+            0);
+        return Color.FromArgb(pixel[3], pixel[2], pixel[1], pixel[0]);
     }
 
     private static T GetField<T>(object target, string name) =>

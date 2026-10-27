@@ -1,3 +1,4 @@
+using System.Windows;
 using System.IO;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -10,6 +11,35 @@ public static class OrbImageImporter
 
     public static void Import(string sourcePath, string destinationDirectory)
     {
+        var frame = LoadFrame(sourcePath);
+        WriteImage(
+            frame,
+            destinationDirectory);
+    }
+
+    public static void Import(
+        string sourcePath,
+        string destinationDirectory,
+        Int32Rect cropArea)
+    {
+        var frame = LoadFrame(sourcePath);
+        if (cropArea.Width <= 0 ||
+            cropArea.Height <= 0 ||
+            cropArea.X < 0 ||
+            cropArea.Y < 0 ||
+            cropArea.X + cropArea.Width > frame.PixelWidth ||
+            cropArea.Y + cropArea.Height > frame.PixelHeight)
+        {
+            throw new InvalidDataException("裁切区域必须位于图片范围内。");
+        }
+
+        WriteImage(
+            new CroppedBitmap(frame, cropArea),
+            destinationDirectory);
+    }
+
+    internal static BitmapFrame LoadFrame(string sourcePath)
+    {
         var info = new FileInfo(sourcePath);
         if (!info.Exists || info.Length > MaximumBytes)
             throw new InvalidDataException("图片必须是 10 MiB 以内的 PNG、JPEG 或 BMP。");
@@ -21,7 +51,13 @@ public static class OrbImageImporter
         var frame = decoder.Frames[0];
         if (frame.PixelWidth > 4096 || frame.PixelHeight > 4096)
             throw new InvalidDataException("图片尺寸不能超过 4096×4096。");
+        return frame;
+    }
 
+    private static void WriteImage(
+        BitmapSource frame,
+        string destinationDirectory)
+    {
         var scale = Math.Min(512.0 / frame.PixelWidth, 512.0 / frame.PixelHeight);
         BitmapSource output = scale < 1
             ? new TransformedBitmap(frame, new ScaleTransform(scale, scale))

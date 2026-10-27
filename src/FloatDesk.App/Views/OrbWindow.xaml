@@ -50,10 +50,10 @@
             <Border x:Name="ClockBorder"
                     Visibility="Collapsed"
                     Margin="3"
-                    Padding="5,3"
-                    Background="#B20B1725"
-                    BorderBrush="#55FFFFFF"
-                    BorderThickness="1"
+                    Padding="0"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    BorderThickness="0"
                     CornerRadius="999"
                     HorizontalAlignment="Stretch"
                     VerticalAlignment="Stretch">
@@ -63,7 +63,15 @@
                                FontSize="14"
                                FontWeight="SemiBold"
                                Foreground="White"
-                               TextAlignment="Center" />
+                               TextAlignment="Center">
+                        <TextBlock.Effect>
+                            <DropShadowEffect BlurRadius="4"
+                                              ShadowDepth="1"
+                                              Direction="270"
+                                              Opacity="0.82"
+                                              Color="Black" />
+                        </TextBlock.Effect>
+                    </TextBlock>
                 </Viewbox>
             </Border>
         </Grid>

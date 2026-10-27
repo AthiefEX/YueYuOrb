@@ -359,6 +359,9 @@ public partial class OrbWindow : Window
                 return null;
             var image = new BitmapImage();
             image.BeginInit();
+            image.CreateOptions =
+                BitmapCreateOptions.PreservePixelFormat |
+                BitmapCreateOptions.IgnoreImageCache;
             image.CacheOption = BitmapCacheOption.OnLoad;
             image.UriSource = new Uri(path);
             image.EndInit();

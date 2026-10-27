@@ -373,7 +373,7 @@
                                                 <Slider Grid.Row="1" Grid.Column="1" Minimum="30" Maximum="100" Value="{Binding OrbOpacityPercent}" Style="{StaticResource SettingsSliderStyle}" VerticalAlignment="Center" Margin="0,0,12,0" />
                                                 <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding OrbOpacityPercent, StringFormat={}{0:0}%}" Style="{StaticResource SettingsCaptionStyle}" />
                                                 <Border Grid.Row="2" Grid.ColumnSpan="3" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
-                                                <TextBlock Grid.Row="2" Text="图片裁切" Style="{StaticResource SettingsLabelStyle}" />
+                                                <TextBlock Grid.Row="2" Text="图片轮廓" Style="{StaticResource SettingsLabelStyle}" />
                                                 <ComboBox Grid.Row="2" Grid.Column="1" SelectedIndex="{Binding ImageShapeIndex}" Style="{StaticResource SettingsComboBoxStyle}" VerticalAlignment="Center">
                                                     <ComboBoxItem Content="圆形裁切" />
                                                     <ComboBoxItem Content="保留透明轮廓" />

@@ -630,7 +630,16 @@ public partial class SettingsWindow : Window
             return;
         try
         {
-            OrbImageImporter.Import(dialog.FileName, _paths.Assets);
+            var cropWindow = new OrbImageCropWindow(dialog.FileName)
+            {
+                Owner = this
+            };
+            if (cropWindow.ShowDialog() != true)
+                return;
+            OrbImageImporter.Import(
+                dialog.FileName,
+                _paths.Assets,
+                cropWindow.CropArea);
             SaveStatusText.Text = "图片已导入，点击应用使设置生效。";
         }
         catch (Exception exception)
