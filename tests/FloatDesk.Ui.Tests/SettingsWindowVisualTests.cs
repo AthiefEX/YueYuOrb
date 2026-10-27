@@ -332,6 +332,42 @@ public sealed class SettingsWindowVisualTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void AppRuntimeSubtitleRoutesForceFreshRegionSelection()
+    {
+        var source = File.ReadAllText(FindRepoFile(
+            "src/FloatDesk.App/AppRuntime.cs"));
+        var compact = string.Join(
+            " ",
+            source.Split(
+                (char[]?)null,
+                StringSplitOptions.RemoveEmptyEntries));
+
+        Assert.Contains(
+            "case HotkeyAction.ToggleSubtitles: _ = ToggleSubtitlesAsync();",
+            compact,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "private void OnTranslateSubtitlesRequested() " +
+            "{ _panel?.HideAnimated(); _ = ToggleSubtitlesAsync(); }",
+            compact,
+            StringComparison.Ordinal);
+
+        var methodStart = compact.IndexOf(
+            "private async Task ToggleSubtitlesAsync()",
+            StringComparison.Ordinal);
+        var methodEnd = compact.IndexOf(
+            "private void OnReselectSubtitleRegionRequested()",
+            StringComparison.Ordinal);
+        Assert.True(methodStart >= 0 && methodEnd > methodStart);
+        var method = compact[methodStart..methodEnd];
+        Assert.Contains(
+            "_translationRuntime.ToggleSubtitlesAsync( " +
+            "_lifetime.Token, selectRegionOnStart: true);",
+            method,
+            StringComparison.Ordinal);
+    }
+
     private static string FindRepoFile(string relativePath)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
