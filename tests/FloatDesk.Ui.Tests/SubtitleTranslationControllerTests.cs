@@ -354,6 +354,562 @@ public sealed class SubtitleTranslationControllerTests
         Assert.Contains("New subtitle", host.TranslatedTexts);
     }
 
+    [Fact(Timeout = 10_000)]
+    public async Task PendingCaptionKeepsLastRenderedTranslation()
+    {
+        var source = new AlternatingSubtitleSource();
+        var ocr = new CallbackOcr((call, _) =>
+            Task.FromResult(
+                new ScreenOcrResult(
+                    call == 1 ? "First subtitle" : "Second subtitle",
+                    null,
+                    null)));
+        var secondEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSecond = new TaskCompletionSource<TranslationResponse>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var host = new RecordingSubtitleHost
+        {
+            TranslationHandler = async (text, cancellationToken) =>
+            {
+                if (text == "First subtitle")
+                {
+                    return TranslationResponse.Ok(
+                        text,
+                        "第一句",
+                        "en",
+                        "Test provider");
+                }
+
+                secondEntered.TrySetResult();
+                return await releaseSecond.Task
+                    .WaitAsync(cancellationToken);
+            }
+        };
+        using var controller = new SubtitleTranslationController(
+            ocr,
+            source,
+            host,
+            new ImmediateClock());
+
+        try
+        {
+            await controller.StartAsync(Settings(), CancellationToken.None);
+            await WaitUntilAsync(
+                () => host.SubtitleTexts.Contains(
+                    "第一句",
+                    StringComparer.Ordinal),
+                TimeSpan.FromSeconds(2));
+            await secondEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert.Equal(["第一句"], host.SubtitleTexts);
+            Assert.DoesNotContain(
+                host.SubtitleTexts,
+                text => string.IsNullOrWhiteSpace(text));
+        }
+        finally
+        {
+            releaseSecond.TrySetResult(
+                TranslationResponse.Ok(
+                    "Second subtitle",
+                    "第二句",
+                    "en",
+                    "Test provider"));
+            await controller.StopAsync();
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task FirstNonEmptyNewTranslationReplacesLastTranslation()
+    {
+        var source = new AlternatingSubtitleSource();
+        var ocr = new CallbackOcr((call, _) =>
+            Task.FromResult(
+                new ScreenOcrResult(
+                    call == 1 ? "First subtitle" : "Second subtitle",
+                    null,
+                    null)));
+        var secondEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSecond = new TaskCompletionSource<TranslationResponse>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var host = new RecordingSubtitleHost
+        {
+            TranslationHandler = async (text, cancellationToken) =>
+            {
+                if (text == "First subtitle")
+                {
+                    return TranslationResponse.Ok(
+                        text,
+                        "第一句",
+                        "en",
+                        "Test provider");
+                }
+
+                secondEntered.TrySetResult();
+                return await releaseSecond.Task
+                    .WaitAsync(cancellationToken);
+            }
+        };
+        using var controller = new SubtitleTranslationController(
+            ocr,
+            source,
+            host,
+            new ImmediateClock());
+
+        try
+        {
+            await controller.StartAsync(Settings(), CancellationToken.None);
+            await WaitUntilAsync(
+                () => host.SubtitleTexts.Contains(
+                    "第一句",
+                    StringComparer.Ordinal),
+                TimeSpan.FromSeconds(2));
+            await secondEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+            releaseSecond.SetResult(
+                TranslationResponse.Ok(
+                    "Second subtitle",
+                    "第二句",
+                    "en",
+                    "Test provider"));
+            await WaitUntilAsync(
+                () => host.SubtitleTexts.Contains(
+                    "第二句",
+                    StringComparer.Ordinal),
+                TimeSpan.FromSeconds(2));
+
+            Assert.Equal(["第一句", "第二句"], host.SubtitleTexts);
+        }
+        finally
+        {
+            releaseSecond.TrySetResult(
+                TranslationResponse.Ok(
+                    "Second subtitle",
+                    "第二句",
+                    "en",
+                    "Test provider"));
+            await controller.StopAsync();
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task EmptyOcrCancelsPendingCaptionAndKeepsLastText()
+    {
+        var source = new AlternatingSubtitleSource();
+        var ocr = new CallbackOcr((call, _) =>
+            Task.FromResult(
+                call switch
+                {
+                    1 => new ScreenOcrResult(
+                        "First subtitle",
+                        null,
+                        null),
+                    2 => new ScreenOcrResult(
+                        "Second subtitle",
+                        null,
+                        null),
+                    _ => new ScreenOcrResult(
+                        null,
+                        "OcrNoText",
+                        null)
+                }));
+        var secondEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondCancelled = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var host = new RecordingSubtitleHost
+        {
+            TranslationHandler = async (text, cancellationToken) =>
+            {
+                if (text == "First subtitle")
+                {
+                    return TranslationResponse.Ok(
+                        text,
+                        "第一句",
+                        "en",
+                        "Test provider");
+                }
+
+                secondEntered.TrySetResult();
+                try
+                {
+                    await Task.Delay(
+                            Timeout.InfiniteTimeSpan,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    secondCancelled.TrySetResult();
+                    throw;
+                }
+
+                return TranslationResponse.Ok(
+                    text,
+                    "第二句",
+                    "en",
+                    "Test provider");
+            }
+        };
+        using var controller = new SubtitleTranslationController(
+            ocr,
+            source,
+            host,
+            new ImmediateClock());
+
+        try
+        {
+            await controller.StartAsync(Settings(), CancellationToken.None);
+            await WaitUntilAsync(
+                () => host.SubtitleTexts.Contains(
+                    "第一句",
+                    StringComparer.Ordinal),
+                TimeSpan.FromSeconds(2));
+            await secondEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            await secondCancelled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert.Equal(["第一句"], host.SubtitleTexts);
+        }
+        finally
+        {
+            await controller.StopAsync();
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task NetworkFailureKeepsLastTextAndRetriesCurrentCaption()
+    {
+        var source = new AlternatingSubtitleSource();
+        var ocr = new CallbackOcr((call, _) =>
+            Task.FromResult(
+                new ScreenOcrResult(
+                    call == 1 ? "First subtitle" : "Second subtitle",
+                    null,
+                    null)));
+        var attempts = 0;
+        var host = new RecordingSubtitleHost
+        {
+            TranslationHandler = (text, _) =>
+            {
+                if (text == "First subtitle")
+                {
+                    return Task.FromResult(
+                        TranslationResponse.Ok(
+                            text,
+                            "第一句",
+                            "en",
+                            "Test provider"));
+                }
+
+                var attempt = Interlocked.Increment(ref attempts);
+                return Task.FromResult(
+                    attempt < 3
+                        ? TranslationResponse.Fail(
+                            text,
+                            "en",
+                            "Test provider",
+                            TranslationFailureKind.Network,
+                            "Offline",
+                            "网络连接不可用。")
+                        : TranslationResponse.Ok(
+                            text,
+                            "第二句",
+                            "en",
+                            "Test provider"));
+            }
+        };
+        using var controller = new SubtitleTranslationController(
+            ocr,
+            source,
+            host,
+            new ImmediateClock());
+
+        try
+        {
+            await controller.StartAsync(Settings(), CancellationToken.None);
+            await WaitUntilAsync(
+                () => host.SubtitleTexts.Contains(
+                    "第二句",
+                    StringComparer.Ordinal),
+                TimeSpan.FromSeconds(2));
+
+            Assert.Equal(["第一句", "第二句"], host.SubtitleTexts);
+        }
+        finally
+        {
+            await controller.StopAsync();
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task ActionableErrorRetainsTextShowsNoticeAndEmitsWarning()
+    {
+        var source = new AlternatingSubtitleSource();
+        var ocr = new CallbackOcr((call, _) =>
+            Task.FromResult(
+                new ScreenOcrResult(
+                    call == 1 ? "First subtitle" : "Second subtitle",
+                    null,
+                    null)));
+        var warnings = new List<string>();
+        var host = new RecordingSubtitleHost
+        {
+            TranslationHandler = (text, _) =>
+                Task.FromResult(
+                    text == "First subtitle"
+                        ? TranslationResponse.Ok(
+                            text,
+                            "第一句",
+                            "en",
+                            "Test provider")
+                        : TranslationResponse.Fail(
+                            text,
+                            "en",
+                            "Test provider",
+                            TranslationFailureKind.Authentication,
+                            "Unauthorized",
+                            "认证失败。"))
+        };
+        using var controller = new SubtitleTranslationController(
+            ocr,
+            source,
+            host,
+            new ImmediateClock(),
+            warnings.Add);
+
+        try
+        {
+            await controller.StartAsync(Settings(), CancellationToken.None);
+            await WaitUntilAsync(
+                () => host.SubtitleNotices.Count >= 1 &&
+                      warnings.Count >= 1,
+                TimeSpan.FromSeconds(2));
+
+            Assert.Equal(["第一句"], host.SubtitleTexts);
+            Assert.Single(host.SubtitleNotices);
+            Assert.Single(warnings);
+        }
+        finally
+        {
+            await controller.StopAsync();
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task NoTranslationNeededDisplaysSourceSubtitle()
+    {
+        var source = new SequenceSubtitleSource(
+            [0x10, 0xE0],
+            finishedAfterCaptures: null);
+        var ocr = new SequenceOcr(
+            new ScreenOcrResult("Same language", null, null));
+        var host = new RecordingSubtitleHost
+        {
+            TranslationResult = new TranslationResponse(
+                "Same language",
+                null,
+                "en",
+                "Test provider",
+                TranslationFailureKind.NoTranslationNeeded,
+                null,
+                null)
+        };
+        using var controller = new SubtitleTranslationController(
+            ocr,
+            source,
+            host,
+            new ImmediateClock());
+
+        try
+        {
+            await controller.StartAsync(Settings(), CancellationToken.None);
+            await WaitUntilAsync(
+                () => host.SubtitleTexts.Contains(
+                    "Same language",
+                    StringComparer.Ordinal),
+                TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            await controller.StopAsync();
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task PauseRetainsTextAndCancelsPendingWork()
+    {
+        var source = new AlternatingSubtitleSource();
+        var ocr = new CallbackOcr((call, _) =>
+            Task.FromResult(
+                new ScreenOcrResult(
+                    call == 1 ? "First subtitle" : "Second subtitle",
+                    null,
+                    null)));
+        var secondEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondCancelled = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var host = new RecordingSubtitleHost
+        {
+            TranslationHandler = async (text, cancellationToken) =>
+            {
+                if (text == "First subtitle")
+                {
+                    return TranslationResponse.Ok(
+                        text,
+                        "第一句",
+                        "en",
+                        "Test provider");
+                }
+
+                secondEntered.TrySetResult();
+                try
+                {
+                    await Task.Delay(
+                            Timeout.InfiniteTimeSpan,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    secondCancelled.TrySetResult();
+                    throw;
+                }
+
+                return TranslationResponse.Ok(
+                    text,
+                    "第二句",
+                    "en",
+                    "Test provider");
+            }
+        };
+        using var controller = new SubtitleTranslationController(
+            ocr,
+            source,
+            host,
+            new ImmediateClock());
+
+        try
+        {
+            await controller.StartAsync(Settings(), CancellationToken.None);
+            await WaitUntilAsync(
+                () => host.SubtitleTexts.Contains(
+                    "第一句",
+                    StringComparer.Ordinal),
+                TimeSpan.FromSeconds(2));
+            await secondEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+            controller.Pause("字幕翻译已暂停。");
+            await secondCancelled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert.Equal(["第一句"], host.SubtitleTexts);
+            Assert.True(controller.IsPaused);
+            Assert.True(host.IsPaused);
+        }
+        finally
+        {
+            await controller.StopAsync();
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task ReselectClearsText()
+    {
+        var source = new SequenceSubtitleSource(
+            [0x10, 0xE0],
+            finishedAfterCaptures: null);
+        var ocr = new CallbackOcr(async (call, cancellationToken) =>
+        {
+            if (call == 1)
+            {
+                return new ScreenOcrResult(
+                    "First subtitle",
+                    null,
+                    null);
+            }
+
+            await Task.Delay(
+                    Timeout.InfiniteTimeSpan,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return new ScreenOcrResult("unused", null, null);
+        });
+        var host = new RecordingSubtitleHost
+        {
+            TranslationHandler = (text, _) =>
+                Task.FromResult(
+                    TranslationResponse.Ok(
+                        text,
+                        "第一句",
+                        "en",
+                        "Test provider"))
+        };
+        using var controller = new SubtitleTranslationController(
+            ocr,
+            source,
+            host,
+            new ImmediateClock());
+
+        try
+        {
+            await controller.StartAsync(Settings(), CancellationToken.None);
+            await WaitUntilAsync(
+                () => host.SubtitleTexts.Contains(
+                    "第一句",
+                    StringComparer.Ordinal),
+                TimeSpan.FromSeconds(2));
+
+            await controller.ReselectAsync(
+                Settings(),
+                CancellationToken.None);
+
+            Assert.Empty(host.SubtitleTexts);
+            Assert.True(host.InactiveControlCount >= 1);
+        }
+        finally
+        {
+            await controller.StopAsync();
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task StopClearsTextAndEndsBothLanes()
+    {
+        var source = new SequenceSubtitleSource(
+            [0x10, 0xE0],
+            finishedAfterCaptures: null);
+        var host = new RecordingSubtitleHost
+        {
+            TranslationHandler = (text, _) =>
+                Task.FromResult(
+                    TranslationResponse.Ok(
+                        text,
+                        "第一句",
+                        "en",
+                        "Test provider"))
+        };
+        using var controller = new SubtitleTranslationController(
+            new SequenceOcr(
+                new ScreenOcrResult("First subtitle", null, null)),
+            source,
+            host,
+            new ImmediateClock());
+
+        await controller.StartAsync(Settings(), CancellationToken.None);
+        await WaitUntilAsync(
+            () => host.SubtitleTexts.Contains(
+                "第一句",
+                StringComparer.Ordinal),
+            TimeSpan.FromSeconds(2));
+        await controller.StopAsync();
+
+        Assert.Empty(host.SubtitleTexts);
+        Assert.True(host.InactiveControlCount >= 1);
+        Assert.False(host.OperationActive);
+        Assert.False(controller.IsRunning);
+    }
+
     [Fact]
     public async Task SavedRegionCaptureUsesOnlyTheRequestedCrop()
     {
@@ -740,6 +1296,7 @@ public sealed class SubtitleTranslationControllerTests
         public TranslationPurpose? LastPurpose { get; private set; }
         public bool IsPaused { get; private set; }
         public int SubtitleStatusCount { get; private set; }
+        public int InactiveControlCount { get; private set; }
         public bool OperationActive { get; set; } = true;
         public bool FailSafePlacementWhenActive { get; set; }
         public string LastStatus { get; private set; } = "";
@@ -808,6 +1365,13 @@ public sealed class SubtitleTranslationControllerTests
             bool paused,
             bool canReselect)
         {
+            if (!active)
+            {
+                InactiveControlCount++;
+                OperationActive = false;
+                SubtitleTexts.Clear();
+                SubtitleNotices.Clear();
+            }
             IsPaused = active && paused;
         }
 

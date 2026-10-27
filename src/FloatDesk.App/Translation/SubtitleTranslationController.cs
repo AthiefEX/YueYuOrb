@@ -17,6 +17,7 @@ public sealed class SubtitleTranslationController : IDisposable
     private readonly ITranslationSubtitleCapture _capture;
     private readonly ITranslationRouteHost _host;
     private readonly IClock _clock;
+    private readonly Action<string>? _warning;
     private CancellationTokenSource? _sessionCancellation;
     private CancellationTokenSource? _captureIterationCancellation;
     private CancellationTokenSource? _ocrIterationCancellation;
@@ -33,9 +34,12 @@ public sealed class SubtitleTranslationController : IDisposable
     private FrameSignature? _previousSignature;
     private string? _previousText;
     private string? _activeTranslationText;
+    private string? _lastRenderedText;
     private long _generation;
     private long _latestPublishedSequence;
     private long _activeTranslationSequence;
+    private int _transientFailureCount;
+    private bool _transientNoticeShown;
     private bool _running;
     private bool _paused;
     private bool _placementFailurePaused;
@@ -45,13 +49,15 @@ public sealed class SubtitleTranslationController : IDisposable
         IScreenOcrService ocr,
         ITranslationSubtitleCapture capture,
         ITranslationRouteHost host,
-        IClock clock)
+        IClock clock,
+        Action<string>? warning = null)
     {
         _ocr = ocr ?? throw new ArgumentNullException(nameof(ocr));
         _capture = capture ??
             throw new ArgumentNullException(nameof(capture));
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+        _warning = warning;
     }
 
     public bool IsRunning
@@ -101,8 +107,11 @@ public sealed class SubtitleTranslationController : IDisposable
             _previousSignature = null;
             _previousText = null;
             _activeTranslationText = null;
+            _lastRenderedText = null;
             _latestPublishedSequence = 0;
             _activeTranslationSequence = 0;
+            _transientFailureCount = 0;
+            _transientNoticeShown = false;
             _paused = false;
             _placementFailurePaused = false;
             _resumeSignal = null;
@@ -181,6 +190,9 @@ public sealed class SubtitleTranslationController : IDisposable
             _paused = false;
             _placementFailurePaused = false;
             _activeTranslationText = null;
+            _lastRenderedText = null;
+            _transientFailureCount = 0;
+            _transientNoticeShown = false;
             _previousSignature = null;
             _previousText = null;
 
@@ -458,6 +470,9 @@ public sealed class SubtitleTranslationController : IDisposable
             _paused = false;
             _placementFailurePaused = false;
             _activeTranslationText = null;
+            _lastRenderedText = null;
+            _transientFailureCount = 0;
+            _transientNoticeShown = false;
             session = _sessionCancellation;
             _sessionCancellation = null;
             captureIteration = _captureIterationCancellation;
@@ -755,16 +770,13 @@ public sealed class SubtitleTranslationController : IDisposable
                         {
                             if (errorCode == "OcrLanguageUnavailable")
                             {
-                                Pause(
+                                PauseForActionableError(
+                                    generation,
                                     "未安装可用的 OCR 语言包，请先在 Windows 设置中安装对应语言。");
                             }
-                            else
+                            else if (errorCode == "OcrNoText")
                             {
-                                ShowStatusIfCurrent(
-                                    generation,
-                                    errorCode == "OcrNoText"
-                                        ? "未识别到字幕文字。"
-                                        : "无法识别字幕文字，稍后重试。");
+                                InvalidateCaption(generation);
                             }
                             continue;
                         }
@@ -773,17 +785,12 @@ public sealed class SubtitleTranslationController : IDisposable
                             ocrResult.Text ?? "");
                         if (text.Length == 0)
                         {
-                            ShowStatusIfCurrent(
-                                generation,
-                                "未识别到字幕文字。");
+                            InvalidateCaption(generation);
                             continue;
                         }
                         if (IsDuplicateText(text))
                             continue;
 
-                        ShowStatusIfCurrent(
-                            generation,
-                            "正在翻译字幕…");
                         var translationStarted = StartTranslation(
                             generation,
                             text,
@@ -855,6 +862,8 @@ public sealed class SubtitleTranslationController : IDisposable
             sequence = NextGeneration(_activeTranslationSequence);
             _activeTranslationSequence = sequence;
             _activeTranslationText = text;
+            _transientFailureCount = 0;
+            _transientNoticeShown = false;
             ReleaseTranslationStartedLocked();
             abandonedCancellation = _translationCancellation;
             abandonedTask = _translationTask;
@@ -922,8 +931,22 @@ public sealed class SubtitleTranslationController : IDisposable
                     response.FailureKind ==
                     TranslationFailureKind.NoTranslationNeeded)
                 {
+                    var displayText = TranslationTextProcessor.Normalize(
+                        response.FailureKind ==
+                        TranslationFailureKind.NoTranslationNeeded
+                            ? text
+                            : response.TranslatedText ?? "");
+                    if (displayText.Length == 0)
+                    {
+                        MarkTranslationFailed(generation, sequence);
+                        return;
+                    }
+
+                    ShowSubtitleTextIfCurrent(
+                        generation,
+                        sequence,
+                        displayText);
                     MarkTextTranslated(generation, sequence, text);
-                    ShowResultIfCurrent(generation, response);
                     return;
                 }
 
@@ -931,7 +954,8 @@ public sealed class SubtitleTranslationController : IDisposable
                     TranslationFailureKind.Authentication or
                     TranslationFailureKind.UnsupportedLanguage)
                 {
-                    Pause(
+                    PauseForActionableError(
+                        generation,
                         response.FailureKind ==
                         TranslationFailureKind.Authentication
                             ? "翻译服务认证失败，已暂停自动重试。"
@@ -939,9 +963,9 @@ public sealed class SubtitleTranslationController : IDisposable
                     return;
                 }
 
-                ShowErrorIfCurrent(
+                RecordTransientFailure(
                     generation,
-                    ResolveFailureMessage(response));
+                    sequence);
                 ResetSignatureIfCurrent(generation);
                 if (response.FailureKind is
                     TranslationFailureKind.Network or
@@ -963,6 +987,9 @@ public sealed class SubtitleTranslationController : IDisposable
                     continue;
                 }
 
+                ShowSubtitleNoticeIfCurrent(
+                    generation,
+                    ResolveFailureMessage(response));
                 MarkTranslationFailed(generation, sequence);
                 return;
             }
@@ -978,7 +1005,7 @@ public sealed class SubtitleTranslationController : IDisposable
                     sequence,
                     cancellationToken))
             {
-                ShowStatusIfCurrent(
+                ShowSubtitleNoticeIfCurrent(
                     generation,
                     "字幕翻译失败，稍后重试。");
                 ResetSignatureIfCurrent(generation);
@@ -1042,6 +1069,117 @@ public sealed class SubtitleTranslationController : IDisposable
         }
     }
 
+    private void InvalidateCaption(long generation)
+    {
+        CancellationTokenSource? translationCancellation;
+        Task? translationTask;
+        lock (_sync)
+        {
+            if (!IsCurrentGenerationLocked(generation))
+                return;
+
+            _activeTranslationSequence = NextGeneration(
+                _activeTranslationSequence);
+            _activeTranslationText = null;
+            _previousText = null;
+            _transientFailureCount = 0;
+            _transientNoticeShown = false;
+            translationCancellation = _translationCancellation;
+            _translationCancellation = null;
+            translationTask = _translationTask;
+            _translationTask = null;
+            ReleaseTranslationStartedLocked();
+        }
+
+        CancelQuietly(translationCancellation);
+        ObserveAbandonedTask(translationTask);
+    }
+
+    private void ShowSubtitleTextIfCurrent(
+        long generation,
+        long sequence,
+        string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        TranslationRouteHandle? operation;
+        lock (_sync)
+        {
+            if (!IsCurrentTranslationLocked(generation, sequence))
+                return;
+            if (_lastRenderedText is { } previous &&
+                TranslationTextProcessor.IsNearDuplicate(previous, text))
+            {
+                return;
+            }
+            operation = _operation;
+        }
+
+        if (operation is not { } current)
+            return;
+
+        var placement = _host.ShowSubtitleText(current, text);
+        if (placement != TranslationSubtitlePlacementStatus.Ready)
+        {
+            PauseForPlacementFailure(generation, placement);
+            return;
+        }
+
+        lock (_sync)
+        {
+            if (IsCurrentTranslationLocked(generation, sequence))
+                _lastRenderedText = text;
+        }
+    }
+
+    private void RecordTransientFailure(
+        long generation,
+        long sequence)
+    {
+        var showNotice = false;
+        lock (_sync)
+        {
+            if (!IsCurrentTranslationLocked(generation, sequence))
+                return;
+            _transientFailureCount++;
+            if (_transientFailureCount >= 3 &&
+                !_transientNoticeShown)
+            {
+                _transientNoticeShown = true;
+                showNotice = true;
+            }
+        }
+
+        if (showNotice)
+        {
+            ShowSubtitleNoticeIfCurrent(
+                generation,
+                "字幕翻译暂时失败，正在继续重试。");
+        }
+    }
+
+    private void PauseForActionableError(
+        long generation,
+        string reason)
+    {
+        TranslationRouteHandle? operation;
+        var shouldWarn = false;
+        lock (_sync)
+        {
+            if (!IsCurrentGenerationLocked(generation))
+                return;
+            shouldWarn = !_paused;
+            operation = _operation;
+        }
+
+        PauseCore(reason, placementFailure: false);
+        if (operation is { } current)
+            _host.ShowSubtitleNotice(current, reason);
+        if (shouldWarn)
+            _warning?.Invoke(reason);
+    }
+
     private void MarkTextTranslated(
         long generation,
         long sequence,
@@ -1092,6 +1230,14 @@ public sealed class SubtitleTranslationController : IDisposable
     {
         if (GetCurrentOperation(generation) is { } operation)
             _host.ShowStatus(operation, status);
+    }
+
+    private void ShowSubtitleNoticeIfCurrent(
+        long generation,
+        string notice)
+    {
+        if (GetCurrentOperation(generation) is { } operation)
+            _host.ShowSubtitleNotice(operation, notice);
     }
 
     private void ShowResultIfCurrent(
@@ -1228,12 +1374,39 @@ public sealed class SubtitleTranslationController : IDisposable
     }
 
     private void PauseForPlacementFailure(
-        TranslationSubtitlePlacementStatus status) =>
-        PauseCore(
+        TranslationSubtitlePlacementStatus status)
+    {
+        long generation;
+        lock (_sync)
+            generation = _generation;
+        PauseForPlacementFailure(generation, status, placementFailure: true);
+    }
+
+    private void PauseForPlacementFailure(
+        long generation,
+        TranslationSubtitlePlacementStatus status,
+        bool placementFailure = true)
+    {
+        var reason =
             status == TranslationSubtitlePlacementStatus.MonitorMissing
                 ? "字幕区域所在显示器不可用，请重新选择区域。"
-                : "无法避开字幕捕获区域，请重新选择字幕区域。",
-            placementFailure: true);
+                : "无法避开字幕捕获区域，请重新选择字幕区域。";
+        TranslationRouteHandle? operation;
+        var shouldWarn = false;
+        lock (_sync)
+        {
+            if (!IsCurrentGenerationLocked(generation))
+                return;
+            shouldWarn = !_paused;
+            operation = _operation;
+        }
+
+        PauseCore(reason, placementFailure);
+        if (operation is { } current)
+            _host.ShowSubtitleNotice(current, reason);
+        if (shouldWarn)
+            _warning?.Invoke(reason);
+    }
 
     private static TimeSpan GetCaptureDelay(TranslationSettings settings) =>
         TimeSpan.FromMilliseconds(
@@ -1268,6 +1441,9 @@ public sealed class SubtitleTranslationController : IDisposable
                 _previousSignature = null;
                 _previousText = null;
                 _activeTranslationText = null;
+                _lastRenderedText = null;
+                _transientFailureCount = 0;
+                _transientNoticeShown = false;
                 ResumeWaiterLocked();
                 ReleaseFirstCandidateObservationLocked();
                 ReleaseTranslationStartedLocked();

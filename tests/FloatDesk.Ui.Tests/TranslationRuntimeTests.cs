@@ -840,6 +840,163 @@ public sealed class TranslationRuntimeTests
         }
     }
 
+    [Fact(Timeout = 10_000)]
+    public async Task ProviderChangeStopsSubtitlePipelineAndDismissesCurrentToken()
+    {
+        var region = new TranslationCaptureRegion(
+            "monitor-1",
+            0.1,
+            0.7,
+            0.8,
+            0.2);
+        var provider = new BlockingTranslationProvider();
+        var capture = new SubtitleCaptureStub(region);
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(provider),
+            ocr: new RecordingOcr(),
+            regionCapture: capture);
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(SubtitleSettings(region));
+
+        try
+        {
+            await runtime.ToggleSubtitlesAsync(CancellationToken.None);
+            await provider.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+            runtime.ApplySettings(SubtitleSettings(region) with
+            {
+                Translation = SubtitleSettings(region).Translation with
+                {
+                    Provider = TranslationProviderKind.LibreTranslate,
+                    Endpoint = "https://example.test/translate"
+                }
+            });
+
+            await WaitUntilAsync(
+                () => provider.WasCancelled &&
+                      !host.SubtitleControlsActive,
+                TimeSpan.FromSeconds(2));
+            Assert.Empty(host.SubtitleTexts);
+        }
+        finally
+        {
+            await runtime.StopSubtitlesAsync();
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task SessionLockCancelsPendingSubtitleWorkWithoutPublishingLateText()
+    {
+        var region = new TranslationCaptureRegion(
+            "monitor-1",
+            0.1,
+            0.7,
+            0.8,
+            0.2);
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<TranslationResponse>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var capture = new SubtitleCaptureStub(region);
+        var host = new RecordingRouteHost
+        {
+            TranslateHandler = async (_, _, _) =>
+            {
+                entered.TrySetResult();
+                return await release.Task;
+            }
+        };
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("字幕翻译")),
+            ocr: new RecordingOcr(),
+            regionCapture: capture);
+        runtime.ApplySettings(SubtitleSettings(region));
+
+        try
+        {
+            await runtime.ToggleSubtitlesAsync(CancellationToken.None);
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+            runtime.SetSessionLocked(true);
+            release.SetResult(TranslationResponse.Ok(
+                "Recognized text",
+                "不应显示",
+                "en",
+                "Late provider"));
+
+            await WaitUntilAsync(
+                () => !host.SubtitleControlsActive,
+                TimeSpan.FromSeconds(2));
+            Assert.DoesNotContain("不应显示", host.SubtitleTexts);
+        }
+        finally
+        {
+            runtime.SetSessionLocked(false);
+            await runtime.StopSubtitlesAsync();
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task EmergencyPauseCancelsPendingSubtitleWorkWithoutPublishingLateText()
+    {
+        var region = new TranslationCaptureRegion(
+            "monitor-1",
+            0.1,
+            0.7,
+            0.8,
+            0.2);
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<TranslationResponse>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var capture = new SubtitleCaptureStub(region);
+        var host = new RecordingRouteHost
+        {
+            TranslateHandler = async (_, _, _) =>
+            {
+                entered.TrySetResult();
+                return await release.Task;
+            }
+        };
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("字幕翻译")),
+            ocr: new RecordingOcr(),
+            regionCapture: capture);
+        runtime.ApplySettings(SubtitleSettings(region));
+
+        try
+        {
+            await runtime.ToggleSubtitlesAsync(CancellationToken.None);
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+            runtime.SetEmergencyPaused(true);
+            release.SetResult(TranslationResponse.Ok(
+                "Recognized text",
+                "不应显示",
+                "en",
+                "Late provider"));
+
+            await WaitUntilAsync(
+                () => !host.SubtitleControlsActive,
+                TimeSpan.FromSeconds(2));
+            Assert.DoesNotContain("不应显示", host.SubtitleTexts);
+        }
+        finally
+        {
+            runtime.SetEmergencyPaused(false);
+            await runtime.StopSubtitlesAsync();
+        }
+    }
+
     [Fact]
     public async Task InvalidSelectionTargetReleasesInteractiveCaptureOwnership()
     {
@@ -1169,7 +1326,10 @@ public sealed class TranslationRuntimeTests
         public int DismissCount { get; private set; }
         public int RejectedResultAttempts { get; private set; }
         public bool IsOperationActive => _activeOperationToken is not null;
+        public bool SubtitleControlsActive { get; private set; }
         public bool SubtitleControlsPaused { get; private set; }
+        public List<string> SubtitleTexts { get; } = [];
+        public List<string> SubtitleNotices { get; } = [];
 
         public bool HasActiveOperation() =>
             IsOperationActive;
@@ -1219,6 +1379,24 @@ public sealed class TranslationRuntimeTests
             LastError = message;
         }
 
+        public TranslationSubtitlePlacementStatus ShowSubtitleText(
+            TranslationRouteHandle operation,
+            string translatedText)
+        {
+            if (!IsCurrent(operation))
+                return TranslationSubtitlePlacementStatus.Ready;
+            SubtitleTexts.Add(translatedText);
+            return TranslationSubtitlePlacementStatus.Ready;
+        }
+
+        public void ShowSubtitleNotice(
+            TranslationRouteHandle operation,
+            string notice)
+        {
+            if (IsCurrent(operation))
+                SubtitleNotices.Add(notice);
+        }
+
         public Task<TranslationResponse> TranslateAsync(
             string text,
             TranslationPurpose purpose,
@@ -1251,8 +1429,15 @@ public sealed class TranslationRuntimeTests
             bool paused,
             bool canReselect)
         {
+            SubtitleControlsActive = active;
             if (active)
                 SubtitleControlsPaused = paused;
+            else
+            {
+                SubtitleControlsPaused = false;
+                SubtitleTexts.Clear();
+                SubtitleNotices.Clear();
+            }
         }
 
         private bool IsCurrent(TranslationRouteHandle operation) =>
