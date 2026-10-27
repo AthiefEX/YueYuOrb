@@ -9,6 +9,13 @@ public enum TranslationProviderKind
     OpenAiCompatible
 }
 
+public enum SubtitleAttachmentMode
+{
+    Auto,
+    Above,
+    Below
+}
+
 public sealed record TranslationCaptureRegion(
     string MonitorId,
     double RelativeX,
@@ -29,7 +36,9 @@ public sealed record TranslationSettings(
     string Model,
     string AzureRegion)
 {
-    public int SubtitleRefreshIntervalMs { get; init; } = 450;
+    public int SubtitleRefreshIntervalMs { get; init; } = 150;
+    public SubtitleAttachmentMode SubtitleAttachment { get; init; } =
+        SubtitleAttachmentMode.Auto;
     public double SubtitleOverlayOpacity { get; init; } = 0.92;
     public double SubtitleFontSizeDip { get; init; } = 20;
     public string? OcrLanguage { get; init; }

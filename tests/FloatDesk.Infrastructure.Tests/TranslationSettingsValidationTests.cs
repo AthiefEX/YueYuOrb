@@ -13,7 +13,8 @@ public sealed class TranslationSettingsValidationTests
         Assert.Equal(TranslationProviderKind.MyMemory, settings.Translation.Provider);
         Assert.Equal("auto", settings.Translation.SourceLanguage);
         Assert.Equal("zh-Hans", settings.Translation.TargetLanguage);
-        Assert.Equal(450, settings.Translation.SubtitleRefreshIntervalMs);
+        Assert.Equal(150, settings.Translation.SubtitleRefreshIntervalMs);
+        Assert.Equal(SubtitleAttachmentMode.Auto, settings.Translation.SubtitleAttachment);
         Assert.Equal(0.92, settings.Translation.SubtitleOverlayOpacity);
         Assert.Equal(20, settings.Translation.SubtitleFontSizeDip);
         Assert.Null(settings.Translation.OcrLanguage);
@@ -115,7 +116,7 @@ public sealed class TranslationSettingsValidationTests
         {
             Translation = AppSettings.CreateDefault().Translation with
             {
-                SubtitleRefreshIntervalMs = 299,
+                SubtitleRefreshIntervalMs = 99,
                 SubtitleOverlayOpacity = double.NaN,
                 SubtitleFontSizeDip = 37,
                 SubtitleRegion = new TranslationCaptureRegion("monitor", 0.8, 0.2, 0.3, 0.5),
@@ -128,6 +129,56 @@ public sealed class TranslationSettingsValidationTests
         Assert.Contains(errors, error => error.Contains("SubtitleFontSizeDip", StringComparison.Ordinal));
         Assert.Contains(errors, error => error.Contains("SubtitleRegion", StringComparison.Ordinal));
         Assert.Contains(errors, error => error.Contains("SubtitleOverlayPlacement", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(100)]
+    [InlineData(1500)]
+    public void ValidatorAcceptsSubtitleCaptureIntervalsFrom100Through1500(int interval)
+    {
+        var settings = AppSettings.CreateDefault() with
+        {
+            Translation = AppSettings.CreateDefault().Translation with
+            {
+                SubtitleRefreshIntervalMs = interval
+            }
+        };
+
+        Assert.Empty(SettingsValidator.Validate(settings));
+    }
+
+    [Theory]
+    [InlineData(1501)]
+    [InlineData(99)]
+    public void ValidatorRejectsSubtitleCaptureIntervalsOutside100Through1500(int interval)
+    {
+        var settings = AppSettings.CreateDefault() with
+        {
+            Translation = AppSettings.CreateDefault().Translation with
+            {
+                SubtitleRefreshIntervalMs = interval
+            }
+        };
+
+        Assert.Contains(
+            SettingsValidator.Validate(settings),
+            error => error.Contains("SubtitleRefreshIntervalMs", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ValidatorRejectsUndefinedSubtitleAttachment()
+    {
+        var settings = AppSettings.CreateDefault() with
+        {
+            Translation = AppSettings.CreateDefault().Translation with
+            {
+                SubtitleAttachment = (SubtitleAttachmentMode)99
+            }
+        };
+
+        Assert.Contains(
+            SettingsValidator.Validate(settings),
+            error => error.Contains("SubtitleAttachment", StringComparison.Ordinal));
     }
 
     [Fact]

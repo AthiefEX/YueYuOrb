@@ -206,6 +206,25 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task TranslationSettingsRoundTripIncludesSubtitleAttachment()
+    {
+        using var store = new JsonSettingsStore(_root);
+        var original = AppSettings.CreateDefault();
+        var expected = original with
+        {
+            Translation = original.Translation with
+            {
+                SubtitleAttachment = SubtitleAttachmentMode.Below
+            }
+        };
+
+        await store.SaveAsync(expected, CancellationToken.None);
+        var loaded = await store.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(expected.Translation, loaded.Translation);
+    }
+
+    [Fact]
     public void ValidatorRejectsUndefinedBrowserTheme()
     {
         var settings = AppSettings.CreateDefault() with

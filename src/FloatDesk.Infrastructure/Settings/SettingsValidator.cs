@@ -67,8 +67,10 @@ public static partial class SettingsValidator
         if (!TranslationLanguages.IsKnown(translation.TargetLanguage) ||
             translation.TargetLanguage.Equals(TranslationLanguages.Auto, StringComparison.OrdinalIgnoreCase))
             errors.Add("Translation.TargetLanguage must be a known target language.");
-        if (translation.SubtitleRefreshIntervalMs is < 300 or > 1500)
-            errors.Add("Translation.SubtitleRefreshIntervalMs must be between 300 and 1500.");
+        if (translation.SubtitleRefreshIntervalMs is < 100 or > 1500)
+            errors.Add("Translation.SubtitleRefreshIntervalMs must be between 100 and 1500.");
+        if (!Enum.IsDefined(translation.SubtitleAttachment))
+            errors.Add("Translation.SubtitleAttachment must be Auto, Above, or Below.");
         if (!double.IsFinite(translation.SubtitleOverlayOpacity) ||
             translation.SubtitleOverlayOpacity is < 0.6 or > 1.0)
             errors.Add("Translation.SubtitleOverlayOpacity must be between 0.60 and 1.00.");
