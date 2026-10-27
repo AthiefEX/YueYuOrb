@@ -886,8 +886,10 @@ public sealed class TranslationRuntimeTests
 
             await WaitUntilAsync(
                 () => provider.WasCancelled &&
-                      !host.SubtitleControlsActive,
+                      !host.SubtitleControlsActive &&
+                      !host.IsOperationActive,
                 TimeSpan.FromSeconds(2));
+            Assert.True(host.DismissCount > 0);
             Assert.Empty(host.SubtitleTexts);
 
             await Task.Delay(350);
@@ -912,7 +914,7 @@ public sealed class TranslationRuntimeTests
             0.7,
             0.8,
             0.2);
-        var capture = new SubtitleCaptureStub(region);
+        var capture = new ControlledSubtitleCapture(region);
         var ocr = new RecordingOcr();
         var host = new RecordingRouteHost();
         using var runtime = CreateRuntime(
@@ -928,23 +930,30 @@ public sealed class TranslationRuntimeTests
         try
         {
             await runtime.ToggleSubtitlesAsync(CancellationToken.None);
-            await host.TranslationAttempted.Task.WaitAsync(
+            await capture.FirstCallEntered.Task.WaitAsync(
                 TimeSpan.FromSeconds(2));
+            Assert.Equal(0, ocr.CallCount);
 
             runtime.PauseForCapture();
             runtime.PauseForCapture();
-            await WaitUntilAsync(
-                () => host.SubtitleControlsPaused,
+            await capture.FirstCallCancelled.Task.WaitAsync(
                 TimeSpan.FromSeconds(2));
-            await Task.Delay(100);
+            Assert.True(runtime.IsSubtitlePaused);
+            Assert.Equal(0, ocr.CallCount);
             var pausedCaptureCount = capture.RegionCaptureCount;
 
             runtime.ResumeAfterCapture();
-            await Task.Delay(350);
+            await Task.Delay(200);
             Assert.True(runtime.IsSubtitlePaused);
             Assert.Equal(
                 pausedCaptureCount,
                 capture.RegionCaptureCount);
+            Assert.False(capture.FirstCallCompleted.Task.IsCompleted);
+
+            capture.ReleaseFirstCallCancellation();
+            await capture.FirstCallCompleted.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+            Assert.Equal(0, ocr.CallCount);
 
             runtime.ResumeAfterCapture();
             await WaitUntilAsync(
@@ -953,9 +962,133 @@ public sealed class TranslationRuntimeTests
             await WaitUntilAsync(
                 () => capture.RegionCaptureCount > pausedCaptureCount,
                 TimeSpan.FromSeconds(2));
+            await host.TranslationAttempted.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
         }
         finally
         {
+            capture.ReleaseFirstCallCancellation();
+            await runtime.StopSubtitlesAsync();
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task CapturePauseCancelsInFlightOcrBeforeFinalResume()
+    {
+        var region = new TranslationCaptureRegion(
+            "monitor-1",
+            0.1,
+            0.7,
+            0.8,
+            0.2);
+        var capture = new SubtitleCaptureStub(region);
+        var ocr = new ControlledOcr("Recognized text");
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(
+                new StaticTranslationProvider("字幕翻译")),
+            ocr: ocr,
+            regionCapture: capture);
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(SubtitleSettings(region));
+
+        try
+        {
+            await runtime.ToggleSubtitlesAsync(CancellationToken.None);
+            await ocr.FirstCallEntered.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+            Assert.Equal(0, host.TranslateCount);
+
+            runtime.PauseForCapture();
+            runtime.PauseForCapture();
+            await ocr.FirstCallCancelled.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+            Assert.True(runtime.IsSubtitlePaused);
+            var pausedOcrCount = ocr.CallCount;
+
+            runtime.ResumeAfterCapture();
+            await Task.Delay(200);
+            Assert.True(runtime.IsSubtitlePaused);
+            Assert.Equal(pausedOcrCount, ocr.CallCount);
+            Assert.False(ocr.FirstCallCompleted.Task.IsCompleted);
+
+            ocr.ReleaseFirstCallCancellation();
+            await ocr.FirstCallCompleted.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+            Assert.Equal(0, host.TranslateCount);
+
+            runtime.ResumeAfterCapture();
+            await WaitUntilAsync(
+                () => !runtime.IsSubtitlePaused,
+                TimeSpan.FromSeconds(2));
+            await WaitUntilAsync(
+                () => ocr.CallCount > pausedOcrCount,
+                TimeSpan.FromSeconds(2));
+            await host.TranslationAttempted.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            ocr.ReleaseFirstCallCancellation();
+            await runtime.StopSubtitlesAsync();
+        }
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task CapturePauseCancelsInFlightTranslationBeforeFinalResume()
+    {
+        var region = new TranslationCaptureRegion(
+            "monitor-1",
+            0.1,
+            0.7,
+            0.8,
+            0.2);
+        var provider = new ControlledTranslationProvider("字幕翻译");
+        var capture = new SubtitleCaptureStub(region);
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(
+            host,
+            new MutableCredentialStore(),
+            new RecordingProviderFactory(provider),
+            ocr: new RecordingOcr(),
+            regionCapture: capture);
+        host.TranslateHandler = runtime.TranslateTextAsync;
+        runtime.ApplySettings(SubtitleSettings(region));
+
+        try
+        {
+            await runtime.ToggleSubtitlesAsync(CancellationToken.None);
+            await provider.FirstCallEntered.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+
+            runtime.PauseForCapture();
+            runtime.PauseForCapture();
+            await provider.FirstCallCancelled.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+            Assert.True(runtime.IsSubtitlePaused);
+
+            runtime.ResumeAfterCapture();
+            await Task.Delay(200);
+            Assert.True(runtime.IsSubtitlePaused);
+            Assert.False(provider.FirstCallCompleted.Task.IsCompleted);
+
+            provider.ReleaseFirstCallCancellation();
+            await provider.FirstCallCompleted.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+
+            runtime.ResumeAfterCapture();
+            await WaitUntilAsync(
+                () => !runtime.IsSubtitlePaused,
+                TimeSpan.FromSeconds(2));
+            await provider.SecondCallEntered.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+            Assert.Equal(2, provider.CallCount);
+        }
+        finally
+        {
+            provider.ReleaseFirstCallCancellation();
             await runtime.StopSubtitlesAsync();
         }
     }
@@ -1510,6 +1643,7 @@ public sealed class TranslationRuntimeTests
                 SubtitleControlsPaused = false;
                 SubtitleTexts.Clear();
                 SubtitleNotices.Clear();
+                DismissActiveOperation();
             }
         }
 
@@ -1585,6 +1719,54 @@ public sealed class TranslationRuntimeTests
         }
     }
 
+    private sealed class ControlledOcr(string text) : IScreenOcrService
+    {
+        private readonly TaskCompletionSource _releaseFirstCall =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _callCount;
+
+        public IReadOnlyList<OcrLanguageOption> AvailableLanguages { get; } =
+            [new("en-US", "English")];
+        public int CallCount => Volatile.Read(ref _callCount);
+        public TaskCompletionSource FirstCallEntered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource FirstCallCancelled { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource FirstCallCompleted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<ScreenOcrResult> RecognizeAsync(
+            CaptureFrame frame,
+            string? languageTag,
+            CancellationToken cancellationToken)
+        {
+            var call = Interlocked.Increment(ref _callCount);
+            if (call == 1)
+            {
+                FirstCallEntered.TrySetResult();
+                try
+                {
+                    await Task.Delay(
+                        Timeout.InfiniteTimeSpan,
+                        cancellationToken);
+                }
+                catch (OperationCanceledException)
+                    when (cancellationToken.IsCancellationRequested)
+                {
+                    FirstCallCancelled.TrySetResult();
+                    await _releaseFirstCall.Task;
+                    FirstCallCompleted.TrySetResult();
+                    throw;
+                }
+            }
+
+            return new ScreenOcrResult(text, null, null);
+        }
+
+        public void ReleaseFirstCallCancellation() =>
+            _releaseFirstCall.TrySetResult();
+    }
+
     private sealed class StubRegionCapture(
         CapturedTranslationRegion? result) : ITranslationRegionCapture
     {
@@ -1639,6 +1821,68 @@ public sealed class TranslationRuntimeTests
                 new byte[4 * 4 * 4]);
     }
 
+    private sealed class ControlledSubtitleCapture(
+        TranslationCaptureRegion region) : ITranslationRegionCapture
+    {
+        private readonly TaskCompletionSource _releaseFirstCall =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _regionCaptureCount;
+
+        public int RegionCaptureCount =>
+            Volatile.Read(ref _regionCaptureCount);
+        public TaskCompletionSource FirstCallEntered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource FirstCallCancelled { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource FirstCallCompleted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task<CapturedTranslationRegion?> CaptureSelectedAsync(
+            CancellationToken cancellationToken) =>
+            Task.FromResult<CapturedTranslationRegion?>(null);
+
+        public async Task<CapturedTranslationRegion?>
+            CaptureRegionAsync(
+                TranslationCaptureRegion requested,
+                CancellationToken cancellationToken)
+        {
+            var call = Interlocked.Increment(ref _regionCaptureCount);
+            Assert.Equal(region, requested);
+            if (call == 1)
+            {
+                FirstCallEntered.TrySetResult();
+                try
+                {
+                    await Task.Delay(
+                        Timeout.InfiniteTimeSpan,
+                        cancellationToken);
+                }
+                catch (OperationCanceledException)
+                    when (cancellationToken.IsCancellationRequested)
+                {
+                    FirstCallCancelled.TrySetResult();
+                    await _releaseFirstCall.Task;
+                    FirstCallCompleted.TrySetResult();
+                    throw;
+                }
+            }
+
+            return new CapturedTranslationRegion(
+                NewFrame(),
+                new PixelRect(0, 0, 4, 4),
+                requested);
+        }
+
+        public void ReleaseFirstCallCancellation() =>
+            _releaseFirstCall.TrySetResult();
+
+        private static CaptureFrame NewFrame() =>
+            new(
+                new PixelRect(0, 0, 4, 4),
+                16,
+                new byte[4 * 4 * 4]);
+    }
+
     private sealed class MutableSettingsCoordinator(
         AppSettings initial) : ISettingsCoordinator
     {
@@ -1685,6 +1929,70 @@ public sealed class TranslationRuntimeTests
                     translatedText,
                     request.SourceLanguage));
         }
+    }
+
+    private sealed class ControlledTranslationProvider(
+        string translatedText) : ITranslationProvider
+    {
+        private readonly TaskCompletionSource _releaseFirstCall =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _callCount;
+
+        public string Id => "controlled";
+        public string DisplayName => "Controlled provider";
+        public int CallCount => Volatile.Read(ref _callCount);
+        public TaskCompletionSource FirstCallEntered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource FirstCallCancelled { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource FirstCallCompleted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource SecondCallEntered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TranslationProviderCapabilities Capabilities { get; } =
+            new(
+                SupportsAutoDetect: true,
+                MaxCharacters: 10_000,
+                MaxUtf8BytesPerRequest: 30_000,
+                MaxChunks: 10,
+                MaxConcurrentRequests: 1,
+                MinimumRequestInterval: TimeSpan.Zero);
+
+        public async Task<TranslationProviderResult> TranslateAsync(
+            TranslationRequest request,
+            CancellationToken cancellationToken)
+        {
+            var call = Interlocked.Increment(ref _callCount);
+            if (call == 1)
+            {
+                FirstCallEntered.TrySetResult();
+                try
+                {
+                    await Task.Delay(
+                        Timeout.InfiniteTimeSpan,
+                        cancellationToken);
+                }
+                catch (OperationCanceledException)
+                    when (cancellationToken.IsCancellationRequested)
+                {
+                    FirstCallCancelled.TrySetResult();
+                    await _releaseFirstCall.Task;
+                    FirstCallCompleted.TrySetResult();
+                    throw;
+                }
+            }
+            else
+            {
+                SecondCallEntered.TrySetResult();
+            }
+
+            return TranslationProviderResult.Ok(
+                translatedText,
+                request.SourceLanguage);
+        }
+
+        public void ReleaseFirstCallCancellation() =>
+            _releaseFirstCall.TrySetResult();
     }
 
     private sealed class BlockingTranslationProvider : ITranslationProvider

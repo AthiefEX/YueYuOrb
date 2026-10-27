@@ -88,6 +88,8 @@ public sealed class TranslationPrivacyTests
         const string translatedText = "TRANSLATED_SECRET";
         var eventNames = new ConcurrentQueue<string>();
         var payloads = new ConcurrentQueue<string>();
+        var displayedDiagnostic = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         var host = new DiagnosticSubtitleHost(translatedText);
         var region = new TranslationCaptureRegion(
             "monitor-1",
@@ -104,6 +106,8 @@ public sealed class TranslationPrivacyTests
             {
                 eventNames.Enqueue(eventName);
                 payloads.Enqueue(JsonSerializer.Serialize(properties));
+                if (eventName == "translation.subtitle.displayed")
+                    displayedDiagnostic.TrySetResult();
             });
 
         try
@@ -115,7 +119,8 @@ public sealed class TranslationPrivacyTests
                     SubtitleRegion = region
                 },
                 CancellationToken.None);
-            await host.Displayed.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            await displayedDiagnostic.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
         }
         finally
         {
@@ -150,9 +155,6 @@ public sealed class TranslationPrivacyTests
     {
         private TranslationOverlayOperationToken? _active;
         private long _nextOperationId;
-
-        public TaskCompletionSource Displayed { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public void ApplySettings(AppSettings settings)
         {
@@ -190,11 +192,6 @@ public sealed class TranslationPrivacyTests
             TranslationRouteHandle operation,
             string text)
         {
-            if (_active is { } active &&
-                active.Equals(operation.Operation))
-            {
-                Displayed.TrySetResult();
-            }
             return TranslationSubtitlePlacementStatus.Ready;
         }
 
