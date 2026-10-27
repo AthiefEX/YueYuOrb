@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using FloatDesk.App.Launcher;
 using FloatDesk.Core.Models;
 using FloatDesk.Core.Translation;
 
@@ -96,6 +97,7 @@ public partial class SettingsViewModel : ObservableObject
     public ObservableCollection<AppRule> InputRules { get; } = [];
     public ObservableCollection<BrowserSite> BrowserSites { get; } = [];
     public ObservableCollection<OcrLanguageOption> OcrLanguages { get; } = [];
+    public ILauncherIconProvider? LauncherIconProvider { get; set; }
     public IReadOnlyList<InputAction> InputActions { get; } =
         [InputAction.LockEnglish, InputAction.Exclude];
 

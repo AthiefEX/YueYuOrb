@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using FloatDesk.App.Launcher;
 using FloatDesk.App.Translation;
 using FloatDesk.App.ViewModels;
 using FloatDesk.Core;
@@ -43,6 +44,7 @@ public partial class SettingsWindow : Window
     private readonly SettingsReloadCoordinator _reloadCoordinator;
     private readonly SettingsPreferenceWorkflow _preferenceWorkflow;
     private readonly LauncherEntryResolver _launcherEntryResolver = new();
+    private readonly ILauncherIconProvider? _launcherIconProvider;
     private SettingsViewModel _viewModel;
     private bool _applyInProgress;
     private bool _launcherDropInProgress;
@@ -55,7 +57,8 @@ public partial class SettingsWindow : Window
         Func<string?>? currentAppPath,
         ITranslationCredentialStore translationCredentials,
         ITranslationProviderFactory translationProviders,
-        Func<IReadOnlyList<OcrLanguageOption>> getOcrLanguages)
+        Func<IReadOnlyList<OcrLanguageOption>> getOcrLanguages,
+        ILauncherIconProvider? launcherIconProvider = null)
     {
         InitializeComponent();
         _settings = settings;
@@ -65,6 +68,7 @@ public partial class SettingsWindow : Window
             throw new ArgumentNullException(nameof(translationCredentials));
         _getOcrLanguages = getOcrLanguages ??
             throw new ArgumentNullException(nameof(getOcrLanguages));
+        _launcherIconProvider = launcherIconProvider;
         _translationApplier = new TranslationSettingsApplier(
             settings,
             translationCredentials);
@@ -87,6 +91,7 @@ public partial class SettingsWindow : Window
         _viewModel = SettingsViewModel.From(
             settings.Current,
             ocrLanguages: getOcrLanguages());
+        _viewModel.LauncherIconProvider = _launcherIconProvider;
         DataContext = _viewModel;
         ApplyTranslationProviderLayout();
         Loaded += OnSettingsWindowLoaded;
@@ -303,6 +308,7 @@ public partial class SettingsWindow : Window
         _viewModel = SettingsViewModel.From(
             _settings.Current,
             ocrLanguages: _getOcrLanguages());
+        _viewModel.LauncherIconProvider = _launcherIconProvider;
         DataContext = _viewModel;
         ApplyTranslationProviderLayout();
         Hide();
@@ -462,6 +468,7 @@ public partial class SettingsWindow : Window
     private void ApplyReloadedViewModel(SettingsViewModel viewModel)
     {
         _viewModel = viewModel;
+        _viewModel.LauncherIconProvider = _launcherIconProvider;
         DataContext = _viewModel;
         ApplyTranslationProviderLayout();
     }

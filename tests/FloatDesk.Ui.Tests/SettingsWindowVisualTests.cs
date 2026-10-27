@@ -271,6 +271,41 @@ public sealed class SettingsWindowVisualTests
     }
 
     [Fact]
+    public void QuickAppsGridUsesLauncherIconPresenter()
+    {
+        var document = XDocument.Load(FindRepoFile(
+            "src/FloatDesk.App/Views/SettingsWindow.xaml"));
+        var xName = XName.Get(
+            "Name",
+            "http://schemas.microsoft.com/winfx/2006/xaml");
+        var launcherGrid = document
+            .Descendants()
+            .Single(element =>
+                (string?)element.Attribute(xName) == "LauncherGrid");
+        var iconColumn = launcherGrid
+            .Descendants()
+            .Single(element =>
+                element.Name.LocalName == "DataGridTemplateColumn");
+        var icon = iconColumn
+            .Descendants()
+            .Single(element =>
+                element.Name.LocalName == "LauncherIconView");
+        var iconProviderBinding =
+            (string?)icon.Attribute("IconProvider") ?? "";
+
+        Assert.Equal("{Binding}", (string?)icon.Attribute("Launcher"));
+        Assert.Contains(
+            "DataContext.LauncherIconProvider",
+            iconProviderBinding,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "AncestorType=DataGrid",
+            iconProviderBinding,
+            StringComparison.Ordinal);
+        Assert.Equal("26", (string?)icon.Attribute("IconSize"));
+    }
+
+    [Fact]
     public void SubtitleSettingsExposeAttachmentIntervalOpacityAndFontControls()
     {
         var document = XDocument.Load(FindRepoFile(

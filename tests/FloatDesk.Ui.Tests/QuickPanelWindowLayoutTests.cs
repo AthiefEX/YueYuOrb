@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
+using FloatDesk.App.Launcher;
 using FloatDesk.App.Views;
 using FloatDesk.Core.Geometry;
 using FloatDesk.Core.Models;
@@ -161,6 +162,88 @@ public sealed class QuickPanelWindowLayoutTests
                     canvas.Children.OfType<Button>(),
                     button => button.Tag is LauncherItem item &&
                               item.Id == wheelApp.Id);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        Assert.True(
+            thread.Join(TimeSpan.FromSeconds(5)),
+            "STA test thread timed out.");
+        await Task.CompletedTask;
+        if (failure is not null)
+            throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
+    [Fact(Timeout = 10_000)]
+    public async Task LauncherSurfacesUseIconPresenterAtWheelAndDockSizes()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new QuickPanelWindow(
+                    new NullIconProvider());
+                var wheelApp = new LauncherItem(
+                    Guid.NewGuid(),
+                    "轮盘图标",
+                    LauncherKind.Exe,
+                    @"C:\Apps\wheel.exe",
+                    [],
+                    null,
+                    0,
+                    ShowInWheel: true);
+                var dockApp = new LauncherItem(
+                    Guid.NewGuid(),
+                    "应用坞图标",
+                    LauncherKind.Exe,
+                    @"C:\Apps\dock.exe",
+                    [],
+                    null,
+                    1);
+                window.Apply(
+                    AppSettings.CreateDefault() with
+                    {
+                        Launchers = [wheelApp, dockApp]
+                    },
+                    manualLockEnabled: false,
+                    inputStatus: "等待前台应用");
+
+                var wheelCanvas = Assert.IsType<Canvas>(
+                    window.FindName("WheelCanvas"));
+                var wheelButton = Assert.Single(
+                    wheelCanvas.Children.OfType<Button>(),
+                    button => button.Tag is LauncherItem item &&
+                              item.Id == wheelApp.Id);
+                var wheelIcon = Assert.Single(
+                    Assert.IsType<Grid>(wheelButton.Content)
+                        .Children
+                        .OfType<LauncherIconView>());
+
+                var launcherPanel = Assert.IsType<StackPanel>(
+                    window.FindName("LauncherPanel"));
+                var dockButton = Assert.Single(
+                    launcherPanel.Children.OfType<Button>(),
+                    button => button.ToolTip is string path &&
+                              path.EndsWith(
+                                  "dock.exe",
+                                  StringComparison.OrdinalIgnoreCase));
+                var dockIcon = Assert.Single(
+                    Assert.IsType<Grid>(dockButton.Content)
+                        .Children
+                        .OfType<LauncherIconView>());
+
+                Assert.Equal(42, wheelIcon.IconSize);
+                Assert.Equal(24, dockIcon.IconSize);
+                Assert.Equal(wheelApp.Id, wheelIcon.Launcher?.Id);
+                Assert.Equal(dockApp.Id, dockIcon.Launcher?.Id);
+                Assert.NotNull(wheelIcon.IconProvider);
+                Assert.NotNull(dockIcon.IconProvider);
             }
             catch (Exception exception)
             {
@@ -1890,5 +1973,13 @@ public sealed class QuickPanelWindowLayoutTests
         Assert.DoesNotContain(
             template.Triggers.OfType<Trigger>(),
             trigger => trigger.Property == UIElement.IsKeyboardFocusedProperty);
+    }
+
+    private sealed class NullIconProvider : ILauncherIconProvider
+    {
+        public Task<ImageSource?> GetAsync(
+            LauncherItem item,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<ImageSource?>(null);
     }
 }

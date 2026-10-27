@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Threading;
 using FloatDesk.App.Coordination;
+using FloatDesk.App.Launcher;
 using FloatDesk.App.Translation;
 using FloatDesk.App.ViewModels;
 using FloatDesk.App.Views;
@@ -31,6 +32,8 @@ internal sealed class AppRuntime : IDisposable
     private readonly ForegroundMonitor _foreground;
     private readonly InputLockEngine _input;
     private readonly WindowsAppLauncher _launcher = new();
+    private readonly LauncherIconExtractor _launcherIconExtractor;
+    private readonly LauncherIconCache _launcherIconCache;
     private readonly DpapiTranslationCredentialStore _translationCredentials;
     private readonly TranslationProviderFactory _translationProviders = new();
     private readonly WindowsScreenOcrService _ocr = new();
@@ -64,6 +67,10 @@ internal sealed class AppRuntime : IDisposable
     {
         _paths = paths;
         _paths.EnsureCreated();
+        _launcherIconExtractor = new LauncherIconExtractor();
+        _launcherIconCache = new LauncherIconCache(
+            paths.LauncherIcons,
+            _launcherIconExtractor.ExtractPngAsync);
         _logger = new FileLogger(paths.Logs);
         _settings = new SettingsCoordinator(new JsonSettingsStore(paths.Root));
         _notes = new SqliteNoteRepository(paths.NotesDatabase);
@@ -123,7 +130,7 @@ internal sealed class AppRuntime : IDisposable
             RequestExit,
             panelToggle: ToggleQuickPanel,
             panelOpenState: () => _panel?.IsPanelOpen == true);
-        _panel = new QuickPanelWindow();
+        _panel = new QuickPanelWindow(_launcherIconCache);
         _panel.LaunchRequested += OnLaunchRequested;
         _panel.SettingsRequested += ShowSettings;
         _panel.InputLockToggleRequested += ToggleManualEnglish;
@@ -336,6 +343,7 @@ internal sealed class AppRuntime : IDisposable
             }
             _captureSessionGate.Dispose();
             _ocr.Dispose();
+            _launcherIconExtractor.Dispose();
             _foreground.Dispose();
             _hotkeys?.Dispose();
             _hotkeys = null;
@@ -376,7 +384,8 @@ internal sealed class AppRuntime : IDisposable
             () => _current.IsOwnInteractive ? _lastExternal?.ExePath : _current.ExePath,
             _translationCredentials,
             _translationProviders,
-            () => _ocr.AvailableLanguages);
+            () => _ocr.AvailableLanguages,
+            _launcherIconCache);
 
     private AiBrowserWindow CreateAiWindow()
     {
@@ -892,6 +901,8 @@ internal sealed class AppRuntime : IDisposable
         _orb?.ApplySettings(settings);
         KeepOrbOnCurrentMonitor();
         _translationRuntime.ApplySettings(settings);
+        _launcherIconCache.Preload(settings.Launchers);
+        _launcherIconCache.Prune(settings.Launchers);
         _panel?.Apply(
             settings,
             _manualEnglish,

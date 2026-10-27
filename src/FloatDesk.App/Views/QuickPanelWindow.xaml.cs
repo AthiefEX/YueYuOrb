@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using FloatDesk.App.Launcher;
 using FloatDesk.Core.Geometry;
 using FloatDesk.Core.Models;
 using FloatDesk.Windows.Windows;
@@ -47,6 +48,7 @@ public partial class QuickPanelWindow : Window
     private double _smoothWheelTargetOffset;
     private int _smoothWheelAnimationVersion;
     private bool _smoothWheelAnimationActive;
+    private readonly ILauncherIconProvider? _launcherIconProvider;
 
     public event Action<LauncherItem>? LaunchRequested;
     public event Action? SettingsRequested;
@@ -61,7 +63,13 @@ public partial class QuickPanelWindow : Window
     public bool IsPanelOpen => _panelOpen;
 
     public QuickPanelWindow()
+        : this(null)
     {
+    }
+
+    public QuickPanelWindow(ILauncherIconProvider? launcherIcons)
+    {
+        _launcherIconProvider = launcherIcons;
         InitializeComponent();
         ActionBeamsPath.Fill ??= ThemeBrush(
             "MenuActionBeamBrush",
@@ -127,7 +135,7 @@ public partial class QuickPanelWindow : Window
         {
             var button = new Button
             {
-                Content = CreateLauncherContent(item.Name),
+                Content = CreateLauncherContent(item),
                 Style = (Style)FindResource("DockLauncherButtonStyle"),
                 ToolTip = item.Path
             };
@@ -988,7 +996,7 @@ public partial class QuickPanelWindow : Window
             FillBehavior = FillBehavior.HoldEnd
         };
 
-    private Grid CreateLauncherContent(string label)
+    private Grid CreateLauncherContent(LauncherItem item)
     {
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -996,29 +1004,10 @@ public partial class QuickPanelWindow : Window
         {
             Width = new GridLength(1, GridUnitType.Star)
         });
-        var icon = new Border
-        {
-            Width = 24,
-            Height = 24,
-            CornerRadius = new CornerRadius(12),
-            Background = new SolidColorBrush(
-                Color.FromRgb(46, 139, 255)),
-            VerticalAlignment = VerticalAlignment.Center,
-            Child = new TextBlock
-            {
-                Text = "\uE71D",
-                FontFamily = new FontFamily(
-                    "Segoe Fluent Icons, Segoe MDL2 Assets"),
-                Foreground = Brushes.White,
-                FontSize = 12,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            }
-        };
-        grid.Children.Add(icon);
+        grid.Children.Add(CreateLauncherIcon(item, 24));
         var text = new TextBlock
         {
-            Text = label,
+            Text = item.Name,
             Margin = new Thickness(7, 0, 0, 0),
             Foreground = ThemeBrush(
                 "MenuStrongBrush",
@@ -1042,28 +1031,7 @@ public partial class QuickPanelWindow : Window
         {
             Width = new GridLength(1, GridUnitType.Star)
         });
-        var icon = new Border
-        {
-            Width = 42,
-            Height = 42,
-            CornerRadius = new CornerRadius(21),
-            Background = new LinearGradientBrush(
-                Color.FromRgb(82, 177, 255),
-                Color.FromRgb(39, 113, 235),
-                45),
-            VerticalAlignment = VerticalAlignment.Center,
-            Child = new TextBlock
-            {
-                Text = "\uE71D",
-                FontFamily = new FontFamily(
-                    "Segoe Fluent Icons, Segoe MDL2 Assets"),
-                Foreground = Brushes.White,
-                FontSize = 20,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            }
-        };
-        grid.Children.Add(icon);
+        grid.Children.Add(CreateLauncherIcon(item, 42));
         var label = new Border
         {
             Margin = new Thickness(6, 3, 0, 3),
@@ -1091,6 +1059,18 @@ public partial class QuickPanelWindow : Window
         grid.Children.Add(label);
         return grid;
     }
+
+    private LauncherIconView CreateLauncherIcon(
+        LauncherItem item,
+        double size) =>
+        new()
+        {
+            Launcher = item,
+            IconProvider = _launcherIconProvider,
+            IconSize = size,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
     private TextBlock CreateAddContent() =>
         new TextBlock
         {
