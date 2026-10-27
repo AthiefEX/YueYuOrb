@@ -5,6 +5,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using FloatDesk.App.Translation;
 using FloatDesk.App.Views;
 using FloatDesk.Core.Geometry;
 using FloatDesk.Core.Models;
@@ -162,70 +163,161 @@ public sealed class TranslationOverlayWindowTests
     }
 
     [Fact]
-    public void SubtitleModeShowsControlsAndRaisesDistinctEvents()
+    public void CompactSubtitleModeUsesTransparentTextSurface()
     {
         RunOnSta(() =>
         {
             var window = new TranslationOverlayWindow();
             try
             {
-                var pauseCount = 0;
-                var reselectCount = 0;
-                var stopCount = 0;
-                window.PauseResumeRequested += () => pauseCount++;
-                window.ReselectRegionRequested += () => reselectCount++;
-                window.StopSubtitleRequested += () => stopCount++;
-                var operation = window.BeginOperation();
-
+                var operation = window.BeginOperation(subtitle: true);
                 window.SetSubtitleControls(
                     operation,
                     active: true,
                     paused: false,
                     canReselect: true);
+                window.ShowSubtitleNotice(operation, "字幕翻译准备中。");
+                window.UpdateLayout();
 
                 Assert.True(window.IsSubtitleMode);
                 Assert.Equal(
+                    Visibility.Collapsed,
+                    Assert.IsType<Grid>(
+                        window.FindName("TransitionLayer")).Visibility);
+                Assert.Equal(
                     Visibility.Visible,
+                    Assert.IsType<Grid>(
+                        window.FindName("SubtitleSurface")).Visibility);
+                var card = Assert.IsType<Border>(
+                    window.FindName("OverlayCard"));
+                var background = Assert.IsAssignableFrom<SolidColorBrush>(
+                    card.Background);
+                Assert.Equal(0, background.Color.A);
+                Assert.Equal(0, card.BorderThickness.Left);
+                Assert.Equal(
+                    Visibility.Collapsed,
                     Assert.IsType<Border>(
                         window.FindName("SubtitleControlBar")).Visibility);
-                var pauseButton = Assert.IsType<Button>(
-                    window.FindName("PauseResumeButton"));
-                Assert.Equal("暂停", pauseButton.Content);
-                var reselectButton = Assert.IsType<Button>(
-                    window.FindName("ReselectButton"));
-                Assert.True(reselectButton.IsEnabled);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
 
-                pauseButton.RaiseEvent(
-                    new RoutedEventArgs(Button.ClickEvent));
-                reselectButton.RaiseEvent(
-                    new RoutedEventArgs(Button.ClickEvent));
-                Assert.IsType<Button>(
-                    window.FindName("StopSubtitleButton")).RaiseEvent(
-                    new RoutedEventArgs(Button.ClickEvent));
-
-                Assert.Equal(1, pauseCount);
-                Assert.Equal(1, reselectCount);
-                Assert.Equal(1, stopCount);
-
+    [Fact]
+    public void SubtitleTextReplacesPreviousTextAndRejectsStaleToken()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                var operation = window.BeginOperation(subtitle: true);
                 window.SetSubtitleControls(
                     operation,
                     active: true,
-                    paused: true,
-                    canReselect: false);
-                Assert.Equal("继续", pauseButton.Content);
-                Assert.False(reselectButton.IsEnabled);
+                    paused: false,
+                    canReselect: true);
+                window.PrepareSubtitleCaptureRegion(PrimaryCaptureRegion());
+
+                Assert.Equal(
+                    TranslationSubtitlePlacementStatus.Ready,
+                    window.ShowSubtitleText(operation, "第一句"));
+                Assert.Equal(
+                    TranslationSubtitlePlacementStatus.Ready,
+                    window.ShowSubtitleText(operation, "第二句"));
+
+                var text = Assert.IsType<TextBlock>(
+                    window.FindName("SubtitleTranslationTextBlock"));
+                Assert.Equal("第二句", text.Text);
+                Assert.Equal("第二句", window.TranslatedText);
 
                 window.SetSubtitleControls(
                     operation,
                     active: false,
                     paused: false,
                     canReselect: false);
-                Assert.False(window.IsSubtitleMode);
-                Assert.False(window.IsVisible);
+                window.ShowSubtitleText(operation, "迟到字幕");
+
+                Assert.Equal("", text.Text);
+                Assert.Equal("", window.TranslatedText);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void SubtitleNoticeDoesNotClearTranslatedText()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                var operation = window.BeginOperation(subtitle: true);
+                window.SetSubtitleControls(
+                    operation,
+                    active: true,
+                    paused: false,
+                    canReselect: true);
+                window.PrepareSubtitleCaptureRegion(PrimaryCaptureRegion());
+                window.ShowSubtitleText(operation, "第一句");
+
+                window.ShowSubtitleNotice(operation, "正在翻译…");
+
                 Assert.Equal(
-                    Visibility.Collapsed,
-                    Assert.IsType<Border>(
-                        window.FindName("SubtitleControlBar")).Visibility);
+                    "第一句",
+                    Assert.IsType<TextBlock>(
+                        window.FindName(
+                            "SubtitleTranslationTextBlock")).Text);
+                Assert.Equal(
+                    "正在翻译…",
+                    Assert.IsType<TextBlock>(
+                        window.FindName("SubtitleNoticeTextBlock")).Text);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void SubtitleTextUsesConfiguredFontSize()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                window.ApplySettings(
+                    AppSettings.CreateDefault() with
+                    {
+                        Translation =
+                            TranslationSettings.CreateDefault() with
+                            {
+                                SubtitleFontSizeDip = 30
+                            }
+                    });
+                var operation = window.BeginOperation(subtitle: true);
+                window.SetSubtitleControls(
+                    operation,
+                    active: true,
+                    paused: false,
+                    canReselect: true);
+                window.PrepareSubtitleCaptureRegion(PrimaryCaptureRegion());
+                window.ShowSubtitleText(operation, "字号测试");
+
+                Assert.Equal(
+                    30,
+                    Assert.IsType<TextBlock>(
+                        window.FindName(
+                            "SubtitleTranslationTextBlock")).FontSize);
             }
             finally
             {
@@ -766,7 +858,7 @@ public sealed class TranslationOverlayWindowTests
                     Assert.IsType<TextBlock>(
                         window.FindName("MetadataTextBlock")).Text);
                 Assert.Equal(
-                    Visibility.Visible,
+                    Visibility.Collapsed,
                     Assert.IsType<Border>(
                         window.FindName("SubtitleControlBar")).Visibility);
                 Assert.Equal(
@@ -891,16 +983,10 @@ public sealed class TranslationOverlayWindowTests
                     active: true,
                     paused: false,
                     canReselect: true);
-                var layer = Assert.IsType<Grid>(
-                    window.FindName("TransitionLayer"));
-                var translate = Assert.IsType<TranslateTransform>(
-                    window.FindName("TransitionTranslate"));
-                layer.BeginAnimation(UIElement.OpacityProperty, null);
-                translate.BeginAnimation(
-                    System.Windows.Media.TranslateTransform.YProperty,
-                    null);
-                layer.Opacity = 0.71;
-                translate.Y = 4;
+                var surface = Assert.IsType<Grid>(
+                    window.FindName("SubtitleSurface"));
+                surface.BeginAnimation(UIElement.OpacityProperty, null);
+                surface.Opacity = 0.71;
 
                 window.SetSubtitleControls(
                     operation,
@@ -908,10 +994,8 @@ public sealed class TranslationOverlayWindowTests
                     paused: true,
                     canReselect: false);
 
-                Assert.Equal(0.71, layer.Opacity, precision: 2);
-                Assert.Equal(4, translate.Y, precision: 2);
-                Assert.False(layer.HasAnimatedProperties);
-                Assert.False(translate.HasAnimatedProperties);
+                Assert.Equal(0.71, surface.Opacity, precision: 2);
+                Assert.False(surface.HasAnimatedProperties);
             }
             finally
             {
@@ -1056,20 +1140,17 @@ public sealed class TranslationOverlayWindowTests
                     active: true,
                     paused: false,
                     canReselect: true);
-                window.ShowResult(
+                window.PrepareSubtitleCaptureRegion(PrimaryCaptureRegion());
+                window.ShowSubtitleText(
                     operation,
-                    TranslationResponse.Ok(
-                        "source",
-                        string.Concat(
-                            Enumerable.Repeat(
-                                "这是一段用于验证字幕字号变化后布局与定位的长译文。",
-                                8)),
-                        "en",
-                        "MyMemory"),
-                    new PixelPoint(40, 40));
+                    string.Concat(
+                        Enumerable.Repeat(
+                            "这是一段用于验证字幕字号变化后布局与定位的长译文。",
+                            8)));
                 window.UpdateLayout();
                 var beforeTextHeight = Assert.IsType<TextBlock>(
-                    window.FindName("TranslatedTextBlock")).ActualHeight;
+                    window.FindName(
+                        "SubtitleTranslationTextBlock")).ActualHeight;
                 var beforeWindowHeight = window.ActualHeight;
 
                 window.ApplySettings(baseSettings with
@@ -1081,7 +1162,8 @@ public sealed class TranslationOverlayWindowTests
                 });
 
                 var afterTextHeight = Assert.IsType<TextBlock>(
-                    window.FindName("TranslatedTextBlock")).ActualHeight;
+                    window.FindName(
+                        "SubtitleTranslationTextBlock")).ActualHeight;
                 Assert.True(
                     afterTextHeight > beforeTextHeight + 20,
                     $"Expected relayout after font change: " +
@@ -1199,6 +1281,19 @@ public sealed class TranslationOverlayWindowTests
                 DisplayTopology.GetMonitors())
             ?? throw new InvalidOperationException("No monitor found.");
         return monitor.WorkArea;
+    }
+
+    private static TranslationCaptureRegion PrimaryCaptureRegion()
+    {
+        var monitor = DisplayTopology.SelectPrimaryMonitor(
+                DisplayTopology.GetMonitors())
+            ?? throw new InvalidOperationException("No monitor found.");
+        return new TranslationCaptureRegion(
+            monitor.DeviceName,
+            0.1,
+            0.7,
+            0.8,
+            0.15);
     }
 
     private static void RunOnSta(Action action)

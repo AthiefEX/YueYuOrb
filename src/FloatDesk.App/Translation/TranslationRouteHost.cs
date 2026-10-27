@@ -47,6 +47,19 @@ public interface ITranslationRouteHost
         TranslationRouteHandle operation,
         string message);
 
+    TranslationSubtitlePlacementStatus ShowSubtitleText(
+        TranslationRouteHandle operation,
+        string translatedText)
+    {
+        ShowStatus(operation, translatedText);
+        return TranslationSubtitlePlacementStatus.Ready;
+    }
+
+    void ShowSubtitleNotice(
+        TranslationRouteHandle operation,
+        string notice) =>
+        ShowStatus(operation, notice);
+
     void SetSubtitleControls(
         TranslationRouteHandle operation,
         bool active,
@@ -157,6 +170,20 @@ public sealed class TranslationRouteHost : ITranslationRouteHost
             operation.Operation,
             message,
             operation.Anchor);
+
+    public TranslationSubtitlePlacementStatus ShowSubtitleText(
+        TranslationRouteHandle operation,
+        string translatedText) =>
+        _overlay.ShowSubtitleText(
+            operation.Operation,
+            translatedText);
+
+    public void ShowSubtitleNotice(
+        TranslationRouteHandle operation,
+        string notice) =>
+        _overlay.ShowSubtitleNotice(
+            operation.Operation,
+            notice);
 
     public void SetSubtitleControls(
         TranslationRouteHandle operation,

@@ -45,6 +45,9 @@ public partial class TranslationOverlayWindow : Window
     private const int SM_CYSCREEN = 1;
     private const double AnchorGap = 14;
     private const double WorkAreaMargin = 8;
+    private const double DefaultOverlayWidth = 480;
+    private const double MinimumInteractiveWidth = 340;
+    private const double MaximumSubtitleWidth = 720;
 
     private readonly Action<string> _clipboardWriter;
     private AppSettings _settings = AppSettings.CreateDefault();
@@ -57,7 +60,6 @@ public partial class TranslationOverlayWindow : Window
     private long _activeOperationGeneration;
     private Point _dragPointerOffset;
     private PixelRect? _subtitleCaptureRegion;
-    private PixelRect? _subtitleCaptureWorkArea;
     private string? _subtitleRegionMonitorId;
 
     public TranslationOverlayWindow()
@@ -102,14 +104,20 @@ public partial class TranslationOverlayWindow : Window
             return active;
         }
     }
-    public string TranslatedText => TranslatedTextBlock.Text;
-    public string StatusText => StatusTextBlock.Text;
+    public string TranslatedText =>
+        _isSubtitleMode
+            ? SubtitleTranslationTextBlock.Text
+            : TranslatedTextBlock.Text;
+    public string StatusText =>
+        _isSubtitleMode
+            ? SubtitleNoticeTextBlock.Text
+            : StatusTextBlock.Text;
 
     /// <summary>
     /// Starts a clean operation after an earlier result was dismissed.
     /// Interactive operations start hidden and one-shot; subtitle operations
-    /// start visible with clean subtitle controls. The returned token must be
-    /// carried through all updates for that operation.
+    /// start as a compact notice surface. The returned token must be carried
+    /// through all updates for that operation.
     /// </summary>
     public TranslationOverlayOperationToken BeginOperation(
         bool subtitle = false)
@@ -149,6 +157,11 @@ public partial class TranslationOverlayWindow : Window
                 14,
                 36);
             TranslatedTextBlock.FontSize = fontSize;
+            SubtitleTranslationTextBlock.FontSize = fontSize;
+            SubtitleNoticeTextBlock.FontSize = Math.Clamp(
+                fontSize * 0.62,
+                11,
+                16);
             OriginalTextBlock.FontSize = Math.Max(12, fontSize - 5);
             StatusTextBlock.FontSize = Math.Clamp(fontSize * 0.62, 11, 16);
 
@@ -178,6 +191,12 @@ public partial class TranslationOverlayWindow : Window
             if (!IsCurrentOperation(operation))
                 return;
 
+            if (_isSubtitleMode)
+            {
+                ShowSubtitleNoticeCore(operation, status);
+                return;
+            }
+
             if (!_isSubtitleMode)
                 ClearTranslationContent();
             StatusTextBlock.Text = status ?? "";
@@ -194,6 +213,24 @@ public partial class TranslationOverlayWindow : Window
         {
             if (!IsCurrentOperation(operation))
                 return;
+
+            if (_isSubtitleMode)
+            {
+                if (response.Success &&
+                    !string.IsNullOrWhiteSpace(response.TranslatedText))
+                {
+                    ShowSubtitleTextCore(
+                        operation,
+                        response.TranslatedText);
+                }
+                else
+                {
+                    ShowSubtitleNoticeCore(
+                        operation,
+                        ResolveFailureMessage(response));
+                }
+                return;
+            }
 
             OriginalTextBlock.Text = response.OriginalText ?? "";
             OriginalPanel.Visibility =
@@ -231,6 +268,14 @@ public partial class TranslationOverlayWindow : Window
             if (!IsCurrentOperation(operation))
                 return;
 
+            if (_isSubtitleMode)
+            {
+                ShowSubtitleNoticeCore(
+                    operation,
+                    message ?? "翻译失败。");
+                return;
+            }
+
             if (!_isSubtitleMode)
                 ClearTranslationContent();
             TranslatedTextBlock.Text = "";
@@ -239,6 +284,82 @@ public partial class TranslationOverlayWindow : Window
             StatusTextBlock.Text = message ?? "翻译失败。";
             ShowAt(operation, anchor, subtitleMode: _isSubtitleMode);
         });
+
+    public TranslationSubtitlePlacementStatus ShowSubtitleText(
+        TranslationOverlayOperationToken operation,
+        string translatedText)
+    {
+        var status = TranslationSubtitlePlacementStatus.NoSafePlacement;
+        RunOnUiThread(() =>
+            status = ShowSubtitleTextCore(operation, translatedText));
+        return status;
+    }
+
+    public void ShowSubtitleNotice(
+        TranslationOverlayOperationToken operation,
+        string notice) =>
+        RunOnUiThread(() =>
+            ShowSubtitleNoticeCore(operation, notice));
+
+    private TranslationSubtitlePlacementStatus ShowSubtitleTextCore(
+        TranslationOverlayOperationToken operation,
+        string translatedText)
+    {
+        if (!IsCurrentOperation(operation) ||
+            string.IsNullOrWhiteSpace(translatedText))
+        {
+            return TranslationSubtitlePlacementStatus.Ready;
+        }
+
+        ApplySubtitlePresentation();
+        var previousText = SubtitleTranslationTextBlock.Text;
+        var previousNotice = SubtitleNoticeTextBlock.Text;
+        var previousNoticeVisibility = SubtitleNoticeTextBlock.Visibility;
+        var wasVisible = IsVisible;
+
+        SubtitleTranslationTextBlock.Text = "";
+        SubtitleTranslationTextBlock.Text = translatedText;
+        SubtitleNoticeTextBlock.Text = "";
+        SubtitleNoticeTextBlock.Visibility = Visibility.Collapsed;
+        SubtitleSurface.Visibility = Visibility.Visible;
+
+        var status = PositionSubtitleSurfaceCore();
+        if (status == TranslationSubtitlePlacementStatus.Ready)
+            return status;
+
+        SubtitleTranslationTextBlock.Text = previousText;
+        SubtitleNoticeTextBlock.Text = previousNotice;
+        SubtitleNoticeTextBlock.Visibility = previousNoticeVisibility;
+        if (!wasVisible)
+            HideWithoutClearingContent();
+        return status;
+    }
+
+    private void ShowSubtitleNoticeCore(
+        TranslationOverlayOperationToken operation,
+        string? notice)
+    {
+        if (!IsCurrentOperation(operation))
+            return;
+
+        ApplySubtitlePresentation();
+        SubtitleNoticeTextBlock.Text = notice ?? "";
+        SubtitleNoticeTextBlock.Visibility =
+            string.IsNullOrWhiteSpace(notice)
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+        if (!string.IsNullOrWhiteSpace(SubtitleTranslationTextBlock.Text) ||
+            SubtitleNoticeTextBlock.Visibility == Visibility.Visible)
+        {
+            SubtitleSurface.Visibility = Visibility.Visible;
+            _ = PositionSubtitleSurfaceCore();
+        }
+        else
+        {
+            SubtitleSurface.Visibility = Visibility.Collapsed;
+            HideWithoutClearingContent();
+        }
+    }
 
     public void SetSubtitleControls(
         TranslationOverlayOperationToken operation,
@@ -259,16 +380,14 @@ public partial class TranslationOverlayWindow : Window
             var enteringSubtitleMode = active && !_isSubtitleMode;
             if (enteringSubtitleMode)
             {
+                ApplySubtitlePresentation();
                 ClearTranslationContent();
-                StatusTextBlock.Text = "";
             }
 
             _isSubtitleMode = active;
             _subtitlePaused = paused;
             _canReselect = canReselect;
-            SubtitleControlBar.Visibility = active
-                ? Visibility.Visible
-                : Visibility.Collapsed;
+            SubtitleControlBar.Visibility = Visibility.Collapsed;
 
             if (!active)
             {
@@ -281,19 +400,20 @@ public partial class TranslationOverlayWindow : Window
                 PauseResumeButton,
                 paused ? "继续字幕翻译" : "暂停字幕翻译");
             ReselectButton.IsEnabled = canReselect;
-            if (string.IsNullOrWhiteSpace(StatusTextBlock.Text))
-                StatusTextBlock.Text = paused
+            if (string.IsNullOrWhiteSpace(SubtitleNoticeTextBlock.Text) &&
+                string.IsNullOrWhiteSpace(SubtitleTranslationTextBlock.Text))
+            {
+                SubtitleNoticeTextBlock.Text = paused
                     ? "字幕翻译已暂停。"
                     : "字幕翻译准备中。";
-            var reveal = enteringSubtitleMode || !IsVisible;
-            if (reveal)
-                PrepareInitialReveal();
-            if (!IsVisible)
-                ShowWindowSafely();
-            UpdateLayout();
-            PositionWindow(subtitleMode: true, default);
-            if (reveal)
-                BeginContentTransition(initialReveal: true);
+                SubtitleNoticeTextBlock.Visibility = Visibility.Visible;
+            }
+            SubtitleSurface.Visibility =
+                string.IsNullOrWhiteSpace(SubtitleTranslationTextBlock.Text) &&
+                string.IsNullOrWhiteSpace(SubtitleNoticeTextBlock.Text)
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+            _ = PositionSubtitleSurfaceCore();
         });
 
     internal TranslationSubtitlePlacementStatus PrepareSubtitleCaptureRegion(
@@ -348,35 +468,142 @@ public partial class TranslationOverlayWindow : Window
         if (monitor is null)
         {
             _subtitleCaptureRegion = null;
-            _subtitleCaptureWorkArea = null;
             return TranslationSubtitlePlacementStatus.MonitorMissing;
         }
 
         _subtitleCaptureRegion = ToPixelBounds(monitor, region);
-        _subtitleCaptureWorkArea = monitor.WorkArea;
-        if (!_isSubtitleMode || !IsVisible || _isClosed)
+        if (!_isSubtitleMode || _isClosed)
             return TranslationSubtitlePlacementStatus.Ready;
+
+        return IsVisible
+            ? PositionSubtitleSurfaceCore()
+            : TranslationSubtitlePlacementStatus.Ready;
+    }
+
+    private void ApplySubtitlePresentation()
+    {
+        _isSubtitleMode = true;
+        CardBackdrop.Visibility = Visibility.Collapsed;
+        TransitionLayer.Visibility = Visibility.Collapsed;
+        SubtitleSurface.Visibility = Visibility.Visible;
+        SubtitleControlBar.Visibility = Visibility.Collapsed;
+        OverlayCard.Background = Brushes.Transparent;
+        OverlayCard.BorderThickness = new Thickness(0);
+        OverlayCard.Padding = new Thickness(0);
+        OverlayCard.CornerRadius = new CornerRadius(0);
+        MinWidth = 0;
+        MaxWidth = MaximumSubtitleWidth;
+    }
+
+    private void ApplyFullCardPresentation()
+    {
+        CardBackdrop.Visibility = Visibility.Visible;
+        TransitionLayer.Visibility = Visibility.Visible;
+        SubtitleSurface.Visibility = Visibility.Collapsed;
+        SubtitleControlBar.Visibility = Visibility.Collapsed;
+        OverlayCard.SetResourceReference(
+            Border.BackgroundProperty,
+            "SettingsCardBrush");
+        OverlayCard.SetResourceReference(
+            Border.BorderBrushProperty,
+            "SettingsAccentOutlineBrush");
+        OverlayCard.BorderThickness = new Thickness(1);
+        OverlayCard.Padding = new Thickness(1);
+        OverlayCard.CornerRadius = new CornerRadius(22);
+        MinWidth = MinimumInteractiveWidth;
+        MaxWidth = MaximumSubtitleWidth;
+        Width = DefaultOverlayWidth;
+    }
+
+    private TranslationSubtitlePlacementStatus PositionSubtitleSurfaceCore()
+    {
+        var monitor = ResolveSubtitleMonitor();
+        if (monitor is null)
+            return TranslationSubtitlePlacementStatus.MonitorMissing;
+
+        ConstrainSubtitleWidth(_subtitleCaptureRegion, monitor.WorkArea);
+        if (!ShowWindowSafely())
+            return TranslationSubtitlePlacementStatus.NoSafePlacement;
 
         UpdateLayout();
         var handle = new WindowInteropHelper(this).Handle;
         if (handle == 0 ||
             !TryGetWindowBounds(handle, out var bounds))
         {
-            return IsCaptureExcluded
-                ? TranslationSubtitlePlacementStatus.Ready
-                : TranslationSubtitlePlacementStatus.NoSafePlacement;
-        }
-
-        if (!TryResolveSubtitleTarget(
-                bounds,
-                monitor.WorkArea,
-                out var target))
-        {
             return TranslationSubtitlePlacementStatus.NoSafePlacement;
         }
 
+        if (!TryGetSubtitleTarget(bounds, monitor.WorkArea, out var target))
+            return TranslationSubtitlePlacementStatus.NoSafePlacement;
+
         MoveWindow(handle, target);
+        if (TryGetWindowBounds(handle, out var moved) &&
+            (moved.Width != bounds.Width ||
+             moved.Height != bounds.Height) &&
+            TryGetSubtitleTarget(moved, monitor.WorkArea, out var adjusted))
+        {
+            MoveWindow(handle, adjusted);
+        }
+
         return TranslationSubtitlePlacementStatus.Ready;
+    }
+
+    private bool TryGetSubtitleTarget(
+        PixelRect window,
+        PixelRect workArea,
+        out PixelPoint target)
+    {
+        if (_subtitleCaptureRegion is not { } captureRegion)
+        {
+            target = GetSubtitlePosition(window, workArea);
+            return true;
+        }
+
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var gap = Math.Max(
+            0,
+            (int)Math.Round(8 * dpi.DpiScaleY));
+        var placement = SubtitleOverlayPlacementPolicy.PlaceAnchored(
+            captureRegion,
+            window.Size,
+            workArea,
+            _settings.Translation.SubtitleAttachment,
+            gap,
+            allowCaptureOverlap: IsCaptureExcluded);
+        if (placement is null)
+        {
+            target = default;
+            return false;
+        }
+
+        target = placement.Value.Location;
+        return true;
+    }
+
+    private void ConstrainSubtitleWidth(
+        PixelRect? captureRegion,
+        PixelRect workArea)
+    {
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var physicalWidth = captureRegion is { } capture
+            ? Math.Min(capture.Width, workArea.Width)
+            : workArea.Width;
+        var widthDip =
+            physicalWidth / Math.Max(0.01, dpi.DpiScaleX);
+        Width = Math.Clamp(widthDip, 1, MaximumSubtitleWidth);
+        SubtitleSurface.Width = Width;
+    }
+
+    private void HideWithoutClearingContent()
+    {
+        try
+        {
+            Hide();
+        }
+        catch (InvalidOperationException)
+        {
+            // Closing can dispose the HWND while asynchronous work completes.
+        }
     }
 
     private void ResetOperationPresentation()
@@ -391,6 +618,7 @@ public partial class TranslationOverlayWindow : Window
         _subtitlePaused = false;
         _canReselect = false;
         ClearSubtitleCaptureSafety();
+        ApplyFullCardPresentation();
         SubtitleControlBar.Visibility = Visibility.Collapsed;
         PauseResumeButton.Content = "暂停";
         AutomationProperties.SetName(
@@ -403,18 +631,20 @@ public partial class TranslationOverlayWindow : Window
     private void BeginSubtitlePresentation(
         TranslationOverlayOperationToken operation)
     {
-        _isSubtitleMode = true;
+        ApplySubtitlePresentation();
         _subtitlePaused = false;
         _canReselect = false;
         ClearTranslationContent();
-        SubtitleControlBar.Visibility = Visibility.Visible;
+        SubtitleControlBar.Visibility = Visibility.Collapsed;
         PauseResumeButton.Content = "暂停";
         AutomationProperties.SetName(
             PauseResumeButton,
             "暂停字幕翻译");
         ReselectButton.IsEnabled = false;
-        StatusTextBlock.Text = "字幕翻译准备中。";
-        ShowAt(operation, default, subtitleMode: true);
+        SubtitleNoticeTextBlock.Text = "字幕翻译准备中。";
+        SubtitleNoticeTextBlock.Visibility = Visibility.Visible;
+        SubtitleSurface.Visibility = Visibility.Visible;
+        _ = PositionSubtitleSurfaceCore();
     }
 
     private void ShowAt(
@@ -524,33 +754,33 @@ public partial class TranslationOverlayWindow : Window
 
     private void PositionWindow(bool subtitleMode, PixelPoint anchor)
     {
+        if (subtitleMode)
+        {
+            _ = PositionSubtitleSurfaceCore();
+            return;
+        }
+
         try
         {
             var handle = new WindowInteropHelper(this).Handle;
             if (handle == 0 || !TryGetWindowBounds(handle, out var bounds))
                 return;
 
-            var monitor = subtitleMode
-                ? ResolveSubtitleMonitor()
-                : ResolveAnchorMonitor(anchor);
+            var monitor = ResolveAnchorMonitor(anchor);
             if (monitor is null)
                 return;
 
-            var target = subtitleMode
-                ? ResolveSubtitleTarget(bounds, monitor.WorkArea)
-                : GetAnchorPosition(bounds, monitor.WorkArea, anchor);
+            var target = GetAnchorPosition(bounds, monitor.WorkArea, anchor);
             MoveWindow(handle, target);
 
             if (TryGetWindowBounds(handle, out var moved) &&
                 (moved.Width != bounds.Width ||
                  moved.Height != bounds.Height))
             {
-                target = subtitleMode
-                    ? ResolveSubtitleTarget(moved, monitor.WorkArea)
-                    : GetAnchorPosition(
-                        moved,
-                        monitor.WorkArea,
-                        anchor);
+                target = GetAnchorPosition(
+                    moved,
+                    monitor.WorkArea,
+                    anchor);
                 MoveWindow(handle, target);
             }
         }
@@ -606,42 +836,6 @@ public partial class TranslationOverlayWindow : Window
                     Math.Max((int)WorkAreaMargin, 12)),
             window.Size,
             workArea);
-    }
-
-    private PixelPoint ResolveSubtitleTarget(
-        PixelRect window,
-        PixelRect workArea) =>
-        TryResolveSubtitleTarget(window, workArea, out var target)
-            ? target
-            : GetSubtitlePosition(window, workArea);
-
-    private bool TryResolveSubtitleTarget(
-        PixelRect window,
-        PixelRect workArea,
-        out PixelPoint target)
-    {
-        var preferred = GetSubtitlePosition(window, workArea);
-        if (IsCaptureExcluded ||
-            _subtitleCaptureRegion is not { } captureRegion ||
-            _subtitleCaptureWorkArea is null)
-        {
-            target = preferred;
-            return true;
-        }
-
-        var placement = TranslationOverlayPlacementPolicy.PlaceOutside(
-            captureRegion,
-            window.Size,
-            workArea,
-            preferred);
-        if (placement is null)
-        {
-            target = preferred;
-            return false;
-        }
-
-        target = placement.Value.Location;
-        return true;
     }
 
     private DisplayMonitor? ResolveSubtitleMonitor()
@@ -849,6 +1043,9 @@ public partial class TranslationOverlayWindow : Window
     {
         OriginalTextBlock.Text = "";
         TranslatedTextBlock.Text = "";
+        SubtitleTranslationTextBlock.Text = "";
+        SubtitleNoticeTextBlock.Text = "";
+        SubtitleNoticeTextBlock.Visibility = Visibility.Collapsed;
         TranslatedPanel.Visibility = Visibility.Collapsed;
         MetadataTextBlock.Text = "";
         OriginalPanel.Visibility = Visibility.Collapsed;
@@ -859,6 +1056,7 @@ public partial class TranslationOverlayWindow : Window
     {
         ClearTranslationContent();
         StatusTextBlock.Text = "";
+        SubtitleSurface.Visibility = Visibility.Collapsed;
         TransitionLayer.BeginAnimation(OpacityProperty, null);
         TransitionTranslate.BeginAnimation(
             TranslateTransform.YProperty,
@@ -1043,6 +1241,7 @@ public partial class TranslationOverlayWindow : Window
         ClearSubtitleCaptureSafety();
         ClearTranslationContent();
         StatusTextBlock.Text = "";
+        SubtitleSurface.Visibility = Visibility.Collapsed;
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -1051,6 +1250,7 @@ public partial class TranslationOverlayWindow : Window
         InvalidateActiveOperation();
         ClearTranslationContent();
         StatusTextBlock.Text = "";
+        SubtitleSurface.Visibility = Visibility.Collapsed;
     }
 
     private bool IsCurrentOperation(
@@ -1067,7 +1267,6 @@ public partial class TranslationOverlayWindow : Window
     private void ClearSubtitleCaptureSafety()
     {
         _subtitleCaptureRegion = null;
-        _subtitleCaptureWorkArea = null;
         _subtitleRegionMonitorId = null;
     }
 

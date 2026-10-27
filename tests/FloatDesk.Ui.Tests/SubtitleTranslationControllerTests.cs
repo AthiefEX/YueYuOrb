@@ -526,6 +526,8 @@ public sealed class SubtitleTranslationControllerTests
         public bool OperationActive { get; set; } = true;
         public bool FailSafePlacementWhenActive { get; set; }
         public string LastStatus { get; private set; } = "";
+        public List<string> SubtitleTexts { get; } = [];
+        public List<string> SubtitleNotices { get; } = [];
         public TranslationSubtitlePlacementStatus PlacementStatus { get; set; } =
             TranslationSubtitlePlacementStatus.Ready;
 
@@ -566,6 +568,21 @@ public sealed class SubtitleTranslationControllerTests
             TranslationRouteHandle operation,
             string message)
         {
+        }
+
+        public TranslationSubtitlePlacementStatus ShowSubtitleText(
+            TranslationRouteHandle operation,
+            string translatedText)
+        {
+            SubtitleTexts.Add(translatedText);
+            return PlacementStatus;
+        }
+
+        public void ShowSubtitleNotice(
+            TranslationRouteHandle operation,
+            string notice)
+        {
+            SubtitleNotices.Add(notice);
         }
 
         public void SetSubtitleControls(

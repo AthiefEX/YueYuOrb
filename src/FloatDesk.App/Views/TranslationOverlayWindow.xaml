@@ -35,14 +35,15 @@
             Padding="1"
             automation:AutomationProperties.Name="翻译结果卡片">
         <Grid>
-            <Border Background="{DynamicResource SettingsHeroBrush}"
-                    CornerRadius="21"
-                    Opacity="0.68"
-                    IsHitTestVisible="False" />
-            <Border Background="{DynamicResource SettingsNavBarBrush}"
-                    CornerRadius="21"
-                    Opacity="0.32"
-                    IsHitTestVisible="False" />
+            <Grid x:Name="CardBackdrop"
+                  IsHitTestVisible="False">
+                <Border Background="{DynamicResource SettingsHeroBrush}"
+                        CornerRadius="21"
+                        Opacity="0.68" />
+                <Border Background="{DynamicResource SettingsNavBarBrush}"
+                        CornerRadius="21"
+                        Opacity="0.32" />
+            </Grid>
 
             <Grid x:Name="TransitionLayer">
                 <Grid.RenderTransform>
@@ -254,6 +255,39 @@
                         </StackPanel>
                     </Grid>
                 </Border>
+            </Grid>
+
+            <Grid x:Name="SubtitleSurface"
+                  Visibility="Collapsed"
+                  Background="Transparent"
+                  IsHitTestVisible="False">
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock x:Name="SubtitleNoticeTextBlock"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center"
+                               FontSize="12"
+                               Foreground="{DynamicResource SettingsMutedBrush}"
+                               Visibility="Collapsed"
+                               automation:AutomationProperties.LiveSetting="Polite"
+                               automation:AutomationProperties.Name="字幕提示" />
+                    <TextBlock x:Name="SubtitleTranslationTextBlock"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource SettingsInkBrush}"
+                               TextOptions.TextFormattingMode="Display"
+                               automation:AutomationProperties.LiveSetting="Polite"
+                               automation:AutomationProperties.Name="字幕译文">
+                        <TextBlock.Effect>
+                            <DropShadowEffect BlurRadius="8"
+                                              ShadowDepth="1"
+                                              Direction="270"
+                                              Opacity="0.88"
+                                              Color="#FF001018" />
+                        </TextBlock.Effect>
+                    </TextBlock>
+                </StackPanel>
             </Grid>
         </Grid>
     </Border>
