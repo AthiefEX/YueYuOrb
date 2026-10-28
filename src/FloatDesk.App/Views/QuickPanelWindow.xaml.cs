@@ -79,6 +79,9 @@ public partial class QuickPanelWindow : Window
 
     public void Apply(AppSettings settings, bool manualLockEnabled, string inputStatus)
     {
+        AnchorGlowSurface.Visibility = settings.Orb.DisplayMode == OrbDisplayMode.Crystal
+            ? Visibility.Collapsed
+            : Visibility.Visible;
         InputLockTitle.Text = manualLockEnabled ? "停止锁定" : "锁定英文";
         InputLockGlyph.Text = manualLockEnabled ? "\uE785" : "\uE72E";
         InputLockGlyphHost.Background = (Brush)FindResource(

@@ -58,6 +58,7 @@ public sealed class CrystalOrbWindowTests
             Assert.Null(Find<Image>(window, "OrbImage").Clip);
             Assert.Equal(new Thickness(0), Find<Image>(window, "OrbImage").Margin);
             Assert.Null(Find<Grid>(window, "OrbRoot").Clip);
+            Assert.Null(Find<Grid>(window, "OrbRoot").Background);
             Assert.NotNull(Find<FrameworkElement>(window, "OrbCircle").Effect);
             Assert.Equal(Visibility.Collapsed, Find<CrystalOrbSurface>(window, "CrystalSurface").Visibility);
         }
@@ -113,6 +114,37 @@ public sealed class CrystalOrbWindowTests
                 }
             });
             Assert.True(window.IsTransparentOrbPoint(new Point(40, 40)));
+        }
+        finally { window.Close(); File.Delete(path); }
+    });
+
+    [Fact]
+    public Task TransparentImageStillHasAnInteractiveGlassInteriorAndRim() => RunSta(() =>
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"orb-crystal-{Guid.NewGuid():N}.png");
+        WritePng(path, Colors.Transparent);
+        var window = CreateWindow(path);
+        try
+        {
+            window.ApplySettings(Settings(56));
+            var root = Find<Grid>(window, "OrbRoot");
+            window.Show();
+            window.UpdateLayout();
+            Assert.Same(root, root.InputHitTest(new Point(28, 1)));
+            Assert.NotNull(root.InputHitTest(new Point(28, 28)));
+            Assert.Null(root.InputHitTest(new Point(1, 1)));
+            var layout = Assert.IsType<StackPanel>(window.Content);
+            window.Content = null;
+            layout.Measure(new Size(96, 96));
+            layout.Arrange(new Rect(0, 0, 96, 96));
+            layout.UpdateLayout();
+            var bitmap = new RenderTargetBitmap(96, 96, 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(layout);
+            var pixel = new byte[4];
+            bitmap.CopyPixels(new Int32Rect(48, 48, 1, 1), pixel, 4, 0);
+
+            Assert.True(pixel[3] > 0,
+                "A layered window needs nonzero alpha inside the glass to receive native pointer hits.");
         }
         finally { window.Close(); File.Delete(path); }
     });

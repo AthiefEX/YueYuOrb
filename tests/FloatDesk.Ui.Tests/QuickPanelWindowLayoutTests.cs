@@ -13,6 +13,59 @@ namespace FloatDesk.Ui.Tests;
 [Collection("WPF")]
 public sealed class QuickPanelWindowLayoutTests
 {
+    [Theory(Timeout = 10_000)]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CrystalModeSuppressesAnchorGlowAcrossOpenCloseAndModeChanges(bool atRightEdge)
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            var panel = new QuickPanelWindow();
+            try
+            {
+                var defaults = AppSettings.CreateDefault();
+                var crystal = defaults with
+                {
+                    Orb = defaults.Orb with { DisplayMode = OrbDisplayMode.Crystal, SizeDip = 128 }
+                };
+                panel.Apply(crystal, false, "");
+                var glow = Assert.IsType<Grid>(panel.FindName("AnchorGlowSurface"));
+                Assert.Equal(Visibility.Collapsed, glow.Visibility);
+                var work = DisplayTopology.GetMonitors().First(m => m.IsPrimary).WorkArea;
+                var bounds = new PixelRect(atRightEdge ? work.Right - 128 : work.Left,
+                    work.Top + 250, 128, 128);
+
+                panel.ShowNear(panel, bounds);
+                Assert.Equal(Visibility.Collapsed, glow.Visibility);
+                PumpDispatcherFor(TimeSpan.FromMilliseconds(500));
+                Assert.True(panel.IsPanelOpen);
+                Assert.Equal(Visibility.Collapsed, glow.Visibility);
+
+                panel.HideAnimated();
+                PumpDispatcherUntil(() => !panel.IsPanelOpen);
+                Assert.False(panel.IsPanelOpen);
+                panel.ShowNear(panel, bounds);
+                panel.GetType().GetMethod("ResetMotionVisuals",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(panel, null);
+                Assert.Equal(Visibility.Collapsed, glow.Visibility);
+
+                panel.Apply(defaults, false, "");
+                Assert.Equal(Visibility.Visible, glow.Visibility);
+                panel.Apply(crystal, false, "");
+                Assert.Equal(Visibility.Collapsed, glow.Visibility);
+                Assert.Equal(Visibility.Visible, Assert.IsType<ScrollViewer>(panel.FindName("WheelScroller")).Visibility);
+            }
+            catch (Exception e) { failure = e; }
+            finally { panel.Close(); }
+        }) { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(8)), "STA crystal wheel test timed out.");
+        await Task.CompletedTask;
+        if (failure is not null) throw new Xunit.Sdk.XunitException(failure.ToString());
+    }
+
     private static readonly string[] FixedActionNames =
     [
         "RegionCaptureButton",

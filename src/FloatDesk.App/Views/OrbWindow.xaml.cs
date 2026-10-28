@@ -108,6 +108,7 @@ public partial class OrbWindow : Window
         OrbImage.UseLayoutRounding = !crystal;
         OrbCircle.UseLayoutRounding = !crystal;
         OrbCircle.Effect = crystal ? null : _classicOrbEffect;
+        OrbRoot.Background = crystal ? Brushes.Transparent : null;
         CrystalSurface.Visibility = crystal ? Visibility.Visible : Visibility.Collapsed;
         OrbRoot.Clip = crystal
             ? new EllipseGeometry(new Point(_sizeDip / 2, _sizeDip / 2), _sizeDip / 2, _sizeDip / 2)

@@ -14,8 +14,8 @@
             <Ellipse Width="100" Height="100">
                 <Ellipse.Fill>
                     <RadialGradientBrush Center="0.5,0.5" GradientOrigin="0.43,0.36" RadiusX="0.5" RadiusY="0.5">
-                        <GradientStop Color="#00BCE4F5" Offset="0" />
-                        <GradientStop Color="#00BCE4F5" Offset="0.62" />
+                        <GradientStop Color="#06BCE4F5" Offset="0" />
+                        <GradientStop Color="#06BCE4F5" Offset="0.62" />
                         <GradientStop Color="#100D2942" Offset="0.81" />
                         <GradientStop Color="#4612273D" Offset="0.92" />
                         <GradientStop Color="#8ADAF2FF" Offset="0.97" />
