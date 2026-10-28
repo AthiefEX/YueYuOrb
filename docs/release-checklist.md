@@ -16,7 +16,7 @@
 - [x] self-contained `win-x64` 便携包与 Inno Setup 6.7.3 安装包生成。
 - [x] 发布 EXE、便携包和安装包版本及 SHA256 复核。
 - [x] ZIP 内 497 个文件与发布目录逐文件 SHA256 一致，包含 `LICENSE`、README 与 .NET 自包含运行文件。
-- [ ] 源码、`v1.1.1` 标签和三个发行附件同步到 GitHub。
+- [x] 源码、`v1.1.1` 标签和三个发行附件同步到 GitHub；主分支与开发分支均已更新，公开 Latest API 已确认 `v1.1.1`，远端附件大小及 SHA256 与本地一致。
 
 ## 人工验证状态
 
@@ -39,3 +39,5 @@
 脚本依次执行 locked restore、Release build、Release tests、self-contained publish、ZIP、安装器与 SHA256 生成；中间步骤失败即停止。构建中间产物和最终发布文件均位于仓库内的 `artifacts` 目录。
 
 便携包无需安装，用户数据仍保存在 `%LOCALAPPDATA%\FloatDesk`。安装包未签名，发布说明保留 Windows SmartScreen 提示。GPLv3 `LICENSE` 与 README 随两种发行形式提供。
+
+发布地址：[月语悬浮球 v1.1.1](https://github.com/AthiefEX/YueYuOrb/releases/tag/v1.1.1)。版本标签指向 `0907fd0`，包含快捷应用图标、拖放导入、应用栏开关与本次发布准备。发布后仅补充本检查表的完成状态。
