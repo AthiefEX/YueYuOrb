@@ -8,7 +8,7 @@
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/License-GPLv3-c9a961.svg)](./LICENSE)
 [![Windows 10/11 x64](https://img.shields.io/badge/Windows-10%20%2F%2011%20x64-2b7a78.svg)](#系统要求)
-[![Release v1.1.0](https://img.shields.io/badge/Release-v1.1.0-d8b46a.svg)](https://github.com/AthiefEX/YueYuOrb/releases/tag/v1.1.0)
+[![Release v1.1.1](https://img.shields.io/badge/Release-v1.1.1-d8b46a.svg)](https://github.com/AthiefEX/YueYuOrb/releases/tag/v1.1.1)
 
 </div>
 
@@ -28,20 +28,20 @@
 
 ## 快速开始
 
-前往 [GitHub Releases](https://github.com/AthiefEX/YueYuOrb/releases/tag/v1.1.0) 下载：
+前往 [GitHub Releases](https://github.com/AthiefEX/YueYuOrb/releases/tag/v1.1.1) 下载：
 
 | 方式 | 文件 | 使用说明 |
 |---|---|---|
-| 便携版 | [YueYuOrb-1.1.0-win-x64-portable.zip](https://github.com/AthiefEX/YueYuOrb/releases/download/v1.1.0/YueYuOrb-1.1.0-win-x64-portable.zip) | 解压后运行 `YueYuOrb.exe`，不需要安装 |
-| 安装版 | [YueYuOrb-1.1.0-win-x64-setup.exe](https://github.com/AthiefEX/YueYuOrb/releases/download/v1.1.0/YueYuOrb-1.1.0-win-x64-setup.exe) | 当前用户安装，包含开始菜单入口和可选桌面快捷方式 |
-| 校验值 | [SHA256SUMS.txt](https://github.com/AthiefEX/YueYuOrb/releases/download/v1.1.0/SHA256SUMS.txt) | 下载后核对便携包和安装包 |
+| 便携版 | [YueYuOrb-1.1.1-win-x64-portable.zip](https://github.com/AthiefEX/YueYuOrb/releases/download/v1.1.1/YueYuOrb-1.1.1-win-x64-portable.zip) | 解压后运行 `YueYuOrb.exe`，不需要安装 |
+| 安装版 | [YueYuOrb-1.1.1-win-x64-setup.exe](https://github.com/AthiefEX/YueYuOrb/releases/download/v1.1.1/YueYuOrb-1.1.1-win-x64-setup.exe) | 当前用户安装，包含开始菜单入口和可选桌面快捷方式 |
+| 校验值 | [SHA256SUMS.txt](https://github.com/AthiefEX/YueYuOrb/releases/download/v1.1.1/SHA256SUMS.txt) | 下载后核对便携包和安装包 |
 
 发行包为 .NET 10 self-contained，不要求目标机器安装 .NET SDK 或 .NET Desktop Runtime。安装包尚未进行代码签名，Windows SmartScreen 可能显示“未知发布者”警告。
 
 ## 主要能力
 
 - **悬浮球与轮盘**：启动时回到主屏幕工作区，支持拖动、边缘吸附、位置锁定、无底板时间显示、自定义 PNG/JPEG/BMP 图片手动裁切和自下而上的扇形展开动画。
-- **快捷启动**：添加 exe、快捷方式或文件夹，设置参数与工作目录；统一轮盘支持滚轮浏览，不使用固定数量上限。
+- **快捷启动**：拖入 exe 或快捷方式自动添加并识别真实图标，也可手动添加文件夹、设置参数与工作目录；统一轮盘支持滚轮浏览，可单独隐藏轮盘下方快捷应用栏。
 - **AI 网页**：独立 WebView2 窗口，支持自定义 HTTPS 站点、DeepSeek、浅色/深色/跟随应用、缩放、固定、外部浏览器打开和登录 profile 保留。
 - **本地记事本**：SQLite 存储、500 ms 自动保存、正文搜索、回收站与恢复、TXT 导出。
 - **截图与中文标注**：框选、当前窗口、当前屏幕、倒计时、矩形/箭头/中文文字、撤销重做、PNG/JPEG、剪贴板和自动另存。
@@ -63,6 +63,7 @@
 settings.json / settings.json.bak
 data/notes.db
 assets/orb.png
+launcher-icons/
 WebView2/
 logs/
 ```
@@ -79,14 +80,14 @@ cd YueYuOrb
 dotnet restore FloatDesk.sln --locked-mode
 dotnet build FloatDesk.sln -c Release --no-restore
 .\scripts\test.ps1 -Configuration Release
-.\scripts\publish.ps1 -Version 1.1.0 -Installer
+.\scripts\publish.ps1 -Version 1.1.1 -Installer
 ```
 
 项目内部保留 `FloatDesk.*` 命名空间和解决方案名以兼容现有代码与设置，正式产品名、程序集和可执行文件为月语悬浮球、`YueYuOrb.dll` 和 `YueYuOrb.exe`。
 
 ## 验证与已知边界
 
-当前 Release 自动化测试为 **625/625 通过**，并在 Windows 10 22H2 x64 上完成自包含发布包启动与单实例冒烟。以下项目仍需在对应设备上人工验收：
+当前 Release 自动化测试为 **666/666 通过**。v1.1.1 构建时已有程序正在运行，未停止该实例执行新版独立启动和安装冒烟。以下项目仍需在对应设备上人工验收：
 
 - Windows 11、Windows 10 21H2、标准用户干净虚拟机。
 - 真实第三方输入法、自定义切换快捷键与提权目标窗口。
@@ -95,7 +96,7 @@ dotnet build FloatDesk.sln -c Release --no-restore
 - 混合 DPI、多屏旋转、HDR、独占全屏和游戏覆盖。
 - 未签名安装包的长期升级与 SmartScreen 体验。
 
-详细说明见 [v1.1.0 更新说明](docs/release-notes-v1.1.0.md)、[用户手册](docs/user-guide.md)、[架构说明](docs/architecture.md)、[兼容性报告](docs/compatibility.md) 和 [手工验收记录](docs/manual-tests.md)。
+详细说明见 [v1.1.1 更新说明](docs/release-notes-v1.1.1.md)、[用户手册](docs/user-guide.md)、[架构说明](docs/architecture.md)、[兼容性报告](docs/compatibility.md) 和 [手工验收记录](docs/manual-tests.md)。
 
 ## 开源许可
 

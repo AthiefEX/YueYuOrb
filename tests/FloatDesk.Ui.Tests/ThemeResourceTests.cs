@@ -331,7 +331,7 @@ public sealed class ThemeResourceTests
             throw new Xunit.Sdk.XunitException(failure.ToString());
     }
 
-    private static ResourceDictionary LoadApplicationResources()
+    internal static ResourceDictionary LoadApplicationResources()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         FileInfo? appXaml = null;

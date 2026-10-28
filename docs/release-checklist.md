@@ -1,69 +1,41 @@
 # 月语悬浮球发布检查表
 
-版本：1.1.0
-声明：本版发布物已完成当前构建机验收；不能把自动化测试 PASS 当成全兼容验收。
+版本：1.1.1
+日期：2026-10-28
 
-## 开发门禁
+## 开发与打包门禁
 
-- [x] SDK 锁定为 .NET `10.0.400`。
-- [x] NuGet 使用中央版本与 lock 文件。
-- [x] Debug 构建 0 errors。
-- [x] Release 自动化测试 625/625 通过
-  （Core 138、Infrastructure 90、Windows 44、UI 353）。
-- [x] 单实例交接冒烟通过。
-- [x] `startup.complete` 可在存在热键冲突的环境中到达。
-- [x] 设置并发字段合并、未来 schema 只读、笔记失败回退与删除保护、
-  旧前台状态隔离、截图覆盖层取消、截图输出异常、前台身份复用、球图片图层有回归测试。
-- [x] 翻译选中、框选 OCR、实时字幕、翻译服务、DPAPI 密钥、字幕放置和
-  捕获排除有自动化回归测试。
-- [x] 悬浮球图片手动裁切、裁切边界、时间无底板显示和替换图片即时刷新有
-  自动化回归测试。
-- [x] 扫描无 `NotImplementedException` 或生产占位按钮。
-- [x] Release 构建/测试在最终代码上通过。
-- [x] self-contained `win-x64` 发布包生成。
-- [x] ZIP 与 SHA256 生成并复核。
-- [x] 最终 Release 包在当前 Windows 10 22H2 宿主完成启动与单实例冒烟。
+- [x] SDK 锁定为 .NET `10.0.400`，NuGet 使用中央版本与 lock 文件。
+- [x] 本次快捷应用功能已独立复审，无 Critical 或 Important 问题。
+- [x] 产品常量、“关于”页、程序集默认版本、安装器与发布脚本统一为 `1.1.1`。
+- [x] README 下载链接、用户手册与 `docs/release-notes-v1.1.1.md` 已更新。
+- [x] 设置 schema 保持 `1`，旧设置默认显示快捷应用栏，原 `.lnk` 启动语义保留。
+- [x] 发布构建使用 `artifacts/build` 隔离输出，避免覆盖正在运行的开发版 DLL。
+- [x] 最终 Release 构建 0 警告、0 错误。
+- [x] 最终 Release 自动化测试 666/666 通过（Core 144、Infrastructure 93、Windows 49、UI 380）。
+- [x] self-contained `win-x64` 便携包与 Inno Setup 6.7.3 安装包生成。
+- [x] 发布 EXE、便携包和安装包版本及 SHA256 复核。
+- [x] ZIP 内 497 个文件与发布目录逐文件 SHA256 一致，包含 `LICENSE`、README 与 .NET 自包含运行文件。
+- [ ] 源码、`v1.1.1` 标签和三个发行附件同步到 GitHub。
 
-## 人工门禁
+## 人工验证状态
 
-- [ ] Windows 10 21H2 标准用户完整启动。
-- [ ] Windows 10 22H2 完整 UI 流程。
-- [ ] Windows 11 24H2/25H2 完整 UI 流程。
-- [ ] 真实英文布局请求、读回、拒绝对照、快速 Alt+Tab。
-- [ ] 设置、AI、笔记和中文标注在手动锁定期间仍可中文输入。
-- [ ] DeepSeek 登录、提问、关闭重开和崩溃重试。
-- [ ] 框选、窗口、当前屏幕、跨屏、100/150/200% DPI、中文标注和粘贴。
-- [ ] Edge F11、无边框游戏、独占全屏记录。
-- [ ] Explorer 重启、睡眠唤醒、锁屏恢复。
-- [ ] 8 小时与 100 次操作资源检查。
+- [ ] v1.1.1 独立主实例启动与单实例交接。本次构建时旧版进程仍在运行，未为发布而停止用户程序；v1.1.0 的既有冒烟结果不作为新版启动验收。
+- [ ] 本版安装、升级和卸载交互。旧版本的安装验收记录见 `docs/manual-tests.md`。
+- [ ] Windows 10 21H2/22H2 标准用户干净环境。
+- [ ] Windows 11 完整 UI 流程。
+- [ ] 实际第三方 EXE/快捷方式拖放、参数与工作目录启动。
+- [ ] 浅色、深色、高对比度、100/125/150% 与混合 DPI 图标显示。
+- [ ] 无 SDK 和无 WebView2 Runtime 的干净 VM。
 
-## 安装门禁
-
-- [x] Inno Setup 6.7.3 生成
-  `YueYuOrb-1.1.0-win-x64-setup.exe`，简体中文语言文件随仓库提供。
-- [x] 当前 Windows 用户静默安装、开始菜单快捷方式、启动、单实例和卸载。
-- [ ] 标准用户干净虚拟机安装、升级与卸载。
-- [x] 默认卸载保留 `%LOCALAPPDATA%\FloatDesk`；`settings.json` 哈希前后一致。
-- [ ] 干净 VM 无 .NET SDK 时启动自包含包。
-- [ ] 干净 VM 无 WebView2 Runtime 时本地功能与修复引导可用。
-- [x] 安装包、便携包和发布 EXE 均记录并复核 SHA256。
-- [x] 未签名测试包在发布说明中明确标注 SmartScreen 风险。
-- [x] 仓库根目录包含 GPLv3 `LICENSE`、作者和 GitHub 链接。
-- [x] 便携 ZIP 与安装目录均包含 `LICENSE` 和 `README.md`。
+上述未验证项在更新说明中明确披露，不把自动化测试通过等同于完整实机兼容验收。安装器最低版本保持 Windows 10 21H2（19044），目标平台为 x64。
 
 ## 发布命令
 
 ```powershell
-.\scripts\publish.ps1 -Version 1.1.0 -Installer
+.\scripts\publish.ps1 -Version 1.1.1 -Installer
 ```
 
-脚本执行 locked restore、Release build、Release tests、self-contained publish、ZIP 和 SHA256。只有所有命令退出码为 0 才生成最终哈希文件。
+脚本依次执行 locked restore、Release build、Release tests、self-contained publish、ZIP、安装器与 SHA256 生成；中间步骤失败即停止。构建中间产物和最终发布文件均位于仓库内的 `artifacts` 目录。
 
-## 已知环境缺口
-
-- 当前构建机为 Windows 10 22H2 19045 x64。
-- 当前无 Windows 11、Windows 10 21H2、无 WebView2 Runtime、混合 DPI/旋转屏和第二会话测试环境。
-- 安装器生成前不得声称安装包已完成。
-- 本机 `Ctrl+Alt+A` 被其他程序占用；月语悬浮球正确记录初始冲突并继续运行，托盘入口仍可用。
-- 安装器验证宿主是管理员账户的当前用户安装模式，不等同于标准用户干净 VM。
-- GDI 截屏测试需要交互桌面；Codex 独立沙箱桌面没有屏幕表面，发布门禁须在真实桌面会话运行。
+便携包无需安装，用户数据仍保存在 `%LOCALAPPDATA%\FloatDesk`。安装包未签名，发布说明保留 Windows SmartScreen 提示。GPLv3 `LICENSE` 与 README 随两种发行形式提供。

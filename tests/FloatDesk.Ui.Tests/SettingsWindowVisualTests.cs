@@ -362,7 +362,7 @@ public sealed class SettingsWindowVisualTests
         var license = File.ReadAllText(FindRepoFile("LICENSE")).TrimStart();
 
         Assert.Contains(
-            "月语悬浮球 1.0.0",
+            "月语悬浮球 1.1.1",
             xaml,
             StringComparison.Ordinal);
         Assert.Contains(

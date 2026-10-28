@@ -22,14 +22,18 @@ public sealed class NotesWindowSelectionTests
         {
             try
             {
-                var app = new FloatDesk.App.App();
-                app.InitializeComponent();
+                // Window tests must not start the production single-instance runtime.
+                var app = new System.Windows.Application
+                {
+                    ShutdownMode = ShutdownMode.OnExplicitShutdown,
+                    Resources = ThemeResourceTests.LoadApplicationResources()
+                };
                 var first = Note(1, "First", "first body");
                 var second = Note(2, "Second", "second body");
                 var repository = new FailingSaveRepository(first, second);
                 var window = new NotesWindow(repository);
                 window.Show();
-                _ = RunAssertionAsync(app, window, first, second)
+                _ = RunAssertionAsync(window, first, second)
                     .ContinueWith(
                         task =>
                         {
@@ -55,7 +59,6 @@ public sealed class NotesWindowSelectionTests
     }
 
     private static async Task RunAssertionAsync(
-        FloatDesk.App.App app,
         NotesWindow window,
         NoteDocument first,
         NoteDocument second)

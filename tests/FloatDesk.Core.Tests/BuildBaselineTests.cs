@@ -7,7 +7,7 @@ public sealed class BuildBaselineTests
     {
         Assert.Equal("月语悬浮球", GetConstant(nameof(ProductInfo.Name)));
         Assert.Equal("YueYuOrb", GetConstant(nameof(ProductInfo.EnglishName)));
-        Assert.Equal("1.0.0", GetConstant(nameof(ProductInfo.Version)));
+        Assert.Equal("1.1.1", GetConstant(nameof(ProductInfo.Version)));
         Assert.Equal("七月风语", GetConstant(nameof(ProductInfo.Author)));
         Assert.Equal(
             "https://github.com/AthiefEX",

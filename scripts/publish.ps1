@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '1.1.0',
+    [string]$Version = '1.1.1',
     [switch]$Installer,
     [string]$IsccPath = ''
 )
@@ -12,6 +12,10 @@ $testResults = Join-Path $artifactRoot 'test-results'
 $zipPath = Join-Path $artifactRoot "YueYuOrb-$Version-win-x64-portable.zip"
 $setupPath = Join-Path $artifactRoot "YueYuOrb-$Version-win-x64-setup.exe"
 $hashPath = Join-Path $artifactRoot 'SHA256SUMS.txt'
+$buildArguments = @(
+    '-p:UseArtifactsOutput=true',
+    "-p:ArtifactsPath=$(Join-Path $artifactRoot 'build')"
+)
 
 $resolvedRoot = [System.IO.Path]::GetFullPath($root)
 $resolvedArtifacts = [System.IO.Path]::GetFullPath($artifactRoot)
@@ -28,14 +32,14 @@ New-Item -ItemType Directory -Force -Path $testResults | Out-Null
 
 Push-Location $root
 try {
-    dotnet restore FloatDesk.sln --locked-mode -p:NuGetAudit=false
+    dotnet restore FloatDesk.sln --locked-mode -p:NuGetAudit=false @buildArguments
     if ($LASTEXITCODE -ne 0) { throw 'Locked restore failed.' }
 
-    dotnet build FloatDesk.sln -c Release --no-restore
+    dotnet build FloatDesk.sln -c Release --no-restore @buildArguments
     if ($LASTEXITCODE -ne 0) { throw 'Release build failed.' }
 
     dotnet test FloatDesk.sln -c Release --no-build `
-        --logger trx --results-directory $testResults
+        --logger trx --results-directory $testResults @buildArguments
     if ($LASTEXITCODE -ne 0) { throw 'Release tests failed.' }
 
     dotnet publish src/FloatDesk.App/FloatDesk.App.csproj -c Release `
@@ -44,7 +48,7 @@ try {
         -p:PublishTrimmed=false `
         -p:NuGetAudit=false `
         "-p:Version=$Version" `
-        -o $publishDirectory
+        -o $publishDirectory @buildArguments
     if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
 
     Copy-Item -LiteralPath (Join-Path $root 'LICENSE') `

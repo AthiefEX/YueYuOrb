@@ -1278,7 +1278,7 @@
                                                        VerticalAlignment="Center" />
                                         </Border>
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                            <TextBlock Text="月语悬浮球 1.0.0" FontSize="26" FontWeight="SemiBold" Foreground="{DynamicResource SettingsInkBrush}" />
+                                            <TextBlock Text="月语悬浮球 1.1.1" FontSize="26" FontWeight="SemiBold" Foreground="{DynamicResource SettingsInkBrush}" />
                                             <TextBlock Text="Windows 10/11 x64 桌面悬浮助手" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,4,0,0" />
                                             <TextBlock Text="作者：七月风语"
                                                        Style="{StaticResource SettingsDescriptionStyle}"
