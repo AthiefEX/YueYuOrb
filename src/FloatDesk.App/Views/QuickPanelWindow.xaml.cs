@@ -59,6 +59,7 @@ public partial class QuickPanelWindow : Window
     public event Action? TranslateSelectionRequested;
     public event Action? TranslateRegionRequested;
     public event Action? TranslateSubtitlesRequested;
+    public event Action? ExtractRegionTextRequested;
 
     public bool IsPanelOpen => _panelOpen;
 
@@ -389,7 +390,8 @@ public partial class QuickPanelWindow : Window
         (SettingsButton, WheelActionKind.Settings),
         (TranslateSelectionButton, WheelActionKind.TranslateSelection),
         (TranslateRegionButton, WheelActionKind.TranslateRegion),
-        (TranslateSubtitlesButton, WheelActionKind.TranslateSubtitles)
+        (TranslateSubtitlesButton, WheelActionKind.TranslateSubtitles),
+        (ExtractRegionTextButton, WheelActionKind.ExtractRegionText)
     ];
 
     private Button[] GetVisibleWheelButtons()
@@ -1289,6 +1291,9 @@ public partial class QuickPanelWindow : Window
         object sender,
         RoutedEventArgs e) =>
         TranslateSubtitlesRequested?.Invoke();
+
+    private void OnExtractRegionTextClick(object sender, RoutedEventArgs e) =>
+        ExtractRegionTextRequested?.Invoke();
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern int GetSystemMetrics(int index);

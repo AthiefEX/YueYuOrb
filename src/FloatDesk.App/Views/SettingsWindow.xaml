@@ -258,6 +258,7 @@
                                                     <RowDefinition Height="58" />
                                                     <RowDefinition Height="58" />
                                                     <RowDefinition Height="58" />
+                                                    <RowDefinition Height="58" />
                                                 </Grid.RowDefinitions>
                                                 <StackPanel VerticalAlignment="Center">
                                                     <TextBlock Text="快捷面板" Style="{StaticResource SettingsLabelStyle}" />
@@ -294,6 +295,12 @@
                                                     <TextBlock Text="开始或停止固定区域字幕翻译" Style="{StaticResource SettingsDescriptionStyle}" />
                                                 </StackPanel>
                                                 <TextBox x:Name="SubtitlesHotkeyTextBox" Grid.Row="5" Grid.Column="1" Text="{Binding SubtitlesHotkey}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" AutomationProperties.Name="字幕翻译快捷键" />
+                                                <Border Grid.Row="6" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <StackPanel Grid.Row="6" VerticalAlignment="Center">
+                                                    <TextBlock Text="提取文字" Style="{StaticResource SettingsLabelStyle}" />
+                                                    <TextBlock Text="框选后仅提取文字，不调用翻译服务" Style="{StaticResource SettingsDescriptionStyle}" />
+                                                </StackPanel>
+                                                <TextBox x:Name="ExtractRegionTextHotkeyTextBox" Grid.Row="6" Grid.Column="1" Text="{Binding ExtractRegionTextHotkey}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" AutomationProperties.Name="提取文字快捷键" />
                                             </Grid>
                                         </Border>
                                         <Border Style="{StaticResource SettingsToolbarStyle}" Margin="0,12,0,0">
@@ -639,6 +646,13 @@
                                                               IsChecked="{Binding ShowTranslateSubtitlesInWheel}"
                                                               Style="{StaticResource SettingsCheckBoxStyle}"
                                                               AutomationProperties.Name="字幕翻译显示在轮盘"
+                                                              VerticalAlignment="Center" />
+                                                    <CheckBox x:Name="ShowExtractRegionTextInWheelCheckBox"
+                                                              Grid.Row="1" Grid.Column="1"
+                                                              Content="提取文字"
+                                                              IsChecked="{Binding ShowExtractRegionTextInWheel}"
+                                                              Style="{StaticResource SettingsCheckBoxStyle}"
+                                                              AutomationProperties.Name="提取文字显示在轮盘"
                                                               VerticalAlignment="Center" />
                                                 </Grid>
                                             </StackPanel>

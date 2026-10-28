@@ -174,7 +174,8 @@ public sealed class TranslationRuntime : IDisposable
 
     public async Task TranslateSelectionAsync(
         ForegroundSnapshot fallbackTarget,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool useCapturedTarget = false)
     {
         ArgumentNullException.ThrowIfNull(fallbackTarget);
         if (!TryBeginInteractiveCapture(
@@ -189,7 +190,7 @@ public sealed class TranslationRuntime : IDisposable
 
         try
         {
-            var target = ResolveTarget(fallbackTarget);
+            var target = useCapturedTarget ? fallbackTarget : ResolveTarget(fallbackTarget);
             if (target.TopLevelHwnd == 0 || target.IsOwnInteractive)
             {
                 ShowRouteError("未检测到可翻译的前台应用。");
@@ -221,11 +222,18 @@ public sealed class TranslationRuntime : IDisposable
         }
     }
 
-    public async Task TranslateRegionAsync(
+    public Task TranslateRegionAsync(CancellationToken cancellationToken) =>
+        RunRegionOcrAsync(extractOnly: false, cancellationToken);
+
+    public Task ExtractRegionTextAsync(CancellationToken cancellationToken) =>
+        RunRegionOcrAsync(extractOnly: true, cancellationToken);
+
+    private async Task RunRegionOcrAsync(
+        bool extractOnly,
         CancellationToken cancellationToken)
     {
         if (!TryBeginInteractiveCapture(
-                "区域 OCR 翻译进行中，字幕采样已暂停。",
+                "区域文字识别进行中，字幕采样已暂停。",
                 deferSubtitleResume: true,
                 out var operation,
                 cancellationToken) ||
@@ -246,7 +254,8 @@ public sealed class TranslationRuntime : IDisposable
 
             await controller.RunAsync(
                 TranslationRoutePoint.GetCursorPosition(),
-                operation.Token).ConfigureAwait(false);
+                operation.Token,
+                extractOnly).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {

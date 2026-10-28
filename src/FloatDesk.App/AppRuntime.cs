@@ -85,20 +85,20 @@ internal sealed class AppRuntime : IDisposable
             _regionSelection,
             (eventName, properties) =>
                 _ = _logger.WriteAsync(eventName, properties));
+        _foreground = new ForegroundMonitor();
         _translationRuntime = new TranslationRuntime(
             _translationOverlay,
             _selectedTextReader,
             _translationProviders,
             _translationCredentials,
-            () => _current,
-            () => _wheelTranslationTarget ?? _lastExternal,
+            () => _foreground.Current,
+            () => _lastExternal,
             ocr: _ocr,
             regionCapture: _translationRegionCapture,
             settingsCoordinator: _settings,
             diagnostics: (eventName, properties) =>
                 _ = _logger.WriteAsync(eventName, properties),
             subtitleWarning: ShowSubtitleWarning);
-        _foreground = new ForegroundMonitor();
         _input = new InputLockEngine(
             new WindowsInputBackend(),
             new WindowsKeyboardSwitchGuard());
@@ -144,6 +144,7 @@ internal sealed class AppRuntime : IDisposable
             OnTranslateRegionRequested;
         _panel.TranslateSubtitlesRequested +=
             OnTranslateSubtitlesRequested;
+        _panel.ExtractRegionTextRequested += OnExtractRegionTextRequested;
         _translationOverlay.PauseResumeRequested +=
             OnToggleSubtitlePauseRequested;
         _translationOverlay.ReselectRegionRequested +=
@@ -191,7 +192,8 @@ internal sealed class AppRuntime : IDisposable
             ToggleOrbVisibility,
             toggleSubtitlePause: OnToggleSubtitlePauseRequested,
             reselectSubtitleRegion: OnReselectSubtitleRegionRequested,
-            stopSubtitles: OnStopSubtitlesRequested);
+            stopSubtitles: OnStopSubtitlesRequested,
+            extractRegionText: OnExtractRegionTextRequested);
         UpdateSubtitleTrayState();
 
         await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
@@ -430,6 +432,7 @@ internal sealed class AppRuntime : IDisposable
     {
         if (_panel is null || _orb is null || !_userVisible)
             return;
+        _wheelTranslationTarget = SelectTranslationTarget();
         _panel.Apply(_settings.Current, _manualEnglish, _input.Status.Reason);
         _panel.ShowNear(_orb, GetPhysicalBounds(_orb));
     }
@@ -439,7 +442,10 @@ internal sealed class AppRuntime : IDisposable
         if (_panel is null || _orb is null || !_userVisible)
             return;
         if (!panelWasOpenAtPress && !_panel.IsPanelOpen)
+        {
+            _wheelTranslationTarget = SelectTranslationTarget();
             _panel.Apply(_settings.Current, _manualEnglish, _input.Status.Reason);
+        }
         _panel.ToggleNear(
             _orb,
             GetPhysicalBounds(_orb),
@@ -454,7 +460,7 @@ internal sealed class AppRuntime : IDisposable
 
     private void OnTranslateSelectionRequested()
     {
-        var target = SelectTranslationTarget();
+        var target = _wheelTranslationTarget ?? SelectTranslationTarget();
         _wheelTranslationTarget = target;
         _panel?.HideAnimated();
         _ = TranslateWheelSelectionAsync(target);
@@ -465,7 +471,7 @@ internal sealed class AppRuntime : IDisposable
     {
         try
         {
-            await TranslateSelectionAsync(target);
+            await TranslateSelectionAsync(target, useCapturedTarget: true);
         }
         finally
         {
@@ -475,13 +481,15 @@ internal sealed class AppRuntime : IDisposable
     }
 
     private async Task TranslateSelectionAsync(
-        ForegroundSnapshot target)
+        ForegroundSnapshot target,
+        bool useCapturedTarget = false)
     {
         try
         {
             await _translationRuntime.TranslateSelectionAsync(
                 target,
-                _lifetime.Token);
+                _lifetime.Token,
+                useCapturedTarget);
         }
         catch (OperationCanceledException) when (
             _lifetime.IsCancellationRequested)
@@ -508,6 +516,27 @@ internal sealed class AppRuntime : IDisposable
         }
         catch (OperationCanceledException) when (
             _lifetime.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            UpdateSubtitleTrayState();
+        }
+    }
+
+    private void OnExtractRegionTextRequested()
+    {
+        _panel?.HideAnimated();
+        _ = ExtractRegionTextAsync();
+    }
+
+    private async Task ExtractRegionTextAsync()
+    {
+        try
+        {
+            await _translationRuntime.ExtractRegionTextAsync(_lifetime.Token);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
         {
         }
         finally
@@ -594,6 +623,9 @@ internal sealed class AppRuntime : IDisposable
 
     private ForegroundSnapshot SelectTranslationTarget()
     {
+        var observed = _foreground.Current;
+        if (observed.TopLevelHwnd != 0 && !observed.IsOwnInteractive)
+            return observed;
         if (_current.TopLevelHwnd != 0 &&
             !_current.IsOwnInteractive)
         {
@@ -650,6 +682,9 @@ internal sealed class AppRuntime : IDisposable
                 break;
             case HotkeyAction.ToggleSubtitles:
                 _ = ToggleSubtitlesAsync();
+                break;
+            case HotkeyAction.ExtractRegionText:
+                _ = ExtractRegionTextAsync();
                 break;
         }
     }

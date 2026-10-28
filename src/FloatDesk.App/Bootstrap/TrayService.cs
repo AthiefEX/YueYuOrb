@@ -24,7 +24,8 @@ public sealed class TrayService : IDisposable
         Action toggleOrb,
         Action toggleSubtitlePause,
         Action reselectSubtitleRegion,
-        Action stopSubtitles)
+        Action stopSubtitles,
+        Action? extractRegionText = null)
     {
         _synchronizationContext = SynchronizationContext.Current;
         _createdThreadId = Environment.CurrentManagedThreadId;
@@ -36,6 +37,8 @@ public sealed class TrayService : IDisposable
         menu.Items.Add("记事本", null, (_, _) => openNotes());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("框选截图", null, (_, _) => captureRegion());
+        if (extractRegionText is not null)
+            menu.Items.Add("框选提取文字", null, (_, _) => extractRegionText());
         _subtitlePauseItem = new ToolStripMenuItem(
             "暂停字幕翻译",
             null,

@@ -559,11 +559,117 @@ public sealed class WindowsScreenOcrServiceTests
         Assert.Equal(0, engine.CallCount);
     }
 
+    [Fact]
+    public async Task EmptySmallFrameRetriesOnceWithBorderAndSameEngine()
+    {
+        var engine = new SmallTextOcrEngine();
+        var backend = new FakeOcrBackend
+        {
+            ProfileEngine = engine
+        };
+        using var service = new WindowsScreenOcrService(backend);
+        using var frame = Frame(300, 24, 1204);
+        var original = frame.Bgra32.ToArray();
+
+        var result = await service.RecognizeAsync(frame, null, CancellationToken.None);
+
+        Assert.Equal("recovered", result.Text);
+        Assert.Null(result.ErrorCode);
+        Assert.Equal(1, backend.ProfileCallCount);
+        Assert.Equal(2, engine.Bitmaps.Count);
+        Assert.Equal(300, engine.Bitmaps[0].Width);
+        Assert.Equal(24, engine.Bitmaps[0].Height);
+        var retry = engine.Bitmaps[1];
+        Assert.Equal(632, retry.Width);
+        Assert.Equal(80, retry.Height);
+        Assert.Equal(new byte[] { 1, 0, 0, 255 }, retry.Bgra32[..4]);
+        var firstPixel = (16 * retry.Width + 16) * 4;
+        Assert.Equal(new byte[] { 1, 0, 0, 255 }, retry.Bgra32[firstPixel..(firstPixel + 4)]);
+        Assert.Equal(original, frame.Bgra32.ToArray());
+    }
+
+    [Theory]
+    [InlineData(300, 24, 4096, 2)]
+    [InlineData(300, 24, 600, 1)]
+    [InlineData(300, 200, 4096, 1)]
+    [InlineData(1200, 24, 4096, 1)]
+    public async Task EmptyRecognitionHasBoundedSmallImageRetry(
+        int width, int height, int maxDimension, int expectedCalls)
+    {
+        var engine = new FakeOcrEngine([]);
+        var backend = new FakeOcrBackend { ProfileEngine = engine, MaxImageDimension = maxDimension };
+        using var service = new WindowsScreenOcrService(backend);
+        using var frame = Frame(width, height, width * 4);
+
+        var result = await service.RecognizeAsync(frame, null, CancellationToken.None);
+
+        Assert.Equal("OcrNoText", result.ErrorCode);
+        Assert.Null(result.Text);
+        Assert.Equal(expectedCalls, engine.CallCount);
+    }
+
+    [Fact]
+    public async Task SuccessfulSmallSubtitleFramesOnlyRunOcrOnceEach()
+    {
+        var engine = new FakeOcrEngine(["subtitle"]);
+        var backend = new FakeOcrBackend { ProfileEngine = engine };
+        using var service = new WindowsScreenOcrService(backend);
+        using var frame = Frame(300, 24, 1200);
+
+        for (var i = 0; i < 3; i++)
+            Assert.Equal("subtitle", (await service.RecognizeAsync(frame, null, CancellationToken.None)).Text);
+
+        Assert.Equal(3, engine.CallCount);
+        Assert.Equal(1, backend.ProfileCallCount);
+    }
+
+    [Fact]
+    public async Task EmptyConfiguredLanguageDoesNotFallBackToOtherLanguages()
+    {
+        var configured = new FakeOcrEngine([]);
+        var other = new FakeOcrEngine(["other"]);
+        var backend = new FakeOcrBackend
+        {
+            AvailableLanguages = [new("zh-Hans", "Chinese"), new("en-US", "English")],
+            ProfileEngine = other,
+            LanguageEngines = new Dictionary<string, FakeOcrEngine>
+            {
+                ["zh-Hans"] = configured,
+                ["en-US"] = other
+            }
+        };
+        using var service = new WindowsScreenOcrService(backend);
+        using var frame = Frame(300, 24, 1200);
+
+        var result = await service.RecognizeAsync(frame, " zh-Hans ", CancellationToken.None);
+
+        Assert.Equal("OcrNoText", result.ErrorCode);
+        Assert.Equal(2, configured.CallCount);
+        Assert.Equal(0, other.CallCount);
+        Assert.Equal(0, backend.ProfileCallCount);
+        Assert.Equal(["zh-Hans"], backend.RequestedLanguages);
+    }
+
     private static CaptureFrame NonBlankFrame() =>
         new(
             new PixelRect(0, 0, 1, 1),
             4,
             [1, 2, 3, 255]);
+
+    private sealed class SmallTextOcrEngine : IWindowsOcrEngine
+    {
+        public List<WindowsOcrBitmap> Bitmaps { get; } = [];
+
+        public Task<IReadOnlyList<string>> RecognizeLinesAsync(WindowsOcrBitmap bitmap, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Bitmaps.Add(bitmap);
+            return Task.FromResult<IReadOnlyList<string>>(
+                bitmap.Width >= 600 && bitmap.Height >= 48 ? ["recovered"] : []);
+        }
+
+        public void Dispose() { }
+    }
 
     private static CaptureFrame Frame(int width, int height, int stride)
     {

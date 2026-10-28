@@ -25,7 +25,8 @@ public sealed class OcrTranslationController
 
     public async Task RunAsync(
         PixelPoint fallbackAnchor,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool extractOnly = false)
     {
         var operation = _host.ShowInteractiveStatus(
             fallbackAnchor,
@@ -87,6 +88,12 @@ public sealed class OcrTranslationController
                 _host.ShowError(
                     capturedOperation,
                     ResolveOcrFailure("OcrNoText"));
+                return;
+            }
+
+            if (extractOnly)
+            {
+                _host.ShowExtractedText(capturedOperation, recognizedText);
                 return;
             }
 

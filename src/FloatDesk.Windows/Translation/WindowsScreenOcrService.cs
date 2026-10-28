@@ -386,6 +386,48 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
         return target;
     }
 
+    private static WindowsOcrBitmap? PrepareSmallImageRetry(
+        WindowsOcrBitmap bitmap,
+        int maxImageDimension,
+        CancellationToken cancellationToken)
+    {
+        // Windows OCR can miss clear, tightly cropped small text. Retry only
+        // empty small images, leaving successful subtitle frames at one call.
+        const int scale = 2;
+        const int padding = 16;
+        if (bitmap.Width > 1024 || bitmap.Height > 128)
+            return null;
+        var width = bitmap.Width * scale + padding * 2;
+        var height = bitmap.Height * scale + padding * 2;
+        if (width > maxImageDimension || height > maxImageDimension)
+            return null;
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var pixels = new byte[checked(width * height * 4)];
+        // Match the capture's corner background for both light and dark text.
+        for (var y = 0; y < height; y++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            for (var x = 0; x < width; x++)
+            {
+                var source = 0;
+                if (x >= padding && x < width - padding &&
+                    y >= padding && y < height - padding)
+                {
+                    source = (((y - padding) / scale) * bitmap.Width +
+                              (x - padding) / scale) * 4;
+                }
+                var target = (y * width + x) * 4;
+                pixels[target] = bitmap.Bgra32[source];
+                pixels[target + 1] = bitmap.Bgra32[source + 1];
+                pixels[target + 2] = bitmap.Bgra32[source + 2];
+                pixels[target + 3] = 255;
+            }
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        return new WindowsOcrBitmap(width, height, pixels);
+    }
+
     private void WorkerLoop()
     {
         try
@@ -434,12 +476,21 @@ public sealed class WindowsScreenOcrService : IScreenOcrService, IDisposable
                         maxImageDimension,
                         preparationCancellation.Token);
                     preparationCancellation.Token.ThrowIfCancellationRequested();
-                    var result = bitmap.Bgra32.All(static value => value == 0)
+                    var isBlank = bitmap.Bgra32.All(static value => value == 0);
+                    var result = isBlank
                         ? new ScreenOcrResult(
                             null,
                             "OcrNoText",
                             "未识别到文字。")
                         : RecognizeWork(work, bitmap);
+                    if (!isBlank && result.ErrorCode == "OcrNoText" &&
+                        PrepareSmallImageRetry(
+                            bitmap,
+                            maxImageDimension,
+                            preparationCancellation.Token) is { } retry)
+                    {
+                        result = RecognizeWork(work, retry);
+                    }
                     work.Completion.TrySetResult(result);
                 }
                 catch (ObjectDisposedException exception)

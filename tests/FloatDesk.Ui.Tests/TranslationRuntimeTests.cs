@@ -11,6 +11,45 @@ namespace FloatDesk.Ui.Tests;
 
 public sealed class TranslationRuntimeTests
 {
+    [Fact]
+    public async Task RegionExtractionWorksWithoutCustomProviderCredentials()
+    {
+        var host = new RecordingRouteHost();
+        var factory = new RecordingProviderFactory(new StaticTranslationProvider("unused"));
+        var frame = new CaptureFrame(new PixelRect(0, 0, 2, 2), 8, new byte[16]);
+        using var runtime = CreateRuntime(host, new MutableCredentialStore(), factory,
+            ocr: new RecordingOcr(), regionCapture: new StubRegionCapture(
+                new CapturedTranslationRegion(frame, new PixelRect(20, 30, 2, 2))));
+        runtime.ApplySettings(CustomProviderSettings());
+
+        await runtime.ExtractRegionTextAsync(CancellationToken.None);
+
+        Assert.Equal("Recognized text", host.LastResult?.TranslatedText);
+        Assert.Equal(0, host.TranslateCount);
+        Assert.Equal(0, factory.CreateCount);
+        Assert.Throws<ObjectDisposedException>(() => _ = frame.Bgra32);
+    }
+
+    [Fact]
+    public async Task CapturedWheelTargetIsNotReplacedByLaterForeground()
+    {
+        ForegroundSnapshot? actual = null;
+        var reader = new DelegateSelectedTextReader((target, _) =>
+        {
+            actual = target;
+            return Task.FromResult(SelectedTextReadResult.Ok("Hello"));
+        });
+        using var runtime = CreateRuntime(new RecordingRouteHost(), new MutableCredentialStore(),
+            new RecordingProviderFactory(new StaticTranslationProvider("result")), reader,
+            currentForeground: () => ExternalTarget with { TopLevelHwnd = (nint)0x9999 },
+            lastExternal: () => ExternalTarget with { TopLevelHwnd = (nint)0xAAAA });
+        runtime.ApplySettings(AppSettings.CreateDefault());
+
+        await runtime.TranslateSelectionAsync(ExternalTarget, CancellationToken.None, useCapturedTarget: true);
+
+        Assert.Equal(ExternalTarget, actual);
+    }
+
     private static readonly ForegroundSnapshot ExternalTarget = new(
         1,
         (nint)0x1234,

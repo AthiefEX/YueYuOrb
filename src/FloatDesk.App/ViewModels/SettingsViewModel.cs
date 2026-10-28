@@ -61,6 +61,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _showTranslateSelectionInWheel = true;
     [ObservableProperty] private bool _showTranslateRegionInWheel = true;
     [ObservableProperty] private bool _showTranslateSubtitlesInWheel = true;
+    [ObservableProperty] private bool _showExtractRegionTextInWheel = true;
     [ObservableProperty] private bool _showLauncherDock = true;
     [ObservableProperty] private bool _alwaysOnTop;
     [ObservableProperty] private int _fullscreenPolicyIndex;
@@ -84,6 +85,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _translationSelectionHotkey = "Ctrl+Alt+T";
     [ObservableProperty] private string _translationRegionHotkey = "Ctrl+Alt+O";
     [ObservableProperty] private string _subtitlesHotkey = "Ctrl+Alt+L";
+    [ObservableProperty] private string _extractRegionTextHotkey = "Ctrl+Alt+E";
     [ObservableProperty] private int _translationProviderIndex;
     [ObservableProperty] private int _translationSourceLanguageIndex;
     [ObservableProperty] private int _translationTargetLanguageIndex;
@@ -147,6 +149,8 @@ public partial class SettingsViewModel : ObservableObject
                 wheelActions.Contains(WheelActionKind.TranslateRegion),
             ShowTranslateSubtitlesInWheel =
                 wheelActions.Contains(WheelActionKind.TranslateSubtitles),
+            ShowExtractRegionTextInWheel =
+                wheelActions.Contains(WheelActionKind.ExtractRegionText),
             ShowLauncherDock = settings.ShowLauncherDock,
             AlwaysOnTop = settings.Overlay.AlwaysOnTop,
             FullscreenPolicyIndex = (int)settings.Overlay.FullscreenPolicy,
@@ -204,6 +208,9 @@ public partial class SettingsViewModel : ObservableObject
             FormatHotkey(settings.Hotkeys.GetValueOrDefault(HotkeyAction.TranslateRegion));
         vm.SubtitlesHotkey =
             FormatHotkey(settings.Hotkeys.GetValueOrDefault(HotkeyAction.ToggleSubtitles));
+        vm.ExtractRegionTextHotkey = FormatHotkey(settings.Hotkeys.GetValueOrDefault(
+            HotkeyAction.ExtractRegionText,
+            AppSettings.CreateDefault().Hotkeys[HotkeyAction.ExtractRegionText]));
         vm._baseline = settings;
         return vm;
     }
@@ -330,6 +337,7 @@ public partial class SettingsViewModel : ObservableObject
         MergeHotkey(HotkeyAction.TranslateSelection, TranslationSelectionHotkey);
         MergeHotkey(HotkeyAction.TranslateRegion, TranslationRegionHotkey);
         MergeHotkey(HotkeyAction.ToggleSubtitles, SubtitlesHotkey);
+        MergeHotkey(HotkeyAction.ExtractRegionText, ExtractRegionTextHotkey);
 
         return latest with
         {
@@ -493,6 +501,7 @@ public partial class SettingsViewModel : ObservableObject
         Add(ShowTranslateSelectionInWheel, WheelActionKind.TranslateSelection);
         Add(ShowTranslateRegionInWheel, WheelActionKind.TranslateRegion);
         Add(ShowTranslateSubtitlesInWheel, WheelActionKind.TranslateSubtitles);
+        Add(ShowExtractRegionTextInWheel, WheelActionKind.ExtractRegionText);
         return actions.ToArray();
 
         void Add(bool enabled, WheelActionKind kind)
@@ -541,6 +550,12 @@ public partial class SettingsViewModel : ObservableObject
         {
             candidate = latest;
             error = "字幕翻译快捷键格式无效，请使用 Ctrl+Alt+L 这类格式。";
+            return false;
+        }
+        if (!TryParseHotkey(ExtractRegionTextHotkey, out _))
+        {
+            candidate = latest;
+            error = "提取文字快捷键格式无效，请使用 Ctrl+Alt+E 这类格式。";
             return false;
         }
         if (CaptureAutoSave &&

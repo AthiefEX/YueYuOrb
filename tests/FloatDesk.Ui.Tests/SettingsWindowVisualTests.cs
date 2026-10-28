@@ -458,6 +458,7 @@ public sealed class SettingsWindowVisualTests
                      "_translationRuntime.PauseForCapture",
                      "_translationRuntime.ResumeAfterCapture",
                      "new TranslationRuntime(",
+                     "() => _foreground.Current,",
                      "new SelectedTextReader()",
                      "new TranslationOverlayWindow()"
                  })

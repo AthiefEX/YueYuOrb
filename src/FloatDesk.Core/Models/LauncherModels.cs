@@ -12,7 +12,8 @@ public enum WheelActionKind
     Settings,
     TranslateSelection,
     TranslateRegion,
-    TranslateSubtitles
+    TranslateSubtitles,
+    ExtractRegionText
 }
 
 public sealed record LauncherItem(

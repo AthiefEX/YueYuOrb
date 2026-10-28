@@ -77,7 +77,8 @@ public sealed class QuickPanelWindowLayoutTests
         "SettingsButton",
         "TranslateSelectionButton",
         "TranslateRegionButton",
-        "TranslateSubtitlesButton"
+        "TranslateSubtitlesButton",
+        "ExtractRegionTextButton"
     ];
     private static readonly string[] OrbitNames =
     [
@@ -365,7 +366,7 @@ public sealed class QuickPanelWindowLayoutTests
 
                 Assert.Equal(Visibility.Visible, scroller.Visibility);
                 Assert.Equal(
-                    26,
+                    FixedActionNames.Length + 16,
                     canvas.Children
                         .OfType<Button>()
                         .Count(button => button.Visibility == Visibility.Visible));
@@ -908,7 +909,7 @@ public sealed class QuickPanelWindowLayoutTests
                     .Where(button => button.Visibility == Visibility.Visible)
                     .ToArray();
 
-                Assert.Equal(26, wheelButtons.Length);
+                Assert.Equal(FixedActionNames.Length + 16, wheelButtons.Length);
                 Assert.Contains(
                     wheelButtons,
                     button => ReferenceEquals(
@@ -1060,6 +1061,7 @@ public sealed class QuickPanelWindowLayoutTests
     [InlineData(WheelActionKind.TranslateSelection, false)]
     [InlineData(WheelActionKind.TranslateRegion, false)]
     [InlineData(WheelActionKind.TranslateSubtitles, false)]
+    [InlineData(WheelActionKind.ExtractRegionText, false)]
     public async Task DisabledBuiltInWheelActionIsHidden(
         WheelActionKind action,
         bool enabled)
@@ -1086,7 +1088,7 @@ public sealed class QuickPanelWindowLayoutTests
                     .OfType<Button>()
                     .Where(button => button.Visibility == Visibility.Visible)
                     .ToArray();
-                Assert.Equal(9, visibleActions.Length);
+                Assert.Equal(FixedActionNames.Length - 1, visibleActions.Length);
                 Assert.DoesNotContain(
                     visibleActions,
                     button => button.Name == action switch
@@ -1104,6 +1106,8 @@ public sealed class QuickPanelWindowLayoutTests
                             "TranslateRegionButton",
                         WheelActionKind.TranslateSubtitles =>
                             "TranslateSubtitlesButton",
+                        WheelActionKind.ExtractRegionText =>
+                            "ExtractRegionTextButton",
                         _ => throw new ArgumentOutOfRangeException(nameof(action))
                     });
             }

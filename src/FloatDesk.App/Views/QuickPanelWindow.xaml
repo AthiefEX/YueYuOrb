@@ -619,6 +619,47 @@
                 </Grid>
             </Button>
 
+            <Button x:Name="ExtractRegionTextButton"
+                    Width="196"
+                    Height="48"
+                    Style="{StaticResource RadialActionButtonStyle}"
+                    AutomationProperties.Name="提取文字"
+                    Click="OnExtractRegionTextClick">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="50" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Width="42"
+                            Height="42"
+                            CornerRadius="21"
+                            Background="{StaticResource MenuGreenBrush}"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
+                            Effect="{StaticResource ActionShadow}">
+                        <TextBlock Text="&#xE8A5;"
+                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                   Foreground="White"
+                                   FontSize="20"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                    <Border Grid.Column="1"
+                            Margin="6,3,0,3"
+                            Background="{DynamicResource MenuLabelBrush}"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
+                            CornerRadius="17"
+                            Padding="14,0">
+                        <TextBlock Text="提取文字"
+                                   Foreground="{DynamicResource MenuStrongBrush}"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                </Grid>
+            </Button>
+
             <Button x:Name="TranslateSubtitlesButton"
                     Width="196"
                     Height="48"

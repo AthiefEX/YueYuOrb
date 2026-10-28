@@ -54,6 +54,9 @@ public interface ITranslationRouteHost
         TranslationRouteHandle operation,
         TranslationResponse response);
 
+    void ShowExtractedText(TranslationRouteHandle operation, string text) =>
+        ShowResult(operation, TranslationResponse.Ok("", text, "", "本地 OCR"));
+
     void ShowError(
         TranslationRouteHandle operation,
         string message);
@@ -228,6 +231,9 @@ public sealed class TranslationRouteHost : ITranslationRouteHost
             operation.Operation,
             message,
             operation.Anchor);
+
+    public void ShowExtractedText(TranslationRouteHandle operation, string text) =>
+        _overlay.ShowExtractedText(operation.Operation, text, operation.Anchor);
 
     public TranslationSubtitlePlacementStatus ShowSubtitleText(
         TranslationRouteHandle operation,

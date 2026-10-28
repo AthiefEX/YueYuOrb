@@ -8,6 +8,23 @@ namespace FloatDesk.Ui.Tests;
 public sealed class OcrTranslationControllerTests
 {
     [Fact]
+    public async Task ExtractOnlyReturnsRecognizedTextWithoutCallingTranslation()
+    {
+        var frame = SolidFrame(0x40);
+        var host = new RecordingRouteHost();
+        var controller = new OcrTranslationController(
+            new FakeOcr(new ScreenOcrResult("  extracted text  ", null, null)),
+            new FakeRegionCapture(new CapturedTranslationRegion(frame, new PixelRect(10, 20, 200, 80))),
+            host);
+
+        await controller.RunAsync(new PixelPoint(10, 20), CancellationToken.None, extractOnly: true);
+
+        Assert.Equal("extracted text", host.LastExtractedText);
+        Assert.Equal(0, host.TranslateCount);
+        Assert.Throws<ObjectDisposedException>(() => _ = frame.Bgra32);
+    }
+
+    [Fact]
     public async Task RecognizedTextIsTheOnlyContentSentToTranslation()
     {
         var frame = SolidFrame(0x40);
@@ -153,6 +170,10 @@ public sealed class OcrTranslationControllerTests
         public PixelPoint LastResultAnchor { get; private set; }
         public int TranslateCount { get; private set; }
         public int DismissCount { get; private set; }
+        public string? LastExtractedText { get; private set; }
+
+        public void ShowExtractedText(TranslationRouteHandle operation, string text) =>
+            LastExtractedText = text;
 
         public void ApplySettings(AppSettings settings)
         {

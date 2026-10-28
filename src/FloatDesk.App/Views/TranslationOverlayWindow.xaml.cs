@@ -46,8 +46,8 @@ public partial class TranslationOverlayWindow : Window
     private const int SM_CYSCREEN = 1;
     private const double AnchorGap = 14;
     private const double WorkAreaMargin = 8;
-    private const double DefaultOverlayWidth = 480;
-    private const double MinimumInteractiveWidth = 340;
+    private const double DefaultOverlayWidth = 420;
+    private const double MinimumInteractiveWidth = 280;
     private const double MaximumSubtitleWidth = 720;
 
     internal enum SubtitleTargetKind
@@ -64,6 +64,8 @@ public partial class TranslationOverlayWindow : Window
     private bool _subtitlePaused;
     private bool _canReselect;
     private bool _isDragging;
+    private bool _interactivePositionUserSet;
+    private bool _allowResultActivation;
     private bool _dismissed;
     private bool _isClosed;
     private long _activeOperationGeneration;
@@ -228,6 +230,7 @@ public partial class TranslationOverlayWindow : Window
             if (!_isSubtitleMode)
                 ClearTranslationContent();
             StatusTextBlock.Text = status ?? "";
+            StatusTextBlock.Visibility = Visibility.Visible;
             ShowAt(operation, anchor, subtitleMode: _isSubtitleMode);
         });
 
@@ -261,10 +264,7 @@ public partial class TranslationOverlayWindow : Window
             }
 
             OriginalTextBlock.Text = response.OriginalText ?? "";
-            OriginalPanel.Visibility =
-                string.IsNullOrWhiteSpace(response.OriginalText)
-                    ? Visibility.Collapsed
-                    : Visibility.Visible;
+            OriginalPanel.Visibility = Visibility.Collapsed;
             MetadataTextBlock.Text = BuildMetadata(response);
 
             if (response.Success &&
@@ -273,6 +273,7 @@ public partial class TranslationOverlayWindow : Window
                 TranslatedTextBlock.Text = response.TranslatedText;
                 TranslatedPanel.Visibility = Visibility.Visible;
                 StatusTextBlock.Text = "翻译完成";
+                StatusTextBlock.Visibility = Visibility.Collapsed;
                 CopyButton.IsEnabled = true;
             }
             else
@@ -280,10 +281,24 @@ public partial class TranslationOverlayWindow : Window
                 TranslatedTextBlock.Text = "";
                 TranslatedPanel.Visibility = Visibility.Collapsed;
                 StatusTextBlock.Text = ResolveFailureMessage(response);
+                StatusTextBlock.Visibility = Visibility.Visible;
                 CopyButton.IsEnabled = false;
             }
 
             ShowAt(operation, anchor, subtitleMode: _isSubtitleMode);
+        });
+    }
+
+    public void ShowExtractedText(
+        TranslationOverlayOperationToken operation,
+        string text,
+        PixelPoint anchor)
+    {
+        ShowResult(operation, TranslationResponse.Ok("", text, "", "本地 OCR"), anchor);
+        RunOnUiThread(() =>
+        {
+            if (IsCurrentOperation(operation))
+                StatusTextBlock.Text = "文字已提取";
         });
     }
 
@@ -310,6 +325,7 @@ public partial class TranslationOverlayWindow : Window
             TranslatedPanel.Visibility = Visibility.Collapsed;
             CopyButton.IsEnabled = false;
             StatusTextBlock.Text = message ?? "翻译失败。";
+            StatusTextBlock.Visibility = Visibility.Visible;
             ShowAt(operation, anchor, subtitleMode: _isSubtitleMode);
         });
 
@@ -598,7 +614,7 @@ public partial class TranslationOverlayWindow : Window
     private void ApplyFullCardPresentation()
     {
         ApplyClickThrough(clickThrough: false);
-        CardBackdrop.Visibility = Visibility.Visible;
+        CardBackdrop.Visibility = Visibility.Collapsed;
         TransitionLayer.Visibility = Visibility.Visible;
         SubtitleSurface.Visibility = Visibility.Collapsed;
         SubtitleControlBar.Visibility = Visibility.Collapsed;
@@ -607,10 +623,10 @@ public partial class TranslationOverlayWindow : Window
             "SettingsCardBrush");
         OverlayCard.SetResourceReference(
             Border.BorderBrushProperty,
-            "SettingsAccentOutlineBrush");
+            "SettingsLineBrush");
         OverlayCard.BorderThickness = new Thickness(1);
         OverlayCard.Padding = new Thickness(1);
-        OverlayCard.CornerRadius = new CornerRadius(22);
+        OverlayCard.CornerRadius = new CornerRadius(10);
         MinWidth = MinimumInteractiveWidth;
         MaxWidth = MaximumSubtitleWidth;
         Width = DefaultOverlayWidth;
@@ -819,6 +835,8 @@ public partial class TranslationOverlayWindow : Window
         }
 
         _isSubtitleMode = false;
+        _interactivePositionUserSet = false;
+        _allowResultActivation = false;
         ApplyClickThrough(clickThrough: false);
         _subtitlePaused = false;
         _canReselect = false;
@@ -971,21 +989,23 @@ public partial class TranslationOverlayWindow : Window
             if (handle == 0 || !TryGetWindowBounds(handle, out var bounds))
                 return;
 
-            var monitor = ResolveAnchorMonitor(anchor);
+            var monitor = ResolveAnchorMonitor(
+                _interactivePositionUserSet ? bounds.Location : anchor);
             if (monitor is null)
                 return;
 
-            var target = GetAnchorPosition(bounds, monitor.WorkArea, anchor);
+            var target = _interactivePositionUserSet
+                ? ClampToWorkArea(bounds.Location, bounds.Size, monitor.WorkArea)
+                : GetAnchorPosition(bounds, monitor.WorkArea, anchor);
             MoveWindow(handle, target);
 
             if (TryGetWindowBounds(handle, out var moved) &&
                 (moved.Width != bounds.Width ||
                  moved.Height != bounds.Height))
             {
-                target = GetAnchorPosition(
-                    moved,
-                    monitor.WorkArea,
-                    anchor);
+                target = _interactivePositionUserSet
+                    ? ClampToWorkArea(moved.Location, moved.Size, monitor.WorkArea)
+                    : GetAnchorPosition(moved, monitor.WorkArea, anchor);
                 MoveWindow(handle, target);
             }
         }
@@ -1292,6 +1312,7 @@ public partial class TranslationOverlayWindow : Window
             InvalidOperationException)
         {
             StatusTextBlock.Text = "无法访问剪贴板，请稍后重试。";
+            StatusTextBlock.Visibility = Visibility.Visible;
             return;
         }
 
@@ -1345,22 +1366,36 @@ public partial class TranslationOverlayWindow : Window
         object sender,
         MouseButtonEventArgs e)
     {
-        if (!_isSubtitleMode ||
-            e.ChangedButton != MouseButton.Left ||
+        if (e.ChangedButton != MouseButton.Left)
+            return;
+        for (var element = e.OriginalSource as DependencyObject;
+             element is not null && !ReferenceEquals(element, TitleBar);
+             element = VisualTreeHelper.GetParent(element))
+        {
+            if (element is System.Windows.Controls.Primitives.ButtonBase)
+                return;
+        }
+        var pointer = PointToScreen(e.GetPosition(this));
+        if (BeginInteractiveDrag(new PixelPoint((int)Math.Round(pointer.X), (int)Math.Round(pointer.Y))))
+            e.Handled = true;
+    }
+
+    internal bool BeginInteractiveDrag(PixelPoint pointer)
+    {
+        if (_isSubtitleMode ||
             !TryGetWindowBounds(
                 new WindowInteropHelper(this).Handle,
                 out var window))
         {
-            return;
+            return false;
         }
 
-        var pointer = PointToScreen(e.GetPosition(this));
         _dragPointerOffset = new Point(
             pointer.X - window.Left,
             pointer.Y - window.Top);
         _isDragging = true;
         TitleBar.CaptureMouse();
-        e.Handled = true;
+        return true;
     }
 
     private void OnTitleBarMouseMove(
@@ -1374,6 +1409,14 @@ public partial class TranslationOverlayWindow : Window
         }
 
         var pointer = PointToScreen(e.GetPosition(this));
+        MoveInteractiveDrag(new PixelPoint((int)Math.Round(pointer.X), (int)Math.Round(pointer.Y)));
+        e.Handled = true;
+    }
+
+    internal void MoveInteractiveDrag(PixelPoint pointer)
+    {
+        if (!_isDragging || _isSubtitleMode)
+            return;
         var handle = new WindowInteropHelper(this).Handle;
         if (handle == 0 ||
             !TryGetWindowBounds(handle, out var current))
@@ -1381,10 +1424,7 @@ public partial class TranslationOverlayWindow : Window
             return;
         }
 
-        var monitor = ResolveAnchorMonitor(
-            new PixelPoint(
-                (int)Math.Round(pointer.X),
-                (int)Math.Round(pointer.Y)));
+        var monitor = ResolveAnchorMonitor(pointer);
         if (monitor is null)
             return;
         var target = ClampToWorkArea(
@@ -1403,11 +1443,10 @@ public partial class TranslationOverlayWindow : Window
                     current.Height),
                 captureRegion))
         {
-            e.Handled = true;
             return;
         }
         MoveWindow(handle, target);
-        e.Handled = true;
+        _interactivePositionUserSet = true;
     }
 
     private void OnTitleBarMouseLeftButtonUp(
@@ -1416,9 +1455,27 @@ public partial class TranslationOverlayWindow : Window
     {
         if (!_isDragging)
             return;
+        EndInteractiveDrag();
+        e.Handled = true;
+    }
+
+    internal void EndInteractiveDrag()
+    {
         _isDragging = false;
         TitleBar.ReleaseMouseCapture();
-        e.Handled = true;
+    }
+
+    private void OnTitleBarLostMouseCapture(object sender, MouseEventArgs e) =>
+        _isDragging = false;
+
+    private void OnResultPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_isSubtitleMode || string.IsNullOrEmpty(TranslatedTextBlock.Text))
+            return;
+        _allowResultActivation = true;
+        ApplyClickThrough(clickThrough: false);
+        Activate();
+        TranslatedTextBlock.Focus();
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)
@@ -1427,7 +1484,7 @@ public partial class TranslationOverlayWindow : Window
         if (handle == 0)
             return;
 
-        ApplyExtendedWindowStyle(handle, _isClickThrough);
+        ApplyExtendedWindowStyle(handle, _isClickThrough, _allowResultActivation);
         IsCaptureExcluded = WindowCaptureExclusion.TryExclude(handle);
         if (_isSubtitleMode && IsVisible)
             PositionWindow(subtitleMode: true, default);
@@ -1472,15 +1529,19 @@ public partial class TranslationOverlayWindow : Window
         _isClickThrough = clickThrough;
         var handle = new WindowInteropHelper(this).Handle;
         if (handle != 0)
-            ApplyExtendedWindowStyle(handle, clickThrough);
+            ApplyExtendedWindowStyle(handle, clickThrough, _allowResultActivation);
     }
 
     private static void ApplyExtendedWindowStyle(
         nint handle,
-        bool clickThrough)
+        bool clickThrough,
+        bool allowActivation = false)
     {
         var style = GetWindowLongPtr(handle, GWL_EXSTYLE).ToInt64();
-        style |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+        style |= WS_EX_TOOLWINDOW;
+        style = allowActivation && !clickThrough
+            ? style & ~WS_EX_NOACTIVATE
+            : style | WS_EX_NOACTIVATE;
         style = clickThrough
             ? style | WS_EX_TRANSPARENT
             : style & ~WS_EX_TRANSPARENT;

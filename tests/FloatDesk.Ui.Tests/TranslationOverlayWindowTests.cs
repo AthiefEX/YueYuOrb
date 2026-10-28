@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Interop;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -19,6 +20,90 @@ namespace FloatDesk.Ui.Tests;
 [Collection("WPF")]
 public sealed class TranslationOverlayWindowTests
 {
+    [Fact]
+    public void ClickingResultEnablesCopyActivationAndNextOperationRestoresNoActivate()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                var operation = window.BeginOperation();
+                window.ShowResult(operation, TranslationResponse.Ok("source", "copy result", "en", "provider"),
+                    new PixelPoint(40, 40));
+                var handle = new WindowInteropHelper(window).Handle;
+                Assert.NotEqual(0, GetWindowLongPtr(handle, -20).ToInt64() & 0x08000000L);
+                var text = Assert.IsType<TextBox>(window.FindName("TranslatedTextBlock"));
+
+                text.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
+                {
+                    RoutedEvent = Mouse.PreviewMouseDownEvent
+                });
+
+                Assert.Equal(0, GetWindowLongPtr(handle, -20).ToInt64() & 0x08000000L);
+                text.SelectAll();
+                Assert.True(ApplicationCommands.Copy.CanExecute(null, text));
+                window.BeginOperation();
+                Assert.NotEqual(0, GetWindowLongPtr(handle, -20).ToInt64() & 0x08000000L);
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [Fact]
+    public void CompactResultTextCanBeSelectedAndOriginalDecorationStaysHidden()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                var operation = window.BeginOperation();
+                window.ShowResult(operation, TranslationResponse.Ok("source", "copy this result", "en", "provider"),
+                    new PixelPoint(40, 40));
+                var text = Assert.IsType<TextBox>(window.FindName("TranslatedTextBlock"));
+                Assert.True(text.IsReadOnly);
+                text.Select(0, 4);
+                Assert.Equal("copy", text.SelectedText);
+                Assert.Equal(Visibility.Collapsed, Assert.IsType<Border>(window.FindName("OriginalPanel")).Visibility);
+                Assert.Equal(Visibility.Collapsed, Assert.IsType<TextBlock>(window.FindName("MetadataTextBlock")).Visibility);
+                Assert.False(window.IsClickThrough);
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [Fact]
+    public void InteractiveResultCanBeDraggedWithoutResultUpdateSnappingItBack()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                var work = PrimaryWorkArea();
+                var anchor = new PixelPoint(work.Left + 20, work.Top + 20);
+                var operation = window.BeginOperation();
+                window.ShowStatus(operation, "working", anchor);
+                var handle = new WindowInteropHelper(window).Handle;
+                var before = DesktopGeometry.GetVisibleWindowBounds(handle);
+
+                Assert.True(window.BeginInteractiveDrag(new PixelPoint(before.Left + 20, before.Top + 10)));
+                window.MoveInteractiveDrag(new PixelPoint(before.Left + 90, before.Top + 60));
+                window.EndInteractiveDrag();
+                var moved = DesktopGeometry.GetVisibleWindowBounds(handle);
+                Assert.Equal(before.Left + 70, moved.Left);
+                Assert.Equal(before.Top + 50, moved.Top);
+
+                window.ShowResult(operation, TranslationResponse.Ok("source", "result", "en", "provider"), anchor);
+                var after = DesktopGeometry.GetVisibleWindowBounds(handle);
+                Assert.Equal(moved.Left, after.Left);
+                Assert.Equal(moved.Top, after.Top);
+            }
+            finally { window.Close(); }
+        });
+    }
+
     [Fact]
     public void ResultIsInactiveAndClampedToTheNearestWorkArea()
     {
@@ -152,7 +237,7 @@ public sealed class TranslationOverlayWindowTests
                 Assert.Equal(0.78, window.Opacity, precision: 2);
                 Assert.Equal(
                     26,
-                    Assert.IsType<TextBlock>(
+                    Assert.IsType<TextBox>(
                         window.FindName("TranslatedTextBlock")).FontSize);
             }
             finally
@@ -613,7 +698,7 @@ public sealed class TranslationOverlayWindowTests
                 Assert.Equal("你好", copiedText);
                 Assert.Equal("你好", window.TranslatedText);
                 Assert.Equal(
-                    "复制译文",
+                    "复制全部文字",
                     AutomationProperties.GetName(copyButton));
             }
             finally

@@ -28,7 +28,8 @@ public static class SettingsMigrator
                  {
                      HotkeyAction.TranslateSelection,
                      HotkeyAction.TranslateRegion,
-                     HotkeyAction.ToggleSubtitles
+                     HotkeyAction.ToggleSubtitles,
+                     HotkeyAction.ExtractRegionText
                  })
         {
             hotkeys.TryAdd(action, defaultHotkeys[action]);

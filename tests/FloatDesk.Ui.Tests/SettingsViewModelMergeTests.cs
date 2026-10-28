@@ -7,6 +7,23 @@ namespace FloatDesk.Ui.Tests;
 public sealed class SettingsViewModelMergeTests
 {
     [Fact]
+    public void TextExtractionHotkeyAndWheelSwitchPersistIndependentlyOfTranslation()
+    {
+        var defaults = AppSettings.CreateDefault();
+        var vm = SettingsViewModel.From(defaults);
+        Assert.True(vm.ShowExtractRegionTextInWheel);
+        vm.ExtractRegionTextHotkey = "Ctrl+Shift+E";
+        vm.ShowExtractRegionTextInWheel = false;
+
+        var actual = vm.BuildCandidate(defaults);
+
+        Assert.DoesNotContain(WheelActionKind.ExtractRegionText, actual.WheelActions);
+        Assert.Contains(WheelActionKind.TranslateRegion, actual.WheelActions);
+        Assert.Equal(new HotkeyChord(ShortcutModifiers.Control | ShortcutModifiers.Shift, 0x45),
+            actual.Hotkeys[HotkeyAction.ExtractRegionText]);
+    }
+
+    [Fact]
     public void CrystalModeMergesWithoutOverwritingSizeOrContour()
     {
         var original = AppSettings.CreateDefault();

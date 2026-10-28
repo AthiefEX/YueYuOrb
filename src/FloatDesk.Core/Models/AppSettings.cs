@@ -6,7 +6,7 @@ public enum OrbDisplayMode { Classic, Crystal }
 public enum FullscreenPolicy { FollowAlwaysOnTop, AutoHide, KeepTopmost }
 public enum CaptureMode { Region, ActiveWindow, CurrentMonitor }
 public enum ImageFormat { Png, Jpeg }
-public enum HotkeyAction { Panel, RegionCapture, WindowCapture, MonitorCapture, PauseInput, AiBrowser, Notes, TranslateSelection, TranslateRegion, ToggleSubtitles }
+public enum HotkeyAction { Panel, RegionCapture, WindowCapture, MonitorCapture, PauseInput, AiBrowser, Notes, TranslateSelection, TranslateRegion, ToggleSubtitles, ExtractRegionText }
 public readonly record struct HotkeyChord(ShortcutModifiers Modifiers, uint VirtualKey);
 
 public sealed record GeneralSettings(bool StartWithWindows, AppTheme Theme);
@@ -69,7 +69,8 @@ public sealed record AppSettings(
         WheelActionKind.Settings,
         WheelActionKind.TranslateSelection,
         WheelActionKind.TranslateRegion,
-        WheelActionKind.TranslateSubtitles
+        WheelActionKind.TranslateSubtitles,
+        WheelActionKind.ExtractRegionText
     ];
 
     public IReadOnlyList<WheelActionKind> WheelActions { get; init; } =
@@ -120,7 +121,8 @@ public sealed record AppSettings(
                 [HotkeyAction.PauseInput] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x7B),
                 [HotkeyAction.TranslateSelection] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x54),
                 [HotkeyAction.TranslateRegion] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x4F),
-                [HotkeyAction.ToggleSubtitles] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x4C)
+                [HotkeyAction.ToggleSubtitles] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x4C),
+                [HotkeyAction.ExtractRegionText] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x45)
             },
             []);
     }

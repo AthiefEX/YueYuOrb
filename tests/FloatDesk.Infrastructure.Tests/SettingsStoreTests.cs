@@ -9,6 +9,30 @@ namespace FloatDesk.Infrastructure.Tests;
 public sealed class SettingsStoreTests : IDisposable
 {
     [Fact]
+    public void LegacySettingsAddExtractionHotkeyWithoutOverwritingExistingShortcut()
+    {
+        var options = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            Converters = { new JsonStringEnumConverter() }
+        };
+        var defaults = AppSettings.CreateDefault();
+        var customized = new HotkeyChord(ShortcutModifiers.Control | ShortcutModifiers.Shift, 0x54);
+        var hotkeys = new Dictionary<HotkeyAction, HotkeyChord>(defaults.Hotkeys)
+        {
+            [HotkeyAction.TranslateSelection] = customized
+        };
+        hotkeys.Remove(HotkeyAction.ExtractRegionText);
+        var json = JsonSerializer.Serialize(defaults with { Hotkeys = hotkeys }, options);
+
+        var restored = SettingsMigrator.Deserialize(json, options);
+
+        Assert.Equal(customized, restored.Hotkeys[HotkeyAction.TranslateSelection]);
+        Assert.Equal(defaults.Hotkeys[HotkeyAction.ExtractRegionText], restored.Hotkeys[HotkeyAction.ExtractRegionText]);
+        Assert.Equal(1, restored.SchemaVersion);
+    }
+
+    [Fact]
     public void LegacyOrbWithoutDisplayModeUsesClassic()
     {
         var options = new JsonSerializerOptions

@@ -2167,20 +2167,48 @@ internal sealed class Win32ForegroundActivator : IForegroundActivator
     private static readonly TimeSpan ProcessStartTolerance =
         TimeSpan.FromSeconds(2);
 
+    private readonly INativeBackend _native;
+    private readonly ISelectedTextPolling _polling;
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<
+        ForegroundTargetIdentity,
+        ActivationAttempt> _activationAttempts = new();
+
+    private sealed class ActivationAttempt(nint foregroundAtCapture, bool alreadyForeground)
+    {
+        internal nint ForegroundAtCapture { get; } = foregroundAtCapture;
+        internal int Claimed = alreadyForeground ? 1 : 0;
+    }
+
+    public Win32ForegroundActivator()
+        : this(new NativeBackend(), new SystemSelectedTextPolling())
+    {
+    }
+
+    internal Win32ForegroundActivator(
+        INativeBackend native,
+        ISelectedTextPolling polling)
+    {
+        _native = native;
+        _polling = polling;
+    }
+
     public ForegroundTargetIdentity? CaptureIdentity(
         ForegroundSnapshot target)
     {
         ArgumentNullException.ThrowIfNull(target);
         try
         {
+            var foregroundAtCapture = _native.GetForegroundWindow();
             if (target.TopLevelHwnd == 0 ||
                 target.FocusHwnd == 0 ||
-                !NativeForeground.IsWindow(target.TopLevelHwnd))
+                !_native.IsWindow(target.TopLevelHwnd) ||
+                !_native.IsWindow(target.FocusHwnd) ||
+                _native.GetRoot(target.FocusHwnd) != target.TopLevelHwnd)
             {
                 return null;
             }
 
-            var threadId = NativeForeground.GetWindowThreadProcessId(
+            var threadId = _native.GetWindowThreadProcessId(
                 target.TopLevelHwnd,
                 out var processId);
             if (threadId == 0 ||
@@ -2192,25 +2220,21 @@ internal sealed class Win32ForegroundActivator : IForegroundActivator
                 return null;
             }
 
-            var focusHwnd = ReadFocusHwnd(threadId);
-            if (focusHwnd == 0 ||
-                focusHwnd != target.FocusHwnd ||
-                NativeForeground.GetAncestor(
-                    focusHwnd,
-                    GetAncestorRoot) != target.TopLevelHwnd)
+            var currentFocus = _native.ReadFocusHwnd(threadId);
+            // A deactivated thread can report no focus. Retain the captured
+            // child, but never accept a changed control in a foreground target.
+            if (foregroundAtCapture == target.TopLevelHwnd &&
+                currentFocus != target.FocusHwnd)
             {
                 return null;
             }
 
-            var title = ReadWindowTitle(target.TopLevelHwnd);
+            var title = _native.ReadWindowTitle(target.TopLevelHwnd);
             DateTimeOffset? processStart = target.ProcessStartUtc;
             string? exePath = target.ExePath;
             try
             {
-                using var process = Process.GetProcessById(
-                    (int)processId);
-                var actualStart =
-                    process.StartTime.ToUniversalTime();
+                var actualStart = _native.ReadProcessStartUtc(processId);
                 if (processStart is not null &&
                     !StartsMatch(processStart.Value, actualStart))
                 {
@@ -2221,7 +2245,7 @@ internal sealed class Win32ForegroundActivator : IForegroundActivator
                 string? actualPath = null;
                 try
                 {
-                    actualPath = process.MainModule?.FileName;
+                    actualPath = _native.ReadExePath(processId);
                 }
                 catch
                 {
@@ -2248,20 +2272,33 @@ internal sealed class Win32ForegroundActivator : IForegroundActivator
 
             if (!string.Equals(
                     title,
-                    ReadWindowTitle(target.TopLevelHwnd),
+                    _native.ReadWindowTitle(target.TopLevelHwnd),
                     StringComparison.Ordinal))
             {
                 return null;
             }
 
-            return new ForegroundTargetIdentity(
+            var identity = new ForegroundTargetIdentity(
                 target.TopLevelHwnd,
-                focusHwnd,
+                target.FocusHwnd,
                 processId,
                 threadId,
                 processStart,
                 exePath,
                 title);
+            if (!TopLevelMatches(identity) ||
+                !FocusWindowMatches(identity) ||
+                _native.GetForegroundWindow() != foregroundAtCapture)
+            {
+                return null;
+            }
+
+            _activationAttempts.Add(
+                identity,
+                new ActivationAttempt(
+                    foregroundAtCapture,
+                    foregroundAtCapture == target.TopLevelHwnd));
+            return identity;
         }
         catch
         {
@@ -2274,10 +2311,17 @@ internal sealed class Win32ForegroundActivator : IForegroundActivator
     {
         try
         {
-            return NativeForeground.GetForegroundWindow() ==
-                    identity.TopLevelHwnd &&
-                FocusMatches(identity) &&
-                TopLevelMatches(identity);
+            if (_native.GetForegroundWindow() != identity.TopLevelHwnd ||
+                !TopLevelMatches(identity) ||
+                !FocusMatches(identity) ||
+                _native.GetForegroundWindow() != identity.TopLevelHwnd)
+            {
+                return false;
+            }
+
+            if (_activationAttempts.TryGetValue(identity, out var attempt))
+                Interlocked.Exchange(ref attempt.Claimed, 1);
+            return true;
         }
         catch
         {
@@ -2290,75 +2334,162 @@ internal sealed class Win32ForegroundActivator : IForegroundActivator
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!TopLevelMatches(identity))
-            return false;
-
-        if (NativeForeground.GetForegroundWindow() ==
-                identity.TopLevelHwnd &&
-            FocusMatches(identity))
-        {
-            return true;
-        }
-
         try
         {
-            if (!NativeForeground.SetForegroundWindow(
+            if (!_activationAttempts.TryGetValue(identity, out var attempt) ||
+                !TopLevelMatches(identity) ||
+                !FocusWindowMatches(identity))
+            {
+                return false;
+            }
+
+            var foreground = _native.GetForegroundWindow();
+            if (foreground == identity.TopLevelHwnd)
+            {
+                Interlocked.Exchange(ref attempt.Claimed, 1);
+                return IsTargetForeground(identity);
+            }
+
+            // Each captured selection permits one foreground request. Once the
+            // target was foreground, a later switch belongs to the user.
+            if (foreground != attempt.ForegroundAtCapture ||
+                Interlocked.CompareExchange(ref attempt.Claimed, 1, 0) != 0)
+            {
+                return false;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!TopLevelMatches(identity) ||
+                !FocusWindowMatches(identity) ||
+                _native.GetForegroundWindow() != attempt.ForegroundAtCapture)
+            {
+                return false;
+            }
+
+            if (!_native.SetForegroundWindow(
                     identity.TopLevelHwnd))
             {
                 return false;
             }
+            var startedAt = _polling.GetTimestamp();
+            while (_polling.GetTimestamp() - startedAt < ActivationTimeout)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!TopLevelMatches(identity) || !FocusWindowMatches(identity))
+                    return false;
+
+                foreground = _native.GetForegroundWindow();
+                if (foreground == identity.TopLevelHwnd)
+                {
+                    return FocusMatches(identity)
+                        ? IsTargetForeground(identity)
+                        : TryRestoreFocus(identity, cancellationToken);
+                }
+                if (foreground != attempt.ForegroundAtCapture)
+                    return false;
+
+                await _polling.DelayAsync(
+                        ActivationPollInterval,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            return false;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {
             return false;
         }
+    }
 
-        var startedAt = Stopwatch.GetTimestamp();
-        while (Stopwatch.GetElapsedTime(startedAt) < ActivationTimeout)
+    private bool TryRestoreFocus(
+        ForegroundTargetIdentity identity,
+        CancellationToken cancellationToken)
+    {
+        if (!TopLevelMatches(identity) ||
+            !FocusWindowMatches(identity) ||
+            _native.GetForegroundWindow() != identity.TopLevelHwnd)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (NativeForeground.GetForegroundWindow() ==
-                    identity.TopLevelHwnd &&
-                FocusMatches(identity) &&
-                TopLevelMatches(identity))
-            {
-                return true;
-            }
-
-            await Task.Delay(
-                    ActivationPollInterval,
-                    cancellationToken)
-                .ConfigureAwait(false);
+            return false;
         }
 
-        return false;
+        var currentThread = _native.GetCurrentThreadId();
+        var focusThread = _native.GetWindowThreadProcessId(identity.FocusHwnd, out _);
+        if (currentThread == 0 || focusThread == 0)
+            return false;
+
+        var attached = false;
+        var detached = true;
+        try
+        {
+            // SetFocus requires a shared input queue with the child owner.
+            // Keep this scope synchronous: never await or activate while attached.
+            if (currentThread != focusThread)
+            {
+                attached = _native.AttachThreadInput(currentThread, focusThread, true);
+                if (!attached)
+                    return false;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!TopLevelMatches(identity) ||
+                !FocusWindowMatches(identity) ||
+                _native.GetForegroundWindow() != identity.TopLevelHwnd)
+            {
+                return false;
+            }
+
+            _native.SetFocus(identity.FocusHwnd);
+        }
+        finally
+        {
+            if (attached)
+                detached = _native.AttachThreadInput(currentThread, focusThread, false);
+        }
+
+        return detached && IsTargetForeground(identity);
     }
 
-    private static bool FocusMatches(
+    private bool FocusWindowMatches(ForegroundTargetIdentity identity)
+    {
+        if (identity.FocusHwnd == 0 ||
+            !_native.IsWindow(identity.FocusHwnd) ||
+            _native.GetRoot(identity.FocusHwnd) != identity.TopLevelHwnd)
+        {
+            return false;
+        }
+
+        return _native.GetWindowThreadProcessId(identity.FocusHwnd, out var processId) != 0 &&
+            processId == identity.ProcessId;
+    }
+
+    private bool FocusMatches(
         ForegroundTargetIdentity identity)
     {
-        var focusHwnd = ReadFocusHwnd(identity.ThreadId);
+        var focusHwnd = _native.ReadFocusHwnd(identity.ThreadId);
         return focusHwnd != 0 &&
             focusHwnd == identity.FocusHwnd &&
-            NativeForeground.GetAncestor(
-                focusHwnd,
-                GetAncestorRoot) == identity.TopLevelHwnd;
+            FocusWindowMatches(identity);
     }
 
-    private static bool TopLevelMatches(
+    private bool TopLevelMatches(
         ForegroundTargetIdentity identity)
     {
         if (identity.TopLevelHwnd == 0 ||
-            !NativeForeground.IsWindow(identity.TopLevelHwnd) ||
+            !_native.IsWindow(identity.TopLevelHwnd) ||
             !string.Equals(
-                ReadWindowTitle(identity.TopLevelHwnd),
+                _native.ReadWindowTitle(identity.TopLevelHwnd),
                 identity.Title,
                 StringComparison.Ordinal))
         {
             return false;
         }
 
-        var threadId = NativeForeground.GetWindowThreadProcessId(
+        var threadId = _native.GetWindowThreadProcessId(
             identity.TopLevelHwnd,
             out var processId);
         if (threadId == 0 ||
@@ -2370,18 +2501,17 @@ internal sealed class Win32ForegroundActivator : IForegroundActivator
 
         try
         {
-            using var process = Process.GetProcessById((int)processId);
             if (identity.ProcessStartUtc is not null &&
                 !StartsMatch(
                     identity.ProcessStartUtc.Value,
-                    process.StartTime.ToUniversalTime()))
+                    _native.ReadProcessStartUtc(processId)))
             {
                 return false;
             }
 
             if (identity.ExePath is not null)
             {
-                var path = process.MainModule?.FileName;
+                var path = _native.ReadExePath(processId);
                 if (!string.Equals(
                         identity.ExePath,
                         path,
@@ -2432,8 +2562,63 @@ internal sealed class Win32ForegroundActivator : IForegroundActivator
             Math.Clamp(copied, 0, buffer.Length));
     }
 
+    internal interface INativeBackend
+    {
+        bool IsWindow(nint hwnd);
+        nint GetForegroundWindow();
+        bool SetForegroundWindow(nint hwnd);
+        uint GetWindowThreadProcessId(nint hwnd, out uint processId);
+        nint GetRoot(nint hwnd);
+        nint ReadFocusHwnd(uint threadId);
+        string ReadWindowTitle(nint hwnd);
+        DateTimeOffset ReadProcessStartUtc(uint processId);
+        string? ReadExePath(uint processId);
+        uint GetCurrentThreadId();
+        bool AttachThreadInput(uint currentThread, uint targetThread, bool attach);
+        void SetFocus(nint hwnd);
+    }
+
+    private sealed class NativeBackend : INativeBackend
+    {
+        public bool IsWindow(nint hwnd) => NativeForeground.IsWindow(hwnd);
+        public nint GetForegroundWindow() => NativeForeground.GetForegroundWindow();
+        public bool SetForegroundWindow(nint hwnd) => NativeForeground.SetForegroundWindow(hwnd);
+        public uint GetWindowThreadProcessId(nint hwnd, out uint processId) =>
+            NativeForeground.GetWindowThreadProcessId(hwnd, out processId);
+        public nint GetRoot(nint hwnd) => NativeForeground.GetAncestor(hwnd, GetAncestorRoot);
+        public nint ReadFocusHwnd(uint threadId) => Win32ForegroundActivator.ReadFocusHwnd(threadId);
+        public string ReadWindowTitle(nint hwnd) => Win32ForegroundActivator.ReadWindowTitle(hwnd);
+        public DateTimeOffset ReadProcessStartUtc(uint processId)
+        {
+            using var process = Process.GetProcessById((int)processId);
+            return process.StartTime.ToUniversalTime();
+        }
+        public string? ReadExePath(uint processId)
+        {
+            using var process = Process.GetProcessById((int)processId);
+            return process.MainModule?.FileName;
+        }
+        public uint GetCurrentThreadId() => NativeForeground.GetCurrentThreadId();
+        public bool AttachThreadInput(uint currentThread, uint targetThread, bool attach) =>
+            NativeForeground.AttachThreadInput(currentThread, targetThread, attach);
+        public void SetFocus(nint hwnd) => NativeForeground.SetFocus(hwnd);
+    }
+
     private static class NativeForeground
     {
+        [DllImport("kernel32.dll")]
+        internal static extern uint GetCurrentThreadId();
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool AttachThreadInput(
+            uint currentThread,
+            uint targetThread,
+            [MarshalAs(UnmanagedType.Bool)] bool attach);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        internal static extern nint SetFocus(nint hwnd);
+
         [StructLayout(LayoutKind.Sequential)]
         internal struct NativeRect
         {
