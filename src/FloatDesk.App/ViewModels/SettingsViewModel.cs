@@ -39,6 +39,11 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _startWithWindows;
     [ObservableProperty] private int _themeIndex;
     [ObservableProperty] private int _orbSizeDip;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsClassicOrbMode))]
+    private int _orbDisplayModeIndex;
+
+    public bool IsClassicOrbMode => OrbDisplayModeIndex == (int)OrbDisplayMode.Classic;
     [ObservableProperty] private double _orbOpacityPercent;
     [ObservableProperty] private bool _showClock;
     [ObservableProperty] private bool _showSeconds;
@@ -114,6 +119,7 @@ public partial class SettingsViewModel : ObservableObject
             StartWithWindows = settings.General.StartWithWindows,
             ThemeIndex = (int)settings.General.Theme,
             OrbSizeDip = settings.Orb.SizeDip,
+            OrbDisplayModeIndex = (int)settings.Orb.DisplayMode,
             OrbOpacityPercent = Math.Round(settings.Orb.Opacity * 100),
             ShowClock = settings.Orb.ShowClock,
             ShowSeconds = settings.Orb.ShowSeconds,
@@ -213,6 +219,8 @@ public partial class SettingsViewModel : ObservableObject
         var orb = latest.Orb;
         if (OrbSizeDip != _baseline.Orb.SizeDip)
             orb = orb with { SizeDip = OrbSizeDip };
+        if ((OrbDisplayMode)OrbDisplayModeIndex != _baseline.Orb.DisplayMode)
+            orb = orb with { DisplayMode = (OrbDisplayMode)OrbDisplayModeIndex };
         if (Math.Abs(OrbOpacityPercent / 100.0 - _baseline.Orb.Opacity) > 0.0001)
             orb = orb with { Opacity = OrbOpacityPercent / 100.0 };
         if (ShowClock != _baseline.Orb.ShowClock)

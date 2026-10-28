@@ -365,6 +365,7 @@
                                                     <RowDefinition Height="58" />
                                                     <RowDefinition Height="58" />
                                                     <RowDefinition Height="58" />
+                                                    <RowDefinition Height="58" />
                                                 </Grid.RowDefinitions>
                                                 <TextBlock Text="悬浮球尺寸" Style="{StaticResource SettingsLabelStyle}" />
                                                 <Slider Grid.Column="1" Minimum="32" Maximum="128" TickFrequency="4" IsSnapToTickEnabled="True" Value="{Binding OrbSizeDip}" Style="{StaticResource SettingsSliderStyle}" VerticalAlignment="Center" Margin="0,0,12,0" />
@@ -374,13 +375,20 @@
                                                 <Slider Grid.Row="1" Grid.Column="1" Minimum="30" Maximum="100" Value="{Binding OrbOpacityPercent}" Style="{StaticResource SettingsSliderStyle}" VerticalAlignment="Center" Margin="0,0,12,0" />
                                                 <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding OrbOpacityPercent, StringFormat={}{0:0}%}" Style="{StaticResource SettingsCaptionStyle}" />
                                                 <Border Grid.Row="2" Grid.ColumnSpan="3" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
-                                                <TextBlock Grid.Row="2" Text="图片轮廓" Style="{StaticResource SettingsLabelStyle}" />
-                                                <ComboBox Grid.Row="2" Grid.Column="1" SelectedIndex="{Binding ImageShapeIndex}" Style="{StaticResource SettingsComboBoxStyle}" VerticalAlignment="Center">
+                                                <TextBlock Grid.Row="2" Text="显示模式" Style="{StaticResource SettingsLabelStyle}" />
+                                                <ComboBox x:Name="OrbDisplayModeComboBox" Grid.Row="2" Grid.Column="1" SelectedIndex="{Binding OrbDisplayModeIndex}" Style="{StaticResource SettingsComboBoxStyle}" VerticalAlignment="Center" AutomationProperties.Name="悬浮球显示模式">
+                                                    <ComboBoxItem Content="经典" />
+                                                    <ComboBoxItem Content="水晶球" />
+                                                </ComboBox>
+                                                <Border Grid.Row="3" Grid.ColumnSpan="3" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <TextBlock Grid.Row="3" Text="图片轮廓" Style="{StaticResource SettingsLabelStyle}" />
+                                                <ComboBox Grid.Row="3" Grid.Column="1" SelectedIndex="{Binding ImageShapeIndex}" IsEnabled="{Binding IsClassicOrbMode}" Style="{StaticResource SettingsComboBoxStyle}" VerticalAlignment="Center" ToolTip="水晶球使用圆形外壳；切回经典后恢复原图片轮廓。">
                                                     <ComboBoxItem Content="圆形裁切" />
                                                     <ComboBoxItem Content="保留透明轮廓" />
                                                 </ComboBox>
                                             </Grid>
                                         </Border>
+                                        <TextBlock Text="水晶球随尺寸等比例缩放，图片包裹在薄玻璃球内，不添加外围光效。" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,10,0,0" />
                                         <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                                             <Button Content="更换悬浮球图片" Click="OnChooseOrbImageClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
                                             <Button Content="恢复默认图片" Click="OnResetOrbImageClick" Style="{StaticResource ActionButtonStyle}" />

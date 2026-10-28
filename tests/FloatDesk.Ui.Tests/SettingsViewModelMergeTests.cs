@@ -7,6 +7,57 @@ namespace FloatDesk.Ui.Tests;
 public sealed class SettingsViewModelMergeTests
 {
     [Fact]
+    public void CrystalModeMergesWithoutOverwritingSizeOrContour()
+    {
+        var original = AppSettings.CreateDefault();
+        var vm = SettingsViewModel.From(original);
+        vm.OrbDisplayModeIndex = (int)OrbDisplayMode.Crystal;
+        var latest = original with
+        {
+            Orb = original.Orb with { SizeDip = 80, ImageShape = OrbImageShape.Contour }
+        };
+
+        var candidate = vm.BuildCandidate(latest);
+
+        Assert.Equal(OrbDisplayMode.Crystal, candidate.Orb.DisplayMode);
+        Assert.Equal(80, candidate.Orb.SizeDip);
+        Assert.Equal(OrbImageShape.Contour, candidate.Orb.ImageShape);
+        Assert.False(vm.IsClassicOrbMode);
+    }
+
+    [Fact]
+    public void UntouchedOrbModePreservesConcurrentCrystalSelection()
+    {
+        var original = AppSettings.CreateDefault();
+        var vm = SettingsViewModel.From(original);
+        vm.OrbSizeDip = 80;
+        var latest = original with
+        {
+            Orb = original.Orb with { DisplayMode = OrbDisplayMode.Crystal }
+        };
+
+        Assert.Equal(OrbDisplayMode.Crystal, vm.BuildCandidate(latest).Orb.DisplayMode);
+        Assert.True(vm.IsClassicOrbMode);
+    }
+
+    [Fact]
+    public void OrbModeNotifiesShapeSelectorWhenSwitchingBack()
+    {
+        var defaults = AppSettings.CreateDefault();
+        var vm = SettingsViewModel.From(defaults with
+        {
+            Orb = defaults.Orb with { DisplayMode = OrbDisplayMode.Crystal }
+        });
+        var notifications = new List<string?>();
+        vm.PropertyChanged += (_, e) => notifications.Add(e.PropertyName);
+
+        vm.OrbDisplayModeIndex = (int)OrbDisplayMode.Classic;
+
+        Assert.True(vm.IsClassicOrbMode);
+        Assert.Contains(nameof(vm.IsClassicOrbMode), notifications);
+    }
+
+    [Fact]
     public void UneditedSettingsDoNotOverwriteConcurrentChanges()
     {
         var original = AppSettings.CreateDefault();

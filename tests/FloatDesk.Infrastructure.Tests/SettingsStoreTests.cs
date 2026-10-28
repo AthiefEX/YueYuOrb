@@ -8,6 +8,58 @@ namespace FloatDesk.Infrastructure.Tests;
 
 public sealed class SettingsStoreTests : IDisposable
 {
+    [Fact]
+    public void LegacyOrbWithoutDisplayModeUsesClassic()
+    {
+        var options = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            Converters = { new JsonStringEnumConverter() }
+        };
+        var json = JsonSerializer.SerializeToNode(
+            AppSettings.CreateDefault(), options)!.AsObject();
+        json["orb"]!.AsObject().Remove("displayMode");
+
+        var settings = SettingsMigrator.Deserialize(json.ToJsonString(), options);
+
+        Assert.Equal(OrbDisplayMode.Classic, settings.Orb.DisplayMode);
+        Assert.Equal(1, settings.SchemaVersion);
+    }
+
+    [Fact]
+    public async Task CrystalOrbModeRoundTripsWithoutLosingContourPreference()
+    {
+        using var store = new JsonSettingsStore(_root);
+        var defaults = AppSettings.CreateDefault();
+        var expected = defaults with
+        {
+            Orb = defaults.Orb with
+            {
+                DisplayMode = OrbDisplayMode.Crystal,
+                ImageShape = OrbImageShape.Contour
+            }
+        };
+
+        await store.SaveAsync(expected, CancellationToken.None);
+        var actual = await store.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(expected.Orb, actual.Orb);
+        Assert.Equal(1, actual.SchemaVersion);
+    }
+
+    [Fact]
+    public void ValidatorRejectsUndefinedOrbDisplayMode()
+    {
+        var defaults = AppSettings.CreateDefault();
+        var invalid = defaults with
+        {
+            Orb = defaults.Orb with { DisplayMode = (OrbDisplayMode)99 }
+        };
+
+        Assert.Contains(SettingsValidator.Validate(invalid),
+            error => error.Contains("DisplayMode", StringComparison.Ordinal));
+    }
+
     private readonly string _root = Path.Combine(
         Path.GetTempPath(),
         "FloatDeskTests",

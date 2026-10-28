@@ -2,6 +2,7 @@ namespace FloatDesk.Core.Models;
 
 public enum AppTheme { System, Light, Dark }
 public enum OrbImageShape { Circle, Contour }
+public enum OrbDisplayMode { Classic, Crystal }
 public enum FullscreenPolicy { FollowAlwaysOnTop, AutoHide, KeepTopmost }
 public enum CaptureMode { Region, ActiveWindow, CurrentMonitor }
 public enum ImageFormat { Png, Jpeg }
@@ -17,7 +18,10 @@ public sealed record OrbSettings(
     bool Clock24Hour,
     bool SnapToEdge,
     bool PositionLocked,
-    OrbImageShape ImageShape);
+    OrbImageShape ImageShape)
+{
+    public OrbDisplayMode DisplayMode { get; init; } = OrbDisplayMode.Classic;
+}
 public sealed record OverlaySettings(bool AlwaysOnTop, FullscreenPolicy FullscreenPolicy);
 public sealed record InputLockSettings(bool AutoEnabled, string TargetKlid, IReadOnlyList<AppRule> Rules);
 public sealed record CaptureSettings(

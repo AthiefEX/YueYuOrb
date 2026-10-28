@@ -15,6 +15,8 @@ public static partial class SettingsValidator
             errors.Add("Orb.SizeDip must be between 32 and 128.");
         if (value.Orb.Opacity is < 0.3 or > 1.0)
             errors.Add("Orb.Opacity must be between 0.3 and 1.0.");
+        if (!Enum.IsDefined(value.Orb.DisplayMode))
+            errors.Add("Orb.DisplayMode must be Classic or Crystal.");
         if (!KlidPattern().IsMatch(value.InputLock.TargetKlid))
             errors.Add("InputLock.TargetKlid must be an eight-digit US layout ID.");
         if (value.Launchers.Any(item =>

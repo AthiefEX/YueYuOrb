@@ -5,6 +5,22 @@ namespace FloatDesk.Ui.Tests;
 public sealed class SettingsWindowVisualTests
 {
     [Fact]
+    public void OrbAppearanceOffersCrystalModeWithoutChangingContourPreference()
+    {
+        var xaml = XDocument.Load(FindRepoFile(
+            "src/FloatDesk.App/Views/SettingsWindow.xaml"));
+        var selector = xaml.Descendants().Single(e =>
+            (string?)e.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) ==
+            "OrbDisplayModeComboBox");
+
+        Assert.Equal("{Binding OrbDisplayModeIndex}", (string?)selector.Attribute("SelectedIndex"));
+        Assert.Equal(["经典", "水晶球"], selector.Elements().Select(e => (string?)e.Attribute("Content")));
+        var shape = xaml.Descendants().Single(e =>
+            (string?)e.Attribute("SelectedIndex") == "{Binding ImageShapeIndex}");
+        Assert.Equal("{Binding IsClassicOrbMode}", (string?)shape.Attribute("IsEnabled"));
+    }
+
+    [Fact]
     public void SettingsWindowDeclaresAllNavigationAndRequiredControls()
     {
         var document = XDocument.Load(FindRepoFile(
