@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using FloatDesk.Core.Geometry;
@@ -24,6 +25,7 @@ public partial class OrbWindow : Window
     private readonly Action _toggleVisibility;
     private readonly Action _exit;
     private readonly string _orbImagePath;
+    private readonly Effect? _classicOrbEffect;
     private readonly OrbDragMotion _dragMotion = new();
     private AppSettings? _settings;
     private PixelRect? _pendingDragBounds;
@@ -52,6 +54,7 @@ public partial class OrbWindow : Window
         Func<bool>? panelOpenState = null)
     {
         InitializeComponent();
+        _classicOrbEffect = OrbCircle.Effect;
         _openPanel = openPanel;
         _panelToggle = panelToggle;
         _panelOpenState = panelOpenState;
@@ -91,18 +94,29 @@ public partial class OrbWindow : Window
         _sizeDip = settings.Orb.SizeDip;
         _snap = settings.Orb.SnapToEdge;
         _positionLocked = settings.Orb.PositionLocked;
-        _imageShape = settings.Orb.ImageShape;
+        var crystal = settings.Orb.DisplayMode == OrbDisplayMode.Crystal;
+        _imageShape = crystal ? OrbImageShape.Circle : settings.Orb.ImageShape;
         OrbLayout.Margin = new Thickness(OrbChromePadding);
         Width = _sizeDip + (OrbChromePadding * 2);
         OrbRoot.Width = _sizeDip;
         OrbRoot.Height = _sizeDip;
         Opacity = settings.Orb.Opacity;
-        OrbRoot.Clip = null;
-        OrbImage.Clip = settings.Orb.ImageShape == OrbImageShape.Circle
+        var imageInset = crystal ? _sizeDip * 0.035 : 0;
+        var imageDiameter = _sizeDip - imageInset * 2;
+        OrbImage.Margin = new Thickness(imageInset);
+        OrbCircle.Margin = new Thickness(imageInset);
+        OrbImage.UseLayoutRounding = !crystal;
+        OrbCircle.UseLayoutRounding = !crystal;
+        OrbCircle.Effect = crystal ? null : _classicOrbEffect;
+        CrystalSurface.Visibility = crystal ? Visibility.Visible : Visibility.Collapsed;
+        OrbRoot.Clip = crystal
+            ? new EllipseGeometry(new Point(_sizeDip / 2, _sizeDip / 2), _sizeDip / 2, _sizeDip / 2)
+            : null;
+        OrbImage.Clip = _imageShape == OrbImageShape.Circle
             ? new System.Windows.Media.EllipseGeometry(
-                new System.Windows.Point(_sizeDip / 2, _sizeDip / 2),
-                _sizeDip / 2,
-                _sizeDip / 2)
+                new System.Windows.Point(imageDiameter / 2, imageDiameter / 2),
+                imageDiameter / 2,
+                imageDiameter / 2)
             : null;
         var showClock = settings.Orb.ShowClock;
         ClockBorder.Visibility = showClock
@@ -411,11 +425,18 @@ public partial class OrbWindow : Window
         var margin = OrbChromePadding * scale;
         var orbLeft = window.Left + margin;
         var orbTop = window.Top + margin;
-        var orbSize = _sizeDip * scale;
-        var x = cursor.X - orbLeft;
-        var y = cursor.Y - orbTop;
+        return IsTransparentOrbPoint(new Point(
+            (cursor.X - orbLeft) / scale,
+            (cursor.Y - orbTop) / scale));
+    }
+
+    internal bool IsTransparentOrbPoint(Point point)
+    {
+        var orbSize = _sizeDip;
+        var x = point.X;
+        var y = point.Y;
         if (x < 0 || y < 0 || x >= orbSize || y >= orbSize)
-            return false;
+            return true;
         if (_imageShape == OrbImageShape.Circle)
         {
             var dx = x - orbSize / 2;
