@@ -12,6 +12,109 @@ namespace FloatDesk.Ui.Tests;
 public sealed class TranslationRuntimeTests
 {
     [Fact]
+    public async Task ExtractedTextCanStartTranslationBeforeCaptureCleanupWithoutDismissingItsRoute()
+    {
+        var host = new RecordingRouteHost
+        {
+            TranslateHandler = (text, _, _) => Task.FromResult(
+                TranslationResponse.Ok(text, "译文", "en", "provider"))
+        };
+        var frame = new CaptureFrame(new PixelRect(0, 0, 2, 2), 8, new byte[16]);
+        using var runtime = CreateRuntime(host, new MutableCredentialStore(),
+            new RecordingProviderFactory(new StaticTranslationProvider("unused")),
+            ocr: new RecordingOcr(), regionCapture: new StubRegionCapture(
+                new CapturedTranslationRegion(frame, new PixelRect(20, 30, 2, 2))));
+        runtime.ApplySettings(AppSettings.CreateDefault());
+        Task? translation = null;
+        host.ExtractedTextShown = (route, text) =>
+            translation = runtime.TranslateExtractedTextAsync(route, text, CancellationToken.None);
+
+        await runtime.ExtractRegionTextAsync(CancellationToken.None);
+        Assert.NotNull(translation);
+        await translation;
+
+        Assert.Equal(1, host.TranslateCount);
+        Assert.Equal("译文", host.LastResult?.TranslatedText);
+        Assert.True(host.IsOperationActive);
+        Assert.Equal(0, host.DismissCount);
+    }
+
+    [Fact]
+    public async Task ExtractedTextTranslatesDirectlyWithoutReadingSelectionOrCapturingAgain()
+    {
+        var host = new RecordingRouteHost
+        {
+            TranslateHandler = (text, _, _) => Task.FromResult(
+                TranslationResponse.Ok(text, "已翻译", "en", "provider"))
+        };
+        var reader = new DelegateSelectedTextReader((_, _) => throw new InvalidOperationException("Must not read selection"));
+        using var runtime = CreateRuntime(host, new MutableCredentialStore(),
+            new RecordingProviderFactory(new StaticTranslationProvider("unused")), reader);
+        runtime.ApplySettings(AppSettings.CreateDefault());
+        var operation = host.ShowStatus(new PixelPoint(30, 40), "extracted");
+
+        await runtime.TranslateExtractedTextAsync(operation, "extracted source", CancellationToken.None);
+
+        Assert.Equal("extracted source", host.LastText);
+        Assert.Equal(TranslationPurpose.Interactive, host.LastPurpose);
+        Assert.Equal("已翻译", host.LastResult?.TranslatedText);
+        Assert.Equal(1, host.TranslateCount);
+    }
+
+    [Fact]
+    public async Task DismissedExtractionAndSessionLockDoNotSendExtractedText()
+    {
+        var host = new RecordingRouteHost();
+        using var runtime = CreateRuntime(host, new MutableCredentialStore(),
+            new RecordingProviderFactory(new StaticTranslationProvider("unused")));
+        runtime.ApplySettings(AppSettings.CreateDefault());
+        var stale = host.ShowStatus(default(PixelPoint), "old extraction");
+        host.ShowStatus(default(PixelPoint), "new operation");
+        await runtime.TranslateExtractedTextAsync(stale, "old text", CancellationToken.None);
+        var current = host.ShowStatus(default(PixelPoint), "current extraction");
+        runtime.SetSessionLocked(true);
+        await runtime.TranslateExtractedTextAsync(current, "private text", CancellationToken.None);
+        Assert.Equal(0, host.TranslateCount);
+    }
+
+    [Fact]
+    public async Task ClosingExtractionDuringTranslationRejectsLateResult()
+    {
+        var release = new TaskCompletionSource<TranslationResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var host = new RecordingRouteHost { TranslateHandler = (_, _, _) => release.Task };
+        using var runtime = CreateRuntime(host, new MutableCredentialStore(),
+            new RecordingProviderFactory(new StaticTranslationProvider("unused")));
+        runtime.ApplySettings(AppSettings.CreateDefault());
+        var operation = host.ShowStatus(default(PixelPoint), "extracted");
+        var pending = runtime.TranslateExtractedTextAsync(operation, "source", CancellationToken.None);
+        await host.TranslationAttempted.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        host.DismissActiveOperation();
+        runtime.OnInteractiveOperationDismissed();
+        release.SetResult(TranslationResponse.Ok("source", "late text", "en", "provider"));
+        await pending;
+        Assert.Null(host.LastResult);
+        Assert.False(host.IsOperationActive);
+    }
+
+    [Fact]
+    public async Task CancelledExtractedTranslationCompletesTheBusyStateEvenIfProviderIgnoresCancellation()
+    {
+        var release = new TaskCompletionSource<TranslationResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var host = new RecordingRouteHost { TranslateHandler = (_, _, _) => release.Task };
+        using var runtime = CreateRuntime(host, new MutableCredentialStore(),
+            new RecordingProviderFactory(new StaticTranslationProvider("unused")));
+        using var cancellation = new CancellationTokenSource();
+        runtime.ApplySettings(AppSettings.CreateDefault());
+        var operation = host.ShowStatus(default(PixelPoint), "extracted");
+        var pending = runtime.TranslateExtractedTextAsync(operation, "source", cancellation.Token);
+        await host.TranslationAttempted.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        cancellation.Cancel();
+        release.SetResult(TranslationResponse.Ok("source", "late text", "en", "provider"));
+        await pending;
+        Assert.Equal(TranslationFailureKind.Cancelled, host.LastResult?.FailureKind);
+    }
+
+    [Fact]
     public async Task RegionExtractionWorksWithoutCustomProviderCredentials()
     {
         var host = new RecordingRouteHost();
@@ -1950,6 +2053,13 @@ public sealed class TranslationRuntimeTests
     {
         private int _nextOperationId;
         private TranslationOverlayOperationToken? _activeOperationToken;
+        public Action<TranslationRouteHandle, string>? ExtractedTextShown { get; set; }
+
+        public void ShowExtractedText(TranslationRouteHandle operation, string text)
+        {
+            ShowResult(operation, TranslationResponse.Ok("", text, "", "本地 OCR"));
+            ExtractedTextShown?.Invoke(operation, text);
+        }
 
         public Func<string, TranslationPurpose, CancellationToken,
             Task<TranslationResponse>> TranslateHandler { get; set; } =
@@ -1983,6 +2093,8 @@ public sealed class TranslationRuntimeTests
 
         public bool HasActiveOperation() =>
             IsOperationActive;
+
+        bool ITranslationRouteHost.IsOperationActive(TranslationRouteHandle operation) => IsCurrent(operation);
 
         public void ApplySettings(AppSettings settings)
         {

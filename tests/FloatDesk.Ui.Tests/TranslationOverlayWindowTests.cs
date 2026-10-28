@@ -21,6 +21,74 @@ namespace FloatDesk.Ui.Tests;
 public sealed class TranslationOverlayWindowTests
 {
     [Fact]
+    public void ExtractedTranslationRetainsTextWhileBusyAndAllowsRetryOnFailure()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                var anchor = new PixelPoint(40, 40);
+                var operation = window.BeginOperation();
+                window.ShowExtractedText(operation, "original extracted text", anchor);
+                var button = Assert.IsType<Button>(window.FindName("TranslateExtractedButton"));
+                var requests = new List<(TranslationRouteHandle Route, string Text)>();
+                window.TranslateExtractedTextRequested += (route, text) => requests.Add((route, text));
+
+                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+                var request = Assert.Single(requests);
+                Assert.Equal(operation, request.Route.Operation);
+                Assert.Equal(anchor, request.Route.Anchor);
+                Assert.Equal("original extracted text", request.Text);
+                Assert.False(button.IsEnabled);
+                Assert.Equal("original extracted text", window.TranslatedText);
+                Assert.Equal("正在翻译…", window.StatusText);
+
+                window.ShowExtractedTextTranslation(operation,
+                    TranslationResponse.Fail(request.Text, "en", "provider", TranslationFailureKind.Network), anchor);
+                Assert.True(button.IsEnabled);
+                Assert.Equal("original extracted text", window.TranslatedText);
+                Assert.Contains("网络", window.StatusText);
+
+                window.BeginOperation();
+                window.ShowExtractedTextTranslation(operation,
+                    TranslationResponse.Ok(request.Text, "late text", "en", "provider"), anchor);
+                Assert.Equal("", window.TranslatedText);
+                Assert.Equal(Visibility.Collapsed, button.Visibility);
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [Fact]
+    public void ExtractedTextOffersTranslationWhileOrdinaryResultsDoNot()
+    {
+        RunOnSta(() =>
+        {
+            var window = new TranslationOverlayWindow();
+            try
+            {
+                var operation = window.BeginOperation();
+                window.ShowExtractedText(operation, "Recognized text", new PixelPoint(40, 40));
+                var button = Assert.IsType<Button>(window.FindName("TranslateExtractedButton"));
+                Assert.Equal(Visibility.Visible, button.Visibility);
+                Assert.True(button.IsEnabled);
+                Assert.Equal("翻译", button.Content);
+                Assert.Equal("Recognized text", window.TranslatedText);
+
+                window.ShowResult(operation, TranslationResponse.Ok("Recognized text", "识别的文字", "en", "provider"),
+                    new PixelPoint(40, 40));
+                Assert.Equal(Visibility.Collapsed, button.Visibility);
+                window.BeginOperation();
+                Assert.Equal(Visibility.Collapsed, button.Visibility);
+            }
+            finally { window.Close(); }
+        });
+    }
+
+    [Fact]
     public void ClickingResultEnablesCopyActivationAndNextOperationRestoresNoActivate()
     {
         RunOnSta(() =>

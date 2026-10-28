@@ -70,6 +70,8 @@ public partial class TranslationOverlayWindow : Window
     private bool _isClosed;
     private long _activeOperationGeneration;
     private Point _dragPointerOffset;
+    private string _extractedText = "";
+    private PixelPoint _extractedTextAnchor;
     private PixelRect? _subtitleCaptureRegion;
     private string? _subtitleRegionMonitorId;
 
@@ -93,6 +95,7 @@ public partial class TranslationOverlayWindow : Window
     public event Action? ReselectRegionRequested;
     public event Action? StopSubtitleRequested;
     public event Action? CopyRequested;
+    public event Action<TranslationRouteHandle, string>? TranslateExtractedTextRequested;
     public event Action? InteractiveOperationDismissed;
 
     public bool IsSubtitleMode => _isSubtitleMode;
@@ -263,6 +266,7 @@ public partial class TranslationOverlayWindow : Window
                 return;
             }
 
+            ClearExtractedTextAction();
             OriginalTextBlock.Text = response.OriginalText ?? "";
             OriginalPanel.Visibility = Visibility.Collapsed;
             MetadataTextBlock.Text = BuildMetadata(response);
@@ -297,9 +301,68 @@ public partial class TranslationOverlayWindow : Window
         ShowResult(operation, TranslationResponse.Ok("", text, "", "本地 OCR"), anchor);
         RunOnUiThread(() =>
         {
-            if (IsCurrentOperation(operation))
+            if (IsCurrentOperation(operation) && !_isSubtitleMode && !string.IsNullOrWhiteSpace(text))
+            {
                 StatusTextBlock.Text = "文字已提取";
+                _extractedText = text;
+                _extractedTextAnchor = anchor;
+                TranslateExtractedButton.Visibility = Visibility.Visible;
+                TranslateExtractedButton.IsEnabled = true;
+            }
         });
+    }
+
+    public void SetExtractedTextTranslating(TranslationOverlayOperationToken operation) =>
+        RunOnUiThread(() =>
+        {
+            if (!IsCurrentOperation(operation) || _isSubtitleMode || _extractedText.Length == 0)
+                return;
+            TranslateExtractedButton.IsEnabled = false;
+            StatusTextBlock.Text = "正在翻译…";
+            StatusTextBlock.Visibility = Visibility.Visible;
+            UpdateLayout();
+            PositionWindow(subtitleMode: false, _extractedTextAnchor);
+        });
+
+    public void ShowExtractedTextTranslation(
+        TranslationOverlayOperationToken operation, TranslationResponse response, PixelPoint anchor)
+    {
+        if (response.Success)
+        {
+            ShowResult(operation, response, anchor);
+            return;
+        }
+        RunOnUiThread(() =>
+        {
+            if (!IsCurrentOperation(operation) || _isSubtitleMode || _extractedText.Length == 0)
+                return;
+            TranslateExtractedButton.IsEnabled = true;
+            StatusTextBlock.Text = ResolveFailureMessage(response);
+            StatusTextBlock.Visibility = Visibility.Visible;
+            UpdateLayout();
+            PositionWindow(subtitleMode: false, anchor);
+        });
+    }
+
+    private void ClearExtractedTextAction()
+    {
+        _extractedText = "";
+        _extractedTextAnchor = default;
+        TranslateExtractedButton.Visibility = Visibility.Collapsed;
+        TranslateExtractedButton.IsEnabled = false;
+    }
+
+    private void OnTranslateExtractedClick(object sender, RoutedEventArgs e)
+    {
+        var handler = TranslateExtractedTextRequested;
+        if (_isSubtitleMode || _dismissed || !TranslateExtractedButton.IsEnabled ||
+            _extractedText.Length == 0 || handler is null)
+            return;
+        var operation = new TranslationOverlayOperationToken(_activeOperationGeneration);
+        var text = _extractedText;
+        var anchor = _extractedTextAnchor;
+        SetExtractedTextTranslating(operation);
+        handler(new TranslationRouteHandle(operation, anchor), text);
     }
 
     public void ShowError(
@@ -1266,6 +1329,7 @@ public partial class TranslationOverlayWindow : Window
 
     private void ClearTranslationContent()
     {
+        ClearExtractedTextAction();
         OriginalTextBlock.Text = "";
         TranslatedTextBlock.Text = "";
         SubtitleTranslationTextBlock.Text = "";

@@ -228,6 +228,58 @@ public sealed class TranslationRuntime : IDisposable
     public Task ExtractRegionTextAsync(CancellationToken cancellationToken) =>
         RunRegionOcrAsync(extractOnly: true, cancellationToken);
 
+    public async Task TranslateExtractedTextAsync(
+        TranslationRouteHandle route,
+        string text,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(text) || !_host.IsOperationActive(route))
+            return;
+        if (!TryBeginInteractiveCapture(
+                "提取文字翻译进行中，字幕采样已暂停。",
+                deferSubtitleResume: true,
+                out var operation,
+                cancellationToken,
+                preserveActivePresentation: true) || operation is null)
+        {
+            _host.ShowExtractedTextTranslation(route, TranslationResponse.Fail(
+                text, "", "", TranslationFailureKind.Cancelled));
+            return;
+        }
+        try
+        {
+            if (!_host.IsOperationActive(route))
+                return;
+            operation.Token.ThrowIfCancellationRequested();
+            _host.SetExtractedTextTranslating(route);
+            var response = await _host.TranslateAsync(text, TranslationPurpose.Interactive, operation.Token)
+                .ConfigureAwait(false);
+            operation.Token.ThrowIfCancellationRequested();
+            if (_host.IsOperationActive(route))
+                _host.ShowExtractedTextTranslation(route, response);
+        }
+        catch (OperationCanceledException)
+        {
+            _host.ShowExtractedTextTranslation(route, TranslationResponse.Fail(
+                text, "", "", TranslationFailureKind.Cancelled));
+        }
+        catch
+        {
+            _host.ShowExtractedTextTranslation(route, TranslationResponse.Fail(
+                text, "", "", TranslationFailureKind.ProviderError));
+        }
+        finally
+        {
+            lock (_sync)
+            {
+                if (ReferenceEquals(_interactiveCancellation, operation))
+                    _interactiveCancellation = null;
+            }
+            operation.Dispose();
+            ResumeAfterCapture();
+        }
+    }
+
     private async Task RunRegionOcrAsync(
         bool extractOnly,
         CancellationToken cancellationToken)
@@ -560,7 +612,8 @@ public sealed class TranslationRuntime : IDisposable
         string subtitlePauseReason,
         bool deferSubtitleResume,
         out CancellationTokenSource? operation,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool preserveActivePresentation = false)
     {
         var changed = false;
         var cancelledInteractive = false;
@@ -600,7 +653,9 @@ public sealed class TranslationRuntime : IDisposable
             _subtitlePauseOwnedByCapture = true;
             subtitles.Pause(subtitlePauseReason);
         }
-        if (cancelledInteractive)
+        // OCR/retry may still be unwinding after displaying this same result.
+        // Transfer cancellation ownership without dismissing its valid token.
+        if (cancelledInteractive && !preserveActivePresentation)
             _host.DismissActiveOperation();
 
         operation = candidate;

@@ -153,6 +153,7 @@ internal sealed class AppRuntime : IDisposable
             OnStopSubtitlesRequested;
         _translationOverlay.InteractiveOperationDismissed +=
             _translationRuntime.OnInteractiveOperationDismissed;
+        _translationOverlay.TranslateExtractedTextRequested += OnTranslateExtractedTextRequested;
         _translationRuntime.SubtitleStateChanged +=
             UpdateSubtitleTrayState;
 
@@ -307,6 +308,7 @@ internal sealed class AppRuntime : IDisposable
                 OnStopSubtitlesRequested;
             _translationOverlay.InteractiveOperationDismissed -=
                 _translationRuntime.OnInteractiveOperationDismissed;
+            _translationOverlay.TranslateExtractedTextRequested -= OnTranslateExtractedTextRequested;
             _translationRuntime.SubtitleStateChanged -=
                 UpdateSubtitleTrayState;
             _translationRuntime.Dispose();
@@ -529,6 +531,9 @@ internal sealed class AppRuntime : IDisposable
         _panel?.HideAnimated();
         _ = ExtractRegionTextAsync();
     }
+
+    private void OnTranslateExtractedTextRequested(TranslationRouteHandle operation, string text) =>
+        _ = _translationRuntime.TranslateExtractedTextAsync(operation, text, _lifetime.Token);
 
     private async Task ExtractRegionTextAsync()
     {
