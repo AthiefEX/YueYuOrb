@@ -1,5 +1,8 @@
 #ifndef AppVersion
-  #define AppVersion "1.1.1"
+  #define AppVersion "1.2.0"
+#endif
+#ifndef PublishDir
+  #define PublishDir "..\artifacts\publish\win-x64"
 #endif
 
 #define AppName "月语悬浮球"
@@ -37,7 +40,7 @@ Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: 
 Name: "clearuserdata"; Description: "卸载时清除本用户月语悬浮球数据"; GroupDescription: "卸载选项:"; Flags: unchecked
 
 [Files]
-Source: "..\artifacts\publish\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\月语悬浮球"; Filename: "{app}\{#AppExeName}"
