@@ -58,10 +58,12 @@ public partial class SettingsWindow : Window
         ITranslationCredentialStore translationCredentials,
         ITranslationProviderFactory translationProviders,
         Func<IReadOnlyList<OcrLanguageOption>> getOcrLanguages,
-        ILauncherIconProvider? launcherIconProvider = null)
+        ILauncherIconProvider? launcherIconProvider = null,
+        IAudioService? audioService = null)
     {
         InitializeComponent();
         _settings = settings;
+        _audioService = audioService;
         _paths = paths;
         _currentAppPath = currentAppPath;
         _translationCredentials = translationCredentials ??
@@ -95,6 +97,7 @@ public partial class SettingsWindow : Window
         DataContext = _viewModel;
         ApplyTranslationProviderLayout();
         Loaded += OnSettingsWindowLoaded;
+        DataContextChanged += OnAudioDataContextChanged;
         Closing += (_, args) =>
         {
             CancelLauncherDrop();
@@ -110,6 +113,7 @@ public partial class SettingsWindow : Window
         RoutedEventArgs e)
     {
         await RefreshTranslationKeyStatusAsync();
+        await RefreshAudioDevicesAsync();
     }
 
     private void OnSettingsWindowSourceInitialized(object? sender, EventArgs e)

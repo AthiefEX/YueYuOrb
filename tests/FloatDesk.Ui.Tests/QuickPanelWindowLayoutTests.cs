@@ -366,7 +366,7 @@ public sealed class QuickPanelWindowLayoutTests
 
                 Assert.Equal(Visibility.Visible, scroller.Visibility);
                 Assert.Equal(
-                    FixedActionNames.Length + 16,
+                    FixedActionNames.Length + 17,
                     canvas.Children
                         .OfType<Button>()
                         .Count(button => button.Visibility == Visibility.Visible));
@@ -909,7 +909,7 @@ public sealed class QuickPanelWindowLayoutTests
                     .Where(button => button.Visibility == Visibility.Visible)
                     .ToArray();
 
-                Assert.Equal(FixedActionNames.Length + 16, wheelButtons.Length);
+                Assert.Equal(FixedActionNames.Length + 17, wheelButtons.Length);
                 Assert.Contains(
                     wheelButtons,
                     button => ReferenceEquals(
@@ -1088,7 +1088,7 @@ public sealed class QuickPanelWindowLayoutTests
                     .OfType<Button>()
                     .Where(button => button.Visibility == Visibility.Visible)
                     .ToArray();
-                Assert.Equal(FixedActionNames.Length - 1, visibleActions.Length);
+                Assert.Equal(FixedActionNames.Length, visibleActions.Length);
                 Assert.DoesNotContain(
                     visibleActions,
                     button => button.Name == action switch
@@ -1237,7 +1237,7 @@ public sealed class QuickPanelWindowLayoutTests
             {
                 var window = new QuickPanelWindow();
                 window.Apply(
-                    AppSettings.CreateDefault() with { WheelActions = [] },
+                    AppSettings.CreateDefault() with { WheelActions = [], ShowAudioInWheel = false },
                     manualLockEnabled: false,
                     inputStatus: "等待前台应用");
                 InvokeArrangeMenu(window, new Point(37, 280), opensLeft: false);

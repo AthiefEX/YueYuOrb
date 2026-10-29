@@ -124,6 +124,7 @@ public partial class QuickPanelWindow : Window
             button.Click += (_, _) => LaunchRequested?.Invoke(item);
             WheelCanvas.Children.Add(button);
         }
+        ApplyAudioWheel(settings);
         WheelScroller.Visibility = GetVisibleWheelButtons().Length > 0
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -402,7 +403,7 @@ public partial class QuickPanelWindow : Window
         var launcherButtons = WheelCanvas.Children
             .OfType<Button>()
             .Where(button =>
-                button.Tag is LauncherItem &&
+                button.Tag is LauncherItem or AudioWheelTag &&
                 button.Visibility == Visibility.Visible);
         return [.. fixedButtons, .. launcherButtons];
     }

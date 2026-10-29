@@ -32,6 +32,8 @@ internal sealed class AppRuntime : IDisposable
     private readonly ForegroundMonitor _foreground;
     private readonly InputLockEngine _input;
     private readonly WindowsAppLauncher _launcher = new();
+    private readonly FloatDesk.Windows.Audio.WindowsAudioService _audio = new();
+    private AudioControlWindow? _audioWindow;
     private readonly LauncherIconExtractor _launcherIconExtractor;
     private readonly LauncherIconCache _launcherIconCache;
     private readonly DpapiTranslationCredentialStore _translationCredentials;
@@ -131,6 +133,7 @@ internal sealed class AppRuntime : IDisposable
             RequestExit,
             panelToggle: ToggleQuickPanel,
             panelOpenState: () => _panel?.IsPanelOpen == true);
+        _orb.AdditionalCollapseBlock = () => _audioWindow?.IsVisible == true;
         _panel = new QuickPanelWindow(_launcherIconCache);
         _panel.LaunchRequested += OnLaunchRequested;
         _panel.SettingsRequested += ShowSettings;
@@ -145,6 +148,8 @@ internal sealed class AppRuntime : IDisposable
         _panel.TranslateSubtitlesRequested +=
             OnTranslateSubtitlesRequested;
         _panel.ExtractRegionTextRequested += OnExtractRegionTextRequested;
+        _panel.AudioRequested += OpenAudioControls;
+        _panel.AudioGroupRequested += group => _ = CycleAudioGroupAsync(group);
         _translationOverlay.PauseResumeRequested +=
             OnToggleSubtitlePauseRequested;
         _translationOverlay.ReselectRegionRequested +=
@@ -312,6 +317,8 @@ internal sealed class AppRuntime : IDisposable
             _translationRuntime.SubtitleStateChanged -=
                 UpdateSubtitleTrayState;
             _translationRuntime.Dispose();
+            _audioWindow?.Close();
+            _audio.Dispose();
             _translationRegionCapture.Dispose();
             _selectedTextReader.Dispose();
             _coordinator?.UnregisterCaptureHiddenWindow(
@@ -390,7 +397,8 @@ internal sealed class AppRuntime : IDisposable
             _translationCredentials,
             _translationProviders,
             () => _ocr.AvailableLanguages,
-            _launcherIconCache);
+            _launcherIconCache,
+            audioService: _audio);
 
     private AiBrowserWindow CreateAiWindow()
     {
@@ -530,6 +538,39 @@ internal sealed class AppRuntime : IDisposable
     {
         _panel?.HideAnimated();
         _ = ExtractRegionTextAsync();
+    }
+
+    private void OpenAudioControls()
+    {
+        if (_audioWindow is { IsVisible: true }) { _audioWindow.Activate(); return; }
+        var window = new AudioControlWindow(_audio);
+        _audioWindow = window;
+        _coordinator?.RegisterCaptureHiddenWindow(window);
+        window.Closed += (_, _) =>
+        {
+            _coordinator?.UnregisterCaptureHiddenWindow(window);
+            if (ReferenceEquals(_audioWindow, window)) _audioWindow = null;
+        };
+        window.Show();
+        window.PositionNearCursor();
+    }
+
+    private bool _audioCycling;
+    private async Task CycleAudioGroupAsync(AudioCycleGroup group)
+    {
+        if (_audioCycling) return;
+        _audioCycling = true;
+        try
+        {
+            var snapshot = await _audio.GetSnapshotAsync(_lifetime.Token);
+            var target = FloatDesk.Core.Audio.AudioCycleSelector.ChooseNext(group, snapshot);
+            if (target is null) { _tray?.ShowWarning("播放设备", "组内没有其他可用的播放设备。"); return; }
+            await _audio.SetDefaultDeviceAsync(target, _lifetime.Token);
+            _tray?.ShowWarning("播放设备已切换", snapshot.Devices.First(d => d.Id == target).Name);
+        }
+        catch (OperationCanceledException) { }
+        catch { _tray?.ShowWarning("播放设备", "无法切换播放设备，请检查设备连接后重试。"); }
+        finally { _audioCycling = false; }
     }
 
     private void OnTranslateExtractedTextRequested(TranslationRouteHandle operation, string text) =>

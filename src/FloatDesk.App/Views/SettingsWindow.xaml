@@ -1277,6 +1277,63 @@
                         </ScrollViewer>
                     </TabItem>
 
+                    <TabItem x:Name="AudioSettingsTab" Style="{StaticResource NavigationTabItemStyle}" AutomationProperties.Name="音频">
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock FontFamily="{StaticResource SettingsIconFont}" FontSize="15" Text="&#xE767;" Margin="0,0,7,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                                <TextBlock Text="音频" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                            </StackPanel>
+                        </TabItem.Header>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel Margin="28,16,28,24" MaxWidth="1080">
+                                <Border Style="{StaticResource SettingsCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="播放设备与循环组" Style="{StaticResource SettingsSectionTitleStyle}" />
+                                        <TextBlock Text="为工作、游戏等场景创建循环组，按列表顺序切换设备。编辑不会更改当前音频。" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,6,0,12" />
+                                        <CheckBox Content="在轮盘中显示音频入口" IsChecked="{Binding ShowAudioInWheel}" Style="{StaticResource ToggleSwitchStyle}" />
+                                        <DockPanel Margin="0,16,0,0">
+                                            <Button DockPanel.Dock="Right" Content="刷新设备" Click="OnRefreshAudioDevicesClick" Style="{StaticResource ActionButtonStyle}" Margin="12,0,0,0" />
+                                            <TextBlock Text="{Binding AudioDeviceStatus}" Style="{StaticResource SettingsDescriptionStyle}" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource SettingsCardStyle}" Margin="0,14,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="循环组（最多 16 个）" Style="{StaticResource SettingsSectionTitleStyle}" Margin="0,0,0,12" />
+                                        <WrapPanel Margin="0,0,0,10">
+                                            <Button Content="添加组" Click="OnAddAudioGroupClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
+                                            <Button Content="移除组" Click="OnRemoveAudioGroupClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
+                                            <Button Content="组上移" Click="OnAudioGroupUpClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
+                                            <Button Content="组下移" Click="OnAudioGroupDownClick" Style="{StaticResource ActionButtonStyle}" />
+                                        </WrapPanel>
+                                        <ComboBox ItemsSource="{Binding AudioGroups}" SelectedItem="{Binding SelectedAudioGroup}" DisplayMemberPath="Name" Style="{StaticResource SettingsComboBoxStyle}" AutomationProperties.Name="选择循环组" />
+                                        <TextBlock Text="先添加或选择一个循环组，再编辑名称与设备。" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,8,0,12" />
+                                        <Border Style="{StaticResource SettingsSubtleCardStyle}" Padding="16">
+                                            <StackPanel>
+                                                <TextBlock Text="组名称（1–80 字）" Style="{StaticResource SettingsLabelStyle}" Margin="0,0,0,6" />
+                                                <TextBox Text="{Binding SelectedAudioGroup.Name, UpdateSourceTrigger=PropertyChanged}" MaxLength="80" Style="{StaticResource SettingsTextBoxStyle}" AutomationProperties.Name="音频循环组名称" />
+                                                <CheckBox Content="在轮盘中显示此循环组" IsChecked="{Binding SelectedAudioGroup.ShowInWheel}" Style="{StaticResource ToggleSwitchStyle}" Margin="0,12,0,12" />
+                                                <TextBlock Text="添加当前可用设备" Style="{StaticResource SettingsLabelStyle}" Margin="0,0,0,6" />
+                                                <DockPanel>
+                                                    <Button DockPanel.Dock="Right" Content="添加设备" Click="OnAddAudioDeviceClick" Style="{StaticResource ActionButtonStyle}" Margin="10,0,0,0" />
+                                                    <ComboBox ItemsSource="{Binding AvailableAudioDevices}" SelectedItem="{Binding SelectedAvailableAudioDevice}" DisplayMemberPath="DisplayName" Style="{StaticResource SettingsComboBoxStyle}" AutomationProperties.Name="可用播放设备" />
+                                                </DockPanel>
+                                                <TextBlock Text="循环顺序" Style="{StaticResource SettingsLabelStyle}" Margin="0,16,0,6" />
+                                                <ListBox ItemsSource="{Binding SelectedAudioGroup.Devices}" SelectedItem="{Binding SelectedAudioGroupDevice}" DisplayMemberPath="DisplayName" MinHeight="120" MaxHeight="260" ScrollViewer.HorizontalScrollBarVisibility="Disabled" Background="{DynamicResource SettingsCardSubtleBrush}" Foreground="{DynamicResource SettingsInkBrush}" BorderBrush="{DynamicResource SettingsLineBrush}" AutomationProperties.Name="循环组设备顺序" />
+                                                <WrapPanel Margin="0,10,0,0">
+                                                    <Button Content="移除设备" Click="OnRemoveAudioDeviceClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
+                                                    <Button Content="设备上移" Click="OnAudioDeviceUpClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
+                                                    <Button Content="设备下移" Click="OnAudioDeviceDownClick" Style="{StaticResource ActionButtonStyle}" />
+                                                </WrapPanel>
+                                                <TextBlock Text="离线设备显示为不可用，重新连接后可继续使用；只有点击移除才会删除。循环时会跳过不可用设备。" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,12,0,0" />
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
+
                     <TabItem Style="{StaticResource NavigationTabItemStyle}" AutomationProperties.Name="关于">
                         <TabItem.Header>
                             <StackPanel Orientation="Horizontal">

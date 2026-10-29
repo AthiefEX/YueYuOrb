@@ -18,6 +18,7 @@ public partial class OrbWindow
     private readonly ScaleTransform _edgeScale = new(1, 1);
     private bool _edgeCollapsed;
     private int _edgeSide;
+    internal Func<bool>? AdditionalCollapseBlock { get; set; }
 
     private void InitializeEdgeCollapse()
     {
@@ -48,7 +49,7 @@ public partial class OrbWindow
         var inside = hasPointer && (_edgeCollapsed
             ? IsInsideEdgeStrip(pointer.X, pointer.Y, bounds, scale)
             : pointer.X >= bounds.Left && pointer.X < bounds.Right && pointer.Y >= bounds.Top && pointer.Y < bounds.Bottom);
-        var blocked = !hasPointer || OrbRoot.IsMouseCaptured || _panelOpenState?.Invoke() == true ||
+        var blocked = !hasPointer || OrbRoot.IsMouseCaptured || _panelOpenState?.Invoke() == true || AdditionalCollapseBlock?.Invoke() == true ||
             OrbRoot.ContextMenu?.IsOpen == true;
         var collapse = _edgeState.Update(_settings?.Orb.AutoCollapseAtEdge == true,
             side, inside, blocked, _edgeClock.Elapsed);

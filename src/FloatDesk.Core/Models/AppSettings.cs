@@ -79,6 +79,9 @@ public sealed record AppSettings(
 
     public bool ShowLauncherDock { get; init; } = true;
 
+    public IReadOnlyList<AudioCycleGroup> AudioGroups { get; init; } = [];
+    public bool ShowAudioInWheel { get; init; } = true;
+
     public BrowserThemeMode BrowserTheme { get; init; } =
         BrowserThemeMode.FollowApp;
 

@@ -214,6 +214,7 @@ public partial class SettingsViewModel : ObservableObject
             HotkeyAction.ExtractRegionText,
             AppSettings.CreateDefault().Hotkeys[HotkeyAction.ExtractRegionText]));
         vm._baseline = settings;
+        vm.LoadAudio(settings);
         return vm;
     }
 
@@ -361,7 +362,10 @@ public partial class SettingsViewModel : ObservableObject
             Hotkeys = hotkeys,
             Windows = latest.Windows,
             WheelActions = effectiveWheelActions,
-            ShowLauncherDock = showLauncherDock
+            ShowLauncherDock = showLauncherDock,
+            AudioGroups = MergeAudioGroups(latest.AudioGroups),
+            ShowAudioInWheel = ShowAudioInWheel != _baseline.ShowAudioInWheel
+                ? ShowAudioInWheel : latest.ShowAudioInWheel
         };
 
         void MergeHotkey(HotkeyAction action, string value)

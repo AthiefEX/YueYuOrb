@@ -57,6 +57,7 @@ public static partial class SettingsValidator
             errors.Add("WheelActions contain invalid or duplicate actions.");
         }
         var translation = value.Translation;
+        ValidateAudio(value, errors);
         if (translation is null)
         {
             errors.Add("Translation settings are required.");
