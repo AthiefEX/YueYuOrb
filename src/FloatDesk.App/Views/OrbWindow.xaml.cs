@@ -86,6 +86,7 @@ public partial class OrbWindow : Window
         AddMenu(menu, "显示/隐藏悬浮球", _toggleVisibility);
         AddMenu(menu, "退出", _exit);
         OrbRoot.ContextMenu = menu;
+        InitializeEdgeCollapse();
     }
 
     public void ApplySettings(AppSettings settings)
@@ -141,6 +142,7 @@ public partial class OrbWindow : Window
             ? Visibility.Visible
             : Visibility.Collapsed;
         CaptureAlpha(bitmap);
+        RestoreEdgeOrb(animate: false);
     }
 
     public void SetTimeFormat(AppSettings settings) => RefreshClock(settings);
@@ -423,6 +425,9 @@ public partial class OrbWindow : Window
             return false;
         }
         var scale = DesktopGeometry.GetWindowDpiScale(handle);
+        if (_edgeCollapsed)
+            return !IsInsideEdgeStrip(cursor.X, cursor.Y, new PixelRect(window.Left, window.Top,
+                window.Right - window.Left, window.Bottom - window.Top), scale);
         var margin = OrbChromePadding * scale;
         var orbLeft = window.Left + margin;
         var orbTop = window.Top + margin;

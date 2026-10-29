@@ -21,6 +21,7 @@ public sealed record OrbSettings(
     OrbImageShape ImageShape)
 {
     public OrbDisplayMode DisplayMode { get; init; } = OrbDisplayMode.Classic;
+    public bool AutoCollapseAtEdge { get; init; }
 }
 public sealed record OverlaySettings(bool AlwaysOnTop, FullscreenPolicy FullscreenPolicy);
 public sealed record InputLockSettings(bool AutoEnabled, string TargetKlid, IReadOnlyList<AppRule> Rules);

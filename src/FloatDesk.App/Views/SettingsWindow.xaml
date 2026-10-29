@@ -413,6 +413,7 @@
                                                 <CheckBox Content="显示秒" IsChecked="{Binding ShowSeconds}" Style="{StaticResource ToggleSwitchStyle}" Margin="0,5" />
                                                 <CheckBox Content="使用 24 小时制" IsChecked="{Binding Clock24Hour}" Style="{StaticResource ToggleSwitchStyle}" Margin="0,5" />
                                                 <CheckBox Content="拖动后吸附屏幕边缘" IsChecked="{Binding SnapToEdge}" Style="{StaticResource ToggleSwitchStyle}" Margin="0,5" />
+                                                <CheckBox Content="贴边自动收缩（移入恢复）" IsChecked="{Binding AutoCollapseAtEdge}" Style="{StaticResource ToggleSwitchStyle}" Margin="0,5" ToolTip="仅左右边缘：鼠标离开 0.8 秒后收缩为竖条，移入恢复完整悬浮球。" />
                                                 <CheckBox Content="锁定当前位置" IsChecked="{Binding PositionLocked}" Style="{StaticResource ToggleSwitchStyle}" Margin="0,5" />
                                             </StackPanel>
                                         </Border>

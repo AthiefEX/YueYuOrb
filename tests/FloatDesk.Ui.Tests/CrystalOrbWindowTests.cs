@@ -133,7 +133,7 @@ public sealed class CrystalOrbWindowTests
             Assert.Same(root, root.InputHitTest(new Point(28, 1)));
             Assert.NotNull(root.InputHitTest(new Point(28, 28)));
             Assert.Null(root.InputHitTest(new Point(1, 1)));
-            var layout = Assert.IsType<StackPanel>(window.Content);
+            var layout = Assert.IsType<Grid>(window.Content);
             window.Content = null;
             layout.Measure(new Size(96, 96));
             layout.Arrange(new Rect(0, 0, 96, 96));
@@ -189,7 +189,7 @@ public sealed class CrystalOrbWindowTests
         try
         {
             window.ApplySettings(Settings(diameter));
-            var layout = Assert.IsType<StackPanel>(window.Content);
+            var layout = Assert.IsType<Grid>(window.Content);
             window.Content = null;
             var length = diameter + 40;
             layout.Measure(new Size(length, length));

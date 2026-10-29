@@ -7,6 +7,21 @@ namespace FloatDesk.Ui.Tests;
 public sealed class SettingsViewModelMergeTests
 {
     [Fact]
+    public void EdgeCollapseDefaultsOffAndMergesWithoutOverwritingLiveOrbChanges()
+    {
+        var initial = AppSettings.CreateDefault();
+        Assert.False(initial.Orb.AutoCollapseAtEdge);
+        var vm = SettingsViewModel.From(initial);
+        vm.AutoCollapseAtEdge = true;
+        var latest = initial with { Orb = initial.Orb with { SizeDip = 80, DisplayMode = OrbDisplayMode.Crystal } };
+        var candidate = vm.BuildCandidate(latest);
+        Assert.True(candidate.Orb.AutoCollapseAtEdge);
+        Assert.Equal(80, candidate.Orb.SizeDip);
+        Assert.Equal(OrbDisplayMode.Crystal, candidate.Orb.DisplayMode);
+        Assert.True(SettingsViewModel.From(candidate).AutoCollapseAtEdge);
+        Assert.True(SettingsViewModel.From(initial).BuildCandidate(candidate).Orb.AutoCollapseAtEdge);
+    }
+    [Fact]
     public void TextExtractionHotkeyAndWheelSwitchPersistIndependentlyOfTranslation()
     {
         var defaults = AppSettings.CreateDefault();

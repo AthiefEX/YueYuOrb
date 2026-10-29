@@ -49,6 +49,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _showSeconds;
     [ObservableProperty] private bool _clock24Hour;
     [ObservableProperty] private bool _snapToEdge;
+    [ObservableProperty] private bool _autoCollapseAtEdge;
     [ObservableProperty] private bool _positionLocked;
     [ObservableProperty] private int _imageShapeIndex;
     [ObservableProperty] private bool _showRegionCaptureInWheel = true;
@@ -127,6 +128,7 @@ public partial class SettingsViewModel : ObservableObject
             ShowSeconds = settings.Orb.ShowSeconds,
             Clock24Hour = settings.Orb.Clock24Hour,
             SnapToEdge = settings.Orb.SnapToEdge,
+            AutoCollapseAtEdge = settings.Orb.AutoCollapseAtEdge,
             PositionLocked = settings.Orb.PositionLocked,
             ImageShapeIndex = (int)settings.Orb.ImageShape,
             ShowRegionCaptureInWheel =
@@ -238,6 +240,8 @@ public partial class SettingsViewModel : ObservableObject
             orb = orb with { Clock24Hour = Clock24Hour };
         if (SnapToEdge != _baseline.Orb.SnapToEdge)
             orb = orb with { SnapToEdge = SnapToEdge };
+        if (AutoCollapseAtEdge != _baseline.Orb.AutoCollapseAtEdge)
+            orb = orb with { AutoCollapseAtEdge = AutoCollapseAtEdge };
         if (PositionLocked != _baseline.Orb.PositionLocked)
             orb = orb with { PositionLocked = PositionLocked };
         if ((OrbImageShape)ImageShapeIndex != _baseline.Orb.ImageShape)

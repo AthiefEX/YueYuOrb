@@ -12,6 +12,7 @@
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
         Title="月语悬浮球">
+    <Grid>
     <StackPanel x:Name="OrbLayout" Margin="20">
         <Grid x:Name="OrbRoot"
               Width="56"
@@ -79,4 +80,8 @@
             </Border>
         </Grid>
     </StackPanel>
+    <Border x:Name="EdgeStrip" Width="8" CornerRadius="4" Background="#D979C9E5"
+            HorizontalAlignment="Left" VerticalAlignment="Center" Visibility="Collapsed"
+            Cursor="Hand" ToolTip="移入显示悬浮球" />
+    </Grid>
 </Window>
