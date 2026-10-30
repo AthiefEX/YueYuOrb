@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-31-brightness-night-mode-design.md`
 
+**Execution status (2026-10-31):** Tasks 1–5 implemented. Final independent review completed and its seven Important findings addressed. Full Release suite: Core161 + Infrastructure116 + Windows96 + UI491 = 864 PASS, no failures/skips. Release build: 0 warnings, 0 errors. Native read-only discovery and zero-opacity overlay physical bounds verified. Actual hardware writes, Windows11, clone-mode hardware and mixed-DPI interaction remain manual checks. Capture exclusion remains unverified, so subtitle sessions pause software night dimming. Ambiguously mapped cloned hardware is explicitly reported unavailable rather than written by index. Runtime-only dimming slider persistence/display, visible-wheel checkmark rebuild, and explicit WMI Level[] quantization remain minor follow-ups. Detailed execution record is in `.superpowers/sdd/2026-10-31-brightness-night-mode/progress.md`.
+
 ## Global Constraints
 
 - Windows 10 22H2 x64、Windows 11 x64；SchemaVersion 保持 1。

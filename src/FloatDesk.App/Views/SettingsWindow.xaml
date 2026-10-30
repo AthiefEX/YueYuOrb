@@ -1334,6 +1334,51 @@
                         </ScrollViewer>
                     </TabItem>
 
+                    <TabItem Style="{StaticResource NavigationTabItemStyle}" AutomationProperties.Name="亮度">
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock FontFamily="{StaticResource SettingsIconFont}" FontSize="15" Text="&#xE706;" Margin="0,0,7,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                                <TextBlock Text="亮度" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                            </StackPanel>
+                        </TabItem.Header>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel Margin="4,12">
+                                <Border Style="{StaticResource SettingsCardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Text="所有屏幕亮度" Style="{StaticResource SettingsSectionTitleStyle}" />
+                                        <TextBlock Text="同时调节所有支持的屏幕；外接显示器需支持并开启 DDC/CI。" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,6,0,12" />
+                                        <CheckBox Content="在轮盘显示亮度调节" IsChecked="{Binding ShowBrightnessInWheel}" Style="{StaticResource ToggleSwitchStyle}" />
+                                        <CheckBox Content="在轮盘显示黑夜模式" IsChecked="{Binding ShowNightModeInWheel}" Style="{StaticResource ToggleSwitchStyle}" Margin="0,8" />
+                                        <TextBlock Text="快捷键指定亮度（0–100%）" Style="{StaticResource SettingsLabelStyle}" />
+                                        <TextBox Text="{Binding BrightnessTarget}" Style="{StaticResource SettingsTextBoxStyle}" Margin="0,6,0,12" />
+                                        <TextBlock Text="每次增减（1–100 个百分点）" Style="{StaticResource SettingsLabelStyle}" />
+                                        <TextBox Text="{Binding BrightnessStep}" Style="{StaticResource SettingsTextBoxStyle}" Margin="0,6,0,12" />
+                                        <TextBlock Text="黑夜模式降暗程度（0–90%）" Style="{StaticResource SettingsLabelStyle}" />
+                                        <Slider Minimum="0" Maximum="90" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding NightDimming}" Margin="0,10" AutomationProperties.Name="黑夜模式降暗程度" />
+                                        <TextBlock Text="{Binding NightDimming, StringFormat={}{0}%}" />
+                                        <TextBlock Text="黑夜模式开启时即时预览降暗程度，保存后保留设置。每次启动默认关闭；截图时暂时暂停，字幕翻译期间持续暂停，避免影响识别。" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,10,0,0" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource SettingsCardStyle}" Margin="0,14,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="亮度快捷键" Style="{StaticResource SettingsSectionTitleStyle}" />
+                                        <TextBlock Text="留空表示不绑定。例如 Ctrl+Alt+F8；恢复可见亮度会关闭遮罩并将所有可控屏幕设为 50%。" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,6,0,12" />
+                                        <ItemsControl ItemsSource="{Binding BrightnessKeys}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="0,5">
+                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="180" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding Label}" Style="{StaticResource SettingsLabelStyle}" VerticalAlignment="Center" />
+                                                        <TextBox Grid.Column="1" Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SettingsTextBoxStyle}" AutomationProperties.Name="{Binding Label}" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
                     <TabItem Style="{StaticResource NavigationTabItemStyle}" AutomationProperties.Name="关于">
                         <TabItem.Header>
                             <StackPanel Orientation="Horizontal">

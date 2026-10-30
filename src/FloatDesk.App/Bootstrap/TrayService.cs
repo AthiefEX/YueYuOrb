@@ -25,7 +25,9 @@ public sealed class TrayService : IDisposable
         Action toggleSubtitlePause,
         Action reselectSubtitleRegion,
         Action stopSubtitles,
-        Action? extractRegionText = null)
+        Action? extractRegionText = null,
+        Action? toggleNightMode = null,
+        Action? recoverBrightness = null)
     {
         _synchronizationContext = SynchronizationContext.Current;
         _createdThreadId = Environment.CurrentManagedThreadId;
@@ -35,6 +37,8 @@ public sealed class TrayService : IDisposable
         menu.Items.Add("设置", null, (_, _) => openSettings());
         menu.Items.Add("AI 网页", null, (_, _) => openBrowser());
         menu.Items.Add("记事本", null, (_, _) => openNotes());
+        if (toggleNightMode is not null) menu.Items.Add("切换黑夜模式", null, (_, _) => toggleNightMode());
+        if (recoverBrightness is not null) menu.Items.Add("恢复可见亮度", null, (_, _) => recoverBrightness());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("框选截图", null, (_, _) => captureRegion());
         if (extractRegionText is not null)

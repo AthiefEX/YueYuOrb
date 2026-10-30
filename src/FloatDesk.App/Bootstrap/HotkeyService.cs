@@ -72,6 +72,14 @@ public sealed class HotkeyService : IHotkeyService
         return OperationResult.Ok();
     }
 
+    public void Unbind(HotkeyAction action)
+    {
+        foreach (var entry in _registered.Where(pair => pair.Value.Action == action).ToArray())
+        { UnregisterHotKey(_source.Handle, entry.Key); _registered.Remove(entry.Key); }
+        _desired.Remove(action);
+        _effectiveInitialBindings.Remove(action);
+    }
+
     private void RegisterInitial(HotkeyAction action, HotkeyChord requested)
     {
         foreach (var candidate in HotkeyFallbackPolicy.For(action, requested))

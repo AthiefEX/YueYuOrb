@@ -22,7 +22,7 @@ using FloatDesk.Windows.Windows;
 
 namespace FloatDesk.App;
 
-internal sealed class AppRuntime : IDisposable
+internal sealed partial class AppRuntime : IDisposable
 {
     private readonly AppDataPaths _paths;
     private readonly CancellationTokenSource _lifetime = new();
@@ -133,7 +133,7 @@ internal sealed class AppRuntime : IDisposable
             RequestExit,
             panelToggle: ToggleQuickPanel,
             panelOpenState: () => _panel?.IsPanelOpen == true);
-        _orb.AdditionalCollapseBlock = () => _audioWindow?.IsVisible == true;
+        _orb.AdditionalCollapseBlock = () => _audioWindow?.IsVisible == true || _brightnessWindow?.IsVisible == true;
         _panel = new QuickPanelWindow(_launcherIconCache);
         _panel.LaunchRequested += OnLaunchRequested;
         _panel.SettingsRequested += ShowSettings;
@@ -149,6 +149,8 @@ internal sealed class AppRuntime : IDisposable
             OnTranslateSubtitlesRequested;
         _panel.ExtractRegionTextRequested += OnExtractRegionTextRequested;
         _panel.AudioRequested += OpenAudioControls;
+        _panel.BrightnessRequested += OpenBrightnessControls;
+        _panel.NightModeRequested += ToggleNightMode;
         _panel.AudioGroupRequested += group => _ = CycleAudioGroupAsync(group);
         _translationOverlay.PauseResumeRequested +=
             OnToggleSubtitlePauseRequested;
@@ -182,6 +184,7 @@ internal sealed class AppRuntime : IDisposable
                 _ = _logger.WriteAsync(eventName, properties),
             sessionGate: _captureSessionGate,
             regionSelection: _regionSelection);
+        InitializeBrightness();
         _coordinator.WindowCreated += ApplyToolSettings;
         _settings.Changed += OnSettingsChanged;
         _input.StatusChanged += OnInputStatusChanged;
@@ -199,7 +202,9 @@ internal sealed class AppRuntime : IDisposable
             toggleSubtitlePause: OnToggleSubtitlePauseRequested,
             reselectSubtitleRegion: OnReselectSubtitleRegionRequested,
             stopSubtitles: OnStopSubtitlesRequested,
-            extractRegionText: OnExtractRegionTextRequested);
+            extractRegionText: OnExtractRegionTextRequested,
+            toggleNightMode: ToggleNightMode,
+            recoverBrightness: RecoverBrightness);
         UpdateSubtitleTrayState();
 
         await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
@@ -316,8 +321,12 @@ internal sealed class AppRuntime : IDisposable
             _translationOverlay.TranslateExtractedTextRequested -= OnTranslateExtractedTextRequested;
             _translationRuntime.SubtitleStateChanged -=
                 UpdateSubtitleTrayState;
+            _translationRuntime.SubtitleStateChanged -= OnNightSubtitleChanged;
             _translationRuntime.Dispose();
             _audioWindow?.Close();
+            _nightMode?.Dispose();
+            _brightnessWindow?.Close();
+            _brightness.Dispose();
             _audio.Dispose();
             _translationRegionCapture.Dispose();
             _selectedTextReader.Dispose();
@@ -696,6 +705,7 @@ internal sealed class AppRuntime : IDisposable
 
     private void OnHotkeyPressed(HotkeyAction action)
     {
+        if (HandleBrightnessHotkey(action)) return;
         switch (action)
         {
             case HotkeyAction.Panel:
@@ -980,6 +990,7 @@ internal sealed class AppRuntime : IDisposable
     private void ApplySettings(AppSettings settings)
     {
         ThemeService.Apply(settings.General.Theme);
+        _nightMode?.SetDimmingPercent(settings.Brightness.NightDimmingPercent);
         _orb?.ApplySettings(settings);
         KeepOrbOnCurrentMonitor();
         _translationRuntime.ApplySettings(settings);
@@ -992,6 +1003,8 @@ internal sealed class AppRuntime : IDisposable
             browser.ApplySettings(settings);
         if (_hotkeys is not null)
         {
+            foreach (var action in Enum.GetValues<HotkeyAction>().Where(a => a >= HotkeyAction.BrightnessPanel && !settings.Hotkeys.ContainsKey(a)))
+                _hotkeys.Unbind(action);
             foreach (var (action, chord) in settings.Hotkeys)
             {
                 var result = _hotkeys.Rebind(action, chord);

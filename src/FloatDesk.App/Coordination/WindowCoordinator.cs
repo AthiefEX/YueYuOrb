@@ -24,6 +24,8 @@ public sealed class WindowCoordinator : IWindowCoordinator
     }
 
     public event Action<Window>? WindowCreated;
+    public event Action<Window>? ToolShown;
+    public Func<IDisposable>? CapturePauseFactory { get; set; }
 
     public void RegisterCaptureHiddenWindow(Window window)
     {
@@ -41,6 +43,7 @@ public sealed class WindowCoordinator : IWindowCoordinator
         CancellationToken cancellationToken)
     {
         var dispatcher = GetDispatcher();
+        var pause = await dispatcher.InvokeAsync(() => CapturePauseFactory?.Invoke());
         try
         {
             await dispatcher.InvokeAsync(() =>
@@ -60,10 +63,11 @@ public sealed class WindowCoordinator : IWindowCoordinator
                     application.MainWindow = _orb;
             });
             await Task.Delay(80, cancellationToken);
-            return new RestoreScope(this);
+            return new RestoreScope(this, pause);
         }
         catch
         {
+            pause?.Dispose();
             try
             {
                 Restore();
@@ -93,6 +97,7 @@ public sealed class WindowCoordinator : IWindowCoordinator
             window.Activate();
             window.Topmost = true;
             window.Topmost = false;
+            ToolShown?.Invoke(window);
         });
     }
 
@@ -164,13 +169,14 @@ public sealed class WindowCoordinator : IWindowCoordinator
         ?? System.Windows.Application.Current?.Dispatcher
         ?? Dispatcher.CurrentDispatcher;
 
-    private sealed class RestoreScope(WindowCoordinator owner) : IAsyncDisposable
+    private sealed class RestoreScope(WindowCoordinator owner, IDisposable? pause) : IAsyncDisposable
     {
         private WindowCoordinator? _owner = owner;
 
         public ValueTask DisposeAsync()
         {
-            Interlocked.Exchange(ref _owner, null)?.Restore();
+            if (Interlocked.Exchange(ref _owner, null) is { } owner)
+                try { owner.Restore(); } finally { pause?.Dispose(); }
             return ValueTask.CompletedTask;
         }
     }

@@ -215,6 +215,7 @@ public partial class SettingsViewModel : ObservableObject
             AppSettings.CreateDefault().Hotkeys[HotkeyAction.ExtractRegionText]));
         vm._baseline = settings;
         vm.LoadAudio(settings);
+        vm.LoadBrightness(settings);
         return vm;
     }
 
@@ -343,6 +344,7 @@ public partial class SettingsViewModel : ObservableObject
         MergeHotkey(HotkeyAction.TranslateRegion, TranslationRegionHotkey);
         MergeHotkey(HotkeyAction.ToggleSubtitles, SubtitlesHotkey);
         MergeHotkey(HotkeyAction.ExtractRegionText, ExtractRegionTextHotkey);
+        MergeBrightnessKeys(hotkeys);
 
         return latest with
         {
@@ -360,6 +362,7 @@ public partial class SettingsViewModel : ObservableObject
             BrowserTheme = browserTheme,
             Capture = capture,
             Hotkeys = hotkeys,
+            Brightness = MergeBrightness(latest.Brightness),
             Windows = latest.Windows,
             WheelActions = effectiveWheelActions,
             ShowLauncherDock = showLauncherDock,
@@ -524,6 +527,13 @@ public partial class SettingsViewModel : ObservableObject
         out AppSettings candidate,
         out string error)
     {
+        var invalidBrightnessKey = BrightnessKeys.FirstOrDefault(k => !string.IsNullOrWhiteSpace(k.Text) && !TryParseHotkey(k.Text, out _));
+        if (invalidBrightnessKey is not null)
+        {
+            candidate = latest;
+            error = $"{invalidBrightnessKey.Label}快捷键格式无效，请使用 Ctrl+Alt+F8 等格式。";
+            return false;
+        }
         if (!TryParseHotkey(PanelHotkey, out _))
         {
             candidate = latest;

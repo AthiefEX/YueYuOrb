@@ -127,7 +127,8 @@ public sealed record AppSettings(
                 [HotkeyAction.TranslateSelection] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x54),
                 [HotkeyAction.TranslateRegion] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x4F),
                 [HotkeyAction.ToggleSubtitles] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x4C),
-                [HotkeyAction.ExtractRegionText] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x45)
+                [HotkeyAction.ExtractRegionText] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x45),
+                [HotkeyAction.RecoverBrightness] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt | ShortcutModifiers.Shift, 0x7B)
             },
             []);
     }

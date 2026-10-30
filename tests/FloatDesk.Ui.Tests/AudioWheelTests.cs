@@ -19,7 +19,7 @@ public sealed class AudioWheelTests
             try
             {
                 var group = new AudioCycleGroup(Guid.NewGuid(), "耳机与音箱", ["a", "b"]);
-                var defaults = AppSettings.CreateDefault();
+                var defaults = (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) });
                 panel.Apply(defaults with { AudioGroups = [group], WheelActions = [] }, false, "");
                 Assert.Equal(Visibility.Visible, Assert.IsType<ScrollViewer>(panel.FindName("WheelScroller")).Visibility);
                 var visible = (Button[])panel.GetType().GetMethod("GetVisibleWheelButtons", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(panel, null)!;

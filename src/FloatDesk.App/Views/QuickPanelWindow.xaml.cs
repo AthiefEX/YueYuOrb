@@ -125,6 +125,7 @@ public partial class QuickPanelWindow : Window
             WheelCanvas.Children.Add(button);
         }
         ApplyAudioWheel(settings);
+        ApplyBrightnessWheel(settings);
         WheelScroller.Visibility = GetVisibleWheelButtons().Length > 0
             ? Visibility.Visible
             : Visibility.Collapsed;

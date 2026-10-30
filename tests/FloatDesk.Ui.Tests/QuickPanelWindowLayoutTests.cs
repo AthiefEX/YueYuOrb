@@ -24,7 +24,7 @@ public sealed class QuickPanelWindowLayoutTests
             var panel = new QuickPanelWindow();
             try
             {
-                var defaults = AppSettings.CreateDefault();
+                var defaults = (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) });
                 var crystal = defaults with
                 {
                     Orb = defaults.Orb with { DisplayMode = OrbDisplayMode.Crystal, SizeDip = 128 }
@@ -138,7 +138,7 @@ public sealed class QuickPanelWindowLayoutTests
             {
                 var window = new QuickPanelWindow();
                 window.Apply(
-                    AppSettings.CreateDefault(),
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }),
                     manualLockEnabled: false,
                     inputStatus: "等待前台应用");
 
@@ -193,7 +193,7 @@ public sealed class QuickPanelWindowLayoutTests
                     [],
                     null,
                     1);
-                var settings = AppSettings.CreateDefault() with
+                var settings = (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }) with
                 {
                     Launchers = [wheelApp, dockApp],
                     ShowLauncherDock = true
@@ -261,7 +261,7 @@ public sealed class QuickPanelWindowLayoutTests
                     null,
                     1);
                 window.Apply(
-                    AppSettings.CreateDefault() with
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }) with
                     {
                         Launchers = [wheelApp, dockApp]
                     },
@@ -344,7 +344,7 @@ public sealed class QuickPanelWindowLayoutTests
                     null,
                     launchers.Count));
                 window.Apply(
-                    AppSettings.CreateDefault() with
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }) with
                     {
                         Launchers = launchers
                     },
@@ -380,7 +380,7 @@ public sealed class QuickPanelWindowLayoutTests
                     "Overflowing wheel applications must be scrollable.");
 
                 window.Apply(
-                    AppSettings.CreateDefault() with
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }) with
                     {
                         Launchers = launchers
                             .Where(item => item.ShowInWheel)
@@ -483,7 +483,7 @@ public sealed class QuickPanelWindowLayoutTests
                         1)
                 };
                 window.Apply(
-                    AppSettings.CreateDefault() with
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }) with
                     {
                         Launchers = launchers
                     },
@@ -580,7 +580,7 @@ public sealed class QuickPanelWindowLayoutTests
             {
                 var window = new QuickPanelWindow();
                 window.Apply(
-                    AppSettings.CreateDefault(),
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }),
                     manualLockEnabled: false,
                     inputStatus: "等待前台应用");
                 InvokeArrangeMenu(
@@ -644,7 +644,7 @@ public sealed class QuickPanelWindowLayoutTests
             {
                 var window = new QuickPanelWindow();
                 window.Apply(
-                    AppSettings.CreateDefault(),
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }),
                     manualLockEnabled: false,
                     inputStatus: "等待前台应用");
                 InvokeArrangeMenu(
@@ -704,7 +704,7 @@ public sealed class QuickPanelWindowLayoutTests
             {
                 var window = new QuickPanelWindow();
                 window.Apply(
-                    AppSettings.CreateDefault(),
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }),
                     manualLockEnabled: false,
                     inputStatus: "等待前台应用");
                 var anchor = new Point(12, 280);
@@ -771,7 +771,7 @@ public sealed class QuickPanelWindowLayoutTests
                     56);
                 window = new QuickPanelWindow();
                 window.Apply(
-                    AppSettings.CreateDefault(),
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }),
                     manualLockEnabled: false,
                     inputStatus: "等待前台应用");
                 window.ShowNear(window, orb);
@@ -819,7 +819,7 @@ public sealed class QuickPanelWindowLayoutTests
             {
                 var window = new QuickPanelWindow();
                 window.Apply(
-                    AppSettings.CreateDefault(),
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }),
                     manualLockEnabled: false,
                     inputStatus: "等待前台应用");
                 InvokeArrangeMenu(
@@ -884,7 +884,7 @@ public sealed class QuickPanelWindowLayoutTests
                     null,
                     wheelApps.Count);
                 window.Apply(
-                    AppSettings.CreateDefault() with
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }) with
                     {
                         Launchers = [.. wheelApps, dockApp]
                     },
@@ -1071,7 +1071,7 @@ public sealed class QuickPanelWindowLayoutTests
         {
             try
             {
-                var settings = AppSettings.CreateDefault();
+                var settings = (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) });
                 var enabledActions = settings.WheelActions
                     .Where(item => item != action)
                     .ToArray();
@@ -1144,7 +1144,7 @@ public sealed class QuickPanelWindowLayoutTests
                 window.TranslateSubtitlesRequested +=
                     () => raised.Add("subtitles");
                 window.Apply(
-                    AppSettings.CreateDefault(),
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }),
                     manualLockEnabled: false,
                     inputStatus: "等待前台应用");
 
@@ -1192,7 +1192,7 @@ public sealed class QuickPanelWindowLayoutTests
             {
                 var window = new QuickPanelWindow();
                 window.Apply(
-                    AppSettings.CreateDefault(),
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }),
                     manualLockEnabled: false,
                     inputStatus: "等待前台应用");
 
@@ -1237,7 +1237,7 @@ public sealed class QuickPanelWindowLayoutTests
             {
                 var window = new QuickPanelWindow();
                 window.Apply(
-                    AppSettings.CreateDefault() with { WheelActions = [], ShowAudioInWheel = false },
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }) with { WheelActions = [], ShowAudioInWheel = false },
                     manualLockEnabled: false,
                     inputStatus: "等待前台应用");
                 InvokeArrangeMenu(window, new Point(37, 280), opensLeft: false);
@@ -1276,7 +1276,7 @@ public sealed class QuickPanelWindowLayoutTests
             {
                 var window = new QuickPanelWindow();
                 window.Apply(
-                    AppSettings.CreateDefault(),
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }),
                     manualLockEnabled: false,
                     inputStatus: "等待前台应用");
                 InvokeArrangeMenu(window, new Point(37, 280), opensLeft: false);
@@ -1325,7 +1325,7 @@ public sealed class QuickPanelWindowLayoutTests
             {
                 var window = new QuickPanelWindow();
                 window.Apply(
-                    AppSettings.CreateDefault(),
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }),
                     manualLockEnabled: false,
                     inputStatus: "等待前台应用");
                 InvokeArrangeMenu(
@@ -1406,7 +1406,7 @@ public sealed class QuickPanelWindowLayoutTests
             {
                 window = new QuickPanelWindow();
                 window.Apply(
-                    AppSettings.CreateDefault(),
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }),
                     manualLockEnabled: false,
                     inputStatus: "等待前台应用");
                 window.Show();
@@ -1488,7 +1488,7 @@ public sealed class QuickPanelWindowLayoutTests
             {
                 window = new QuickPanelWindow();
                 window.Apply(
-                    AppSettings.CreateDefault(),
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }),
                     manualLockEnabled: false,
                     inputStatus: "等待前台应用");
                 var workArea = DisplayTopology.GetMonitors()
@@ -1570,7 +1570,7 @@ public sealed class QuickPanelWindowLayoutTests
             {
                 window = new QuickPanelWindow();
                 window.Apply(
-                    AppSettings.CreateDefault(),
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }),
                     manualLockEnabled: false,
                     inputStatus: "等待前台应用");
                 var workArea = DisplayTopology.GetMonitors()
@@ -1632,7 +1632,7 @@ public sealed class QuickPanelWindowLayoutTests
             {
                 window = new QuickPanelWindow();
                 window.Apply(
-                    AppSettings.CreateDefault(),
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }),
                     manualLockEnabled: false,
                     inputStatus: "等待前台应用");
                 var workArea = DisplayTopology.GetMonitors()
@@ -1698,7 +1698,7 @@ public sealed class QuickPanelWindowLayoutTests
             {
                 window = new QuickPanelWindow();
                 window.Apply(
-                    AppSettings.CreateDefault(),
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }),
                     manualLockEnabled: false,
                     inputStatus: "等待前台应用");
                 var workArea = DisplayTopology.GetMonitors()
@@ -1758,7 +1758,7 @@ public sealed class QuickPanelWindowLayoutTests
             {
                 var window = new QuickPanelWindow();
                 window.Apply(
-                    AppSettings.CreateDefault(),
+                    (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }),
                     manualLockEnabled: false,
                     inputStatus: "等待前台应用");
                 var workArea = DisplayTopology.GetMonitors()
@@ -1893,7 +1893,7 @@ public sealed class QuickPanelWindowLayoutTests
                 ShowInWheel: true))
             .ToArray();
         window.Apply(
-            AppSettings.CreateDefault() with
+            (AppSettings.CreateDefault() with { Brightness = new(ShowBrightnessInWheel: false, ShowNightModeInWheel: false) }) with
             {
                 Launchers = wheelApps
             },

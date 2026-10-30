@@ -116,7 +116,7 @@ public sealed class SettingsWindowVisualTests
             .Where(element => element.Name.LocalName == "TabItem")
             .ToArray();
 
-        Assert.Equal(10, tabs.Length);
+        Assert.Equal(11, tabs.Length);
         foreach (var tab in tabs)
         {
             var label = tab
@@ -172,7 +172,7 @@ public sealed class SettingsWindowVisualTests
         Assert.Equal(
             "{StaticResource NavigationTabItemStyle}",
             (string?)tabControl.Attribute("ItemContainerStyle"));
-        Assert.Equal(10, tabs.Length);
+        Assert.Equal(11, tabs.Length);
         Assert.All(
             tabs,
             tab => Assert.Equal(
