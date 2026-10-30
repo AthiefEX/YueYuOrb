@@ -88,6 +88,7 @@ public partial class TranslationOverlayWindow : Window
         SourceInitialized += OnSourceInitialized;
         Closing += OnClosing;
         Closed += OnClosed;
+        _ = new OutsideClickDismissBehavior(this, Dismiss, () => !_isSubtitleMode && !_dismissed);
         ApplySettings(_settings);
     }
 

@@ -70,9 +70,11 @@ internal sealed partial class AppRuntime
     }
     private void OpenBrightnessControls()
     {
+        if (_popupShutdownInProgress) return;
         if (_nightMode is null) return;
         if (_brightnessWindow is { IsVisible: true }) { _brightnessWindow.Activate(); return; }
         var window = new BrightnessControlWindow(_brightness, _nightMode, _settings.Current.Brightness);
+        RememberPopupPosition(window, "brightness-panel");
         _brightnessWindow = window;
         _coordinator?.RegisterCaptureHiddenWindow(window);
         window.Closed += (_, _) =>

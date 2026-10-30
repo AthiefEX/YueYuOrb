@@ -371,6 +371,7 @@ internal sealed partial class AppRuntime : IDisposable
             _tray?.Dispose();
             _tray = null;
             _input.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            FlushPopupPositionSaves();
             _settings.Dispose();
             _translationProviders.Dispose();
             _translationCredentials.Dispose();
@@ -551,8 +552,10 @@ internal sealed partial class AppRuntime : IDisposable
 
     private void OpenAudioControls()
     {
+        if (_popupShutdownInProgress) return;
         if (_audioWindow is { IsVisible: true }) { _audioWindow.Activate(); return; }
         var window = new AudioControlWindow(_audio);
+        RememberPopupPosition(window, "audio-panel");
         _audioWindow = window;
         _coordinator?.RegisterCaptureHiddenWindow(window);
         window.Closed += (_, _) =>
@@ -1043,6 +1046,7 @@ internal sealed partial class AppRuntime : IDisposable
             {
                 Windows =
                 [
+                    .. current.Windows.Where(placement => placement.Id != "orb"),
                     new WindowPlacement(
                         "orb",
                         monitor.DeviceName,
@@ -1182,7 +1186,8 @@ internal sealed partial class AppRuntime : IDisposable
                 return;
             }
         }
-        System.Windows.Application.Current.Shutdown();
+        if (await PreparePopupShutdownAsync())
+            System.Windows.Application.Current.Shutdown();
     }
 
     private T? GetTool<T>() where T : Window =>

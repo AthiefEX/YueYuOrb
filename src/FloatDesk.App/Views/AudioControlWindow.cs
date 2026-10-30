@@ -30,6 +30,8 @@ public sealed class AudioControlWindow : Window, IDisposable
     private bool _closed;
     private string? _pendingDevice;
     private double _pendingVolume;
+    public WindowPlacement? RememberedPlacement { get; set; }
+    private bool _userMoved;
 
     public AudioControlWindow(IAudioService audio)
     {
@@ -42,6 +44,9 @@ public sealed class AudioControlWindow : Window, IDisposable
         { Source = new Uri("/YueYuOrb;component/Resources/SettingsWindowResources.xaml", UriKind.Relative) });
         var body = new StackPanel { Margin = new Thickness(16) };
         var title = new DockPanel();
+        title.Background = Brushes.Transparent;
+        PopupWindowInteraction.EnableDragging(this, title, () => _userMoved = true);
+        _ = new OutsideClickDismissBehavior(this, Close);
         var close = new Button { Content = "×", Width = 28, Height = 28, MinWidth = 0, MinHeight = 0,
             Padding = new Thickness(0), HorizontalAlignment = HorizontalAlignment.Right };
         System.Windows.Automation.AutomationProperties.SetName(close, "关闭音频面板");
@@ -79,7 +84,12 @@ public sealed class AudioControlWindow : Window, IDisposable
         };
         _refresh.Tick += async (_, _) => await RefreshAsync();
         SizeChanged += (_, _) => { if (IsVisible) ClampToWorkArea(); };
-        Loaded += async (_, _) => { _refresh.Start(); await RefreshAsync(); };
+        Loaded += async (_, _) =>
+        {
+            _refresh.Start(); await RefreshAsync();
+            if (!_closed && !_userMoved && RememberedPlacement is not null)
+                PopupWindowInteraction.TryRestore(this, RememberedPlacement);
+        };
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); };
         Closed += (_, _) => { _closed = true; _refresh.Stop(); _volumeDelay.Stop(); _lifetime.Cancel(); _lifetime.Dispose(); };
     }
@@ -102,6 +112,8 @@ public sealed class AudioControlWindow : Window, IDisposable
 
     public void PositionNearCursor()
     {
+        if (_userMoved) return;
+        if (PopupWindowInteraction.TryRestore(this, RememberedPlacement)) return;
         var handle = new WindowInteropHelper(this).Handle;
         var pointer = System.Windows.Forms.Cursor.Position;
         var work = System.Windows.Forms.Screen.FromPoint(pointer).WorkingArea;

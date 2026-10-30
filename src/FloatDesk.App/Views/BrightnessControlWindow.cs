@@ -23,6 +23,8 @@ public sealed class BrightnessControlWindow : Window, IDisposable
     private readonly DispatcherTimer _delay = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private bool _updating, _busy, _closed;
     private int? _pending;
+    public WindowPlacement? RememberedPlacement { get; set; }
+    private bool _userMoved;
     public BrightnessControlWindow(IBrightnessService service, NightModeController night, BrightnessSettings settings)
     {
         _service = service; _night = night;
@@ -46,6 +48,9 @@ public sealed class BrightnessControlWindow : Window, IDisposable
         _status.FontSize = 12; _status.Margin = new Thickness(0, 10, 0, 0);
         _status.SetResourceReference(TextBlock.ForegroundProperty, "SettingsAccentBrush");
         var title = new DockPanel();
+        title.Background = System.Windows.Media.Brushes.Transparent;
+        PopupWindowInteraction.EnableDragging(this, title, () => _userMoved = true);
+        _ = new OutsideClickDismissBehavior(this, Close);
         var close = new Button { Content = "×", Width = 30, Height = 30, MinWidth = 0, MinHeight = 0,
             Padding = new Thickness(0), Style = (Style)FindResource("ActionButtonStyle") };
         System.Windows.Automation.AutomationProperties.SetName(close, "关闭亮度面板");
@@ -151,6 +156,8 @@ public sealed class BrightnessControlWindow : Window, IDisposable
     }
     public void PositionNearCursor()
     {
+        if (_userMoved) { QueueClamp(); return; }
+        if (PopupWindowInteraction.TryRestore(this, RememberedPlacement)) { QueueClamp(); return; }
         UpdateLayout();
         var point = System.Windows.Forms.Cursor.Position;
         var bounds = System.Windows.Forms.Screen.FromPoint(point).WorkingArea;
