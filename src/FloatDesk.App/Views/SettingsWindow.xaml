@@ -337,6 +337,165 @@
                                         </StackPanel>
                                     </Grid>
                                 </Border>
+
+                        <Grid Margin="0,20,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Border Style="{StaticResource SettingsCardStyle}" Padding="20,16" Margin="0,0,0,12">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="360" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
+                                        <Border Style="{StaticResource SettingsIconTileStyle}">
+                                            <TextBlock Style="{StaticResource SettingsIconGlyphStyle}" Text="&#xE765;" />
+                                        </Border>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="指定应用自动锁定英文" Style="{StaticResource SettingsSectionTitleStyle}" />
+                                            <TextBlock Text="目标应用进入前台时，按下方规则切换键盘布局。" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,2,0,0" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <CheckBox Grid.Column="1"
+                                              Content="启用自动规则"
+                                              IsChecked="{Binding AutoInputEnabled}"
+                                              Style="{StaticResource ToggleSwitchStyle}"
+                                              HorizontalAlignment="Right"
+                                              VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                            <Border Grid.Row="1" Style="{StaticResource SettingsCardStyle}" Padding="0">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="70" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Border Background="{DynamicResource SettingsAccentPaleBrush}" CornerRadius="16,16,0,0" Padding="18,12">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="190" />
+                                                <ColumnDefinition Width="150" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="目标键盘布局" Style="{StaticResource SettingsLabelStyle}" />
+                                            <TextBox Grid.Column="1" Text="{Binding TargetKlid}" Style="{StaticResource SettingsTextBoxStyle}" />
+                                            <TextBlock Grid.Column="2" Text="KLID 须为可加载的英文非 IME 键盘；锁定期间拦截切换快捷键，解除后恢复原布局。" Style="{StaticResource SettingsCaptionStyle}" Margin="12,0,0,0" TextWrapping="Wrap" />
+                                        </Grid>
+                                    </Border>
+                                    <DataGrid Grid.Row="1"
+                                              x:Name="InputRuleGrid" MinHeight="160" MaxHeight="360"
+                                              ItemsSource="{Binding InputRules}"
+                                              Style="{StaticResource SettingsDataGridStyle}"
+                                              BorderThickness="0"
+                                              HorizontalScrollBarVisibility="Auto">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="应用路径" Binding="{Binding ExePath}" Width="*" MinWidth="340" />
+                                            <DataGridTemplateColumn Header="动作" Width="150">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <ComboBox ItemsSource="{Binding DataContext.InputActions, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                  SelectedItem="{Binding Action, UpdateSourceTrigger=PropertyChanged}"
+                                                                  Style="{StaticResource SettingsComboBoxStyle}" />
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+                                            <DataGridCheckBoxColumn Header="启用" Binding="{Binding Enabled}" Width="74" />
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </Grid>
+                            </Border>
+                            <WrapPanel Grid.Row="2" Margin="0,10,0,0">
+                                <Button Content="添加应用规则" Click="OnAddInputRuleClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
+                                <Button Content="添加当前前台应用" Click="OnAddCurrentAppClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
+                                <Button Content="移除选中规则" Click="OnRemoveInputRuleClick" Style="{StaticResource ActionButtonStyle}" />
+                            </WrapPanel>
+                        </Grid>
+
+                                <Border Style="{StaticResource SettingsCardStyle}">
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border Style="{StaticResource SettingsIconTileStyle}">
+                                                <TextBlock Style="{StaticResource SettingsIconGlyphStyle}" Text="&#xE7A8;" />
+                                            </Border>
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock Text="截图与保存" Style="{StaticResource SettingsSectionTitleStyle}" />
+                                                <TextBlock Text="设置延时、格式、标注编辑器与自动保存位置" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <Border Style="{StaticResource SettingsSubtleCardStyle}" Margin="0,16,0,0" Padding="16,8">
+                                            <StackPanel>
+                                                <Grid Height="58">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="180" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="截图延时" Style="{StaticResource SettingsLabelStyle}" />
+                                                    <ComboBox Grid.Column="1" SelectedIndex="{Binding CaptureDelayIndex}" Style="{StaticResource SettingsComboBoxStyle}" VerticalAlignment="Center">
+                                                        <ComboBoxItem Content="立即" />
+                                                        <ComboBoxItem Content="3 秒" />
+                                                        <ComboBoxItem Content="5 秒" />
+                                                    </ComboBox>
+                                                </Grid>
+                                                <Border BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <Grid Height="58">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="180" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="图片格式" Style="{StaticResource SettingsLabelStyle}" />
+                                                    <ComboBox Grid.Column="1" SelectedIndex="{Binding CaptureFormatIndex}" Style="{StaticResource SettingsComboBoxStyle}" VerticalAlignment="Center">
+                                                        <ComboBoxItem Content="PNG" />
+                                                        <ComboBoxItem Content="JPEG（质量 90）" />
+                                                    </ComboBox>
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
+                                        <StackPanel Margin="0,12,0,0">
+                                            <CheckBox Content="输出前打开标注编辑器" IsChecked="{Binding CaptureOpenEditor}" Style="{StaticResource ToggleSwitchStyle}" Margin="0,4" />
+                                            <CheckBox Content="确认后自动保存到指定目录" IsChecked="{Binding CaptureAutoSave}" Style="{StaticResource ToggleSwitchStyle}" Margin="0,4" />
+                                        </StackPanel>
+                                        <Grid Margin="0,12,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox Text="{Binding CaptureSaveDirectory}" IsReadOnly="True" Style="{StaticResource SettingsTextBoxStyle}" />
+                                            <Button Grid.Column="1" Content="选择目录" Click="OnChooseCaptureDirectoryClick" Style="{StaticResource ActionButtonStyle}" Margin="10,0,0,0" />
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Style="{StaticResource SettingsCardStyle}" Margin="0,14,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="标注样式" Style="{StaticResource SettingsSectionTitleStyle}" />
+                                        <TextBlock Text="设置标注编辑器中的默认颜色、线宽与字号。" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,3,0,12" />
+                                        <Border Style="{StaticResource SettingsSubtleCardStyle}" Padding="16,8">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="190" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="58" />
+                                                    <RowDefinition Height="58" />
+                                                    <RowDefinition Height="58" />
+                                                </Grid.RowDefinitions>
+                                                <TextBlock Text="颜色（#RRGGBB）" Style="{StaticResource SettingsLabelStyle}" />
+                                                <TextBox Grid.Column="1" Text="{Binding AnnotationColor}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" />
+                                                <Border Grid.Row="1" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <TextBlock Grid.Row="1" Text="线宽（1–12px）" Style="{StaticResource SettingsLabelStyle}" />
+                                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding StrokeWidthPx}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" />
+                                                <Border Grid.Row="2" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
+                                                <TextBlock Grid.Row="2" Text="字号（10–72px）" Style="{StaticResource SettingsLabelStyle}" />
+                                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding FontSizePx}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </Border>
+                                    </StackPanel>
+                                </Border>
+
                             </StackPanel>
                         </ScrollViewer>
                     </TabItem>
@@ -450,122 +609,7 @@
                         </ScrollViewer>
                     </TabItem>
 
-                    <TabItem Style="{StaticResource NavigationTabItemStyle}" AutomationProperties.Name="快捷应用">
-                        <TabItem.Header>
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock FontFamily="{StaticResource SettingsIconFont}" FontSize="15" Text="&#xE71D;" Margin="0,0,7,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
-                                <TextBlock Text="快捷应用" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
-                            </StackPanel>
-                        </TabItem.Header>
-                        <Grid x:Name="LauncherDropSurface"
-                              Margin="28,16,28,24"
-                              AllowDrop="True"
-                              DragOver="OnLauncherDragOver"
-                              DragLeave="OnLauncherDragLeave"
-                              Drop="OnLauncherDrop">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <Border Style="{StaticResource SettingsCardStyle}" Padding="20,16" Margin="0,0,0,12">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
-                                        <Border Style="{StaticResource SettingsIconTileStyle}">
-                                            <TextBlock Style="{StaticResource SettingsIconGlyphStyle}" Text="&#xE71D;" />
-                                        </Border>
-                                        <StackPanel VerticalAlignment="Center">
-                                            <TextBlock Text="快捷应用" Style="{StaticResource SettingsSectionTitleStyle}" />
-                                            <TextBlock Text="可直接拖入 exe 或快捷方式到此页面添加应用。未加入轮盘的应用保留在底部应用坞，移出轮盘不会删除应用。"
-                                                       Style="{StaticResource SettingsDescriptionStyle}"
-                                                       Margin="0,2,0,0" />
-                                        </StackPanel>
-                                    </StackPanel>
-                                    <WrapPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <Button Content="添加 exe" Click="OnAddExeClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
-                                        <Button Content="添加快捷方式" Click="OnAddShortcutClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
-                                        <Button Content="添加文件夹" Click="OnAddFolderClick" Style="{StaticResource ActionButtonStyle}" />
-                                    </WrapPanel>
-                                </Grid>
-                            </Border>
-                            <Border Grid.Row="1" Style="{StaticResource SettingsCardStyle}" Padding="0">
-                                <DataGrid x:Name="LauncherGrid"
-                                          ItemsSource="{Binding Launchers}"
-                                          Style="{StaticResource SettingsDataGridStyle}"
-                                          BorderThickness="0"
-                                          IsReadOnly="False"
-                                          HorizontalScrollBarVisibility="Auto"
-                                          VerticalScrollBarVisibility="Auto">
-                                    <DataGrid.Columns>
-                                        <DataGridTemplateColumn Header="" Width="44" IsReadOnly="True">
-                                            <DataGridTemplateColumn.CellTemplate>
-                                                <DataTemplate>
-                                                    <views:LauncherIconView Width="26"
-                                                                            Height="26"
-                                                                            IconSize="26"
-                                                                            Launcher="{Binding}"
-                                                                            IconProvider="{Binding DataContext.LauncherIconProvider, RelativeSource={RelativeSource AncestorType=DataGrid}}" />
-                                                </DataTemplate>
-                                            </DataGridTemplateColumn.CellTemplate>
-                                        </DataGridTemplateColumn>
-                                        <DataGridTextColumn Header="名称" Binding="{Binding Name}" Width="150" />
-                                        <DataGridTextColumn Header="路径" Binding="{Binding Path}" Width="*" MinWidth="260" />
-                                        <DataGridTextColumn Header="类型" Binding="{Binding Kind}" Width="80" IsReadOnly="True" />
-                                        <DataGridCheckBoxColumn Header="轮盘" Binding="{Binding ShowInWheel, Mode=OneWay}" Width="72" IsReadOnly="True" />
-                                    </DataGrid.Columns>
-                                </DataGrid>
-                            </Border>
-                            <Border Grid.Row="2" Background="{DynamicResource SettingsCardSubtleBrush}" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" CornerRadius="0,0,16,16" Padding="14,10">
-                                <WrapPanel>
-                                    <Button Content="移除选中项" Click="OnRemoveLauncherClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
-                                    <Button Content="编辑选中项" Click="OnEditLauncherClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
-                                    <Button Content="上移" Click="OnMoveLauncherUpClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
-                                    <Button Content="下移" Click="OnMoveLauncherDownClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
-                                    <Button Content="加入轮盘" Click="OnAddLauncherToWheelClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
-                                    <Button Content="移出轮盘" Click="OnRemoveLauncherFromWheelClick" Style="{StaticResource ActionButtonStyle}" />
-                                </WrapPanel>
-                            </Border>
-                            <Border x:Name="LauncherDropHint"
-                                    Grid.RowSpan="3"
-                                    Panel.ZIndex="20"
-                                    Background="#B3143044"
-                                    BorderBrush="{DynamicResource SettingsAccentBrush}"
-                                    BorderThickness="2"
-                                    CornerRadius="18"
-                                    IsHitTestVisible="False"
-                                    Visibility="Collapsed">
-                                <StackPanel HorizontalAlignment="Center"
-                                            VerticalAlignment="Center">
-                                    <Border Width="54"
-                                            Height="54"
-                                            HorizontalAlignment="Center"
-                                            Background="{DynamicResource SettingsAccentBrush}"
-                                            CornerRadius="27">
-                                        <TextBlock HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"
-                                                   FontFamily="{StaticResource SettingsIconFont}"
-                                                   FontSize="25"
-                                                   Foreground="White"
-                                                   Text="&#xE896;" />
-                                    </Border>
-                                    <TextBlock Margin="0,14,0,0"
-                                               HorizontalAlignment="Center"
-                                               FontSize="18"
-                                               FontWeight="SemiBold"
-                                               Foreground="White"
-                                               Text="松开即可添加应用" />
-                                    <TextBlock Margin="0,4,0,0"
-                                               HorizontalAlignment="Center"
-                                               Foreground="#DDEFFBFF"
-                                               Text="支持同时拖入多个 exe 或快捷方式" />
-                                </StackPanel>
-                            </Border>
-                        </Grid>
-                    </TabItem>
+
 
                     <TabItem x:Name="WheelSettingsTab" Style="{StaticResource NavigationTabItemStyle}" AutomationProperties.Name="轮盘">
                         <TabItem.Header>
@@ -686,93 +730,120 @@
                                                   Margin="20,0,0,0" />
                                     </Grid>
                                 </Border>
-                            </StackPanel>
-                        </ScrollViewer>
-                    </TabItem>
 
-                    <TabItem Style="{StaticResource NavigationTabItemStyle}" AutomationProperties.Name="输入法">
-                        <TabItem.Header>
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock FontFamily="{StaticResource SettingsIconFont}" FontSize="15" Text="&#xE765;" Margin="0,0,7,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
-                                <TextBlock Text="输入法" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
-                            </StackPanel>
-                        </TabItem.Header>
-                        <Grid Margin="28,16,28,24">
+                        <Grid x:Name="LauncherDropSurface"
+                              Margin="0,20,0,0"
+                              AllowDrop="True"
+                              DragOver="OnLauncherDragOver"
+                              DragLeave="OnLauncherDragLeave"
+                              Drop="OnLauncherDrop">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <Border Style="{StaticResource SettingsCardStyle}" Padding="20,16" Margin="0,0,0,12">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="360" />
+                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
                                         <Border Style="{StaticResource SettingsIconTileStyle}">
-                                            <TextBlock Style="{StaticResource SettingsIconGlyphStyle}" Text="&#xE765;" />
+                                            <TextBlock Style="{StaticResource SettingsIconGlyphStyle}" Text="&#xE71D;" />
                                         </Border>
                                         <StackPanel VerticalAlignment="Center">
-                                            <TextBlock Text="指定应用自动锁定英文" Style="{StaticResource SettingsSectionTitleStyle}" />
-                                            <TextBlock Text="目标应用进入前台时，按下方规则切换键盘布局。" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,2,0,0" />
+                                            <TextBlock Text="快捷应用" Style="{StaticResource SettingsSectionTitleStyle}" />
+                                            <TextBlock Text="可直接拖入 exe 或快捷方式到此页面添加应用。未加入轮盘的应用保留在底部应用坞，移出轮盘不会删除应用。"
+                                                       Style="{StaticResource SettingsDescriptionStyle}"
+                                                       Margin="0,2,0,0" />
                                         </StackPanel>
                                     </StackPanel>
-                                    <CheckBox Grid.Column="1"
-                                              Content="启用自动规则"
-                                              IsChecked="{Binding AutoInputEnabled}"
-                                              Style="{StaticResource ToggleSwitchStyle}"
-                                              HorizontalAlignment="Right"
-                                              VerticalAlignment="Center" />
+                                    <WrapPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <Button Content="添加 exe" Click="OnAddExeClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
+                                        <Button Content="添加快捷方式" Click="OnAddShortcutClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
+                                        <Button Content="添加文件夹" Click="OnAddFolderClick" Style="{StaticResource ActionButtonStyle}" />
+                                    </WrapPanel>
                                 </Grid>
                             </Border>
                             <Border Grid.Row="1" Style="{StaticResource SettingsCardStyle}" Padding="0">
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="70" />
-                                        <RowDefinition Height="*" />
-                                    </Grid.RowDefinitions>
-                                    <Border Background="{DynamicResource SettingsAccentPaleBrush}" CornerRadius="16,16,0,0" Padding="18,12">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="190" />
-                                                <ColumnDefinition Width="150" />
-                                                <ColumnDefinition Width="*" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Text="目标键盘布局" Style="{StaticResource SettingsLabelStyle}" />
-                                            <TextBox Grid.Column="1" Text="{Binding TargetKlid}" Style="{StaticResource SettingsTextBoxStyle}" />
-                                            <TextBlock Grid.Column="2" Text="KLID 须为可加载的英文非 IME 键盘；锁定期间拦截切换快捷键，解除后恢复原布局。" Style="{StaticResource SettingsCaptionStyle}" Margin="12,0,0,0" TextWrapping="Wrap" />
-                                        </Grid>
-                                    </Border>
-                                    <DataGrid Grid.Row="1"
-                                              x:Name="InputRuleGrid"
-                                              ItemsSource="{Binding InputRules}"
-                                              Style="{StaticResource SettingsDataGridStyle}"
-                                              BorderThickness="0"
-                                              HorizontalScrollBarVisibility="Auto">
-                                        <DataGrid.Columns>
-                                            <DataGridTextColumn Header="应用路径" Binding="{Binding ExePath}" Width="*" MinWidth="340" />
-                                            <DataGridTemplateColumn Header="动作" Width="150">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <ComboBox ItemsSource="{Binding DataContext.InputActions, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                  SelectedItem="{Binding Action, UpdateSourceTrigger=PropertyChanged}"
-                                                                  Style="{StaticResource SettingsComboBoxStyle}" />
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
-                                            <DataGridCheckBoxColumn Header="启用" Binding="{Binding Enabled}" Width="74" />
-                                        </DataGrid.Columns>
-                                    </DataGrid>
-                                </Grid>
+                                <DataGrid x:Name="LauncherGrid" MinHeight="180" MaxHeight="360"
+                                          ItemsSource="{Binding Launchers}"
+                                          Style="{StaticResource SettingsDataGridStyle}"
+                                          BorderThickness="0"
+                                          IsReadOnly="False"
+                                          HorizontalScrollBarVisibility="Auto"
+                                          VerticalScrollBarVisibility="Auto">
+                                    <DataGrid.Columns>
+                                        <DataGridTemplateColumn Header="" Width="44" IsReadOnly="True">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <views:LauncherIconView Width="26"
+                                                                            Height="26"
+                                                                            IconSize="26"
+                                                                            Launcher="{Binding}"
+                                                                            IconProvider="{Binding DataContext.LauncherIconProvider, RelativeSource={RelativeSource AncestorType=DataGrid}}" />
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTextColumn Header="名称" Binding="{Binding Name}" Width="150" />
+                                        <DataGridTextColumn Header="路径" Binding="{Binding Path}" Width="*" MinWidth="260" />
+                                        <DataGridTextColumn Header="类型" Binding="{Binding Kind}" Width="80" IsReadOnly="True" />
+                                        <DataGridCheckBoxColumn Header="轮盘" Binding="{Binding ShowInWheel, Mode=OneWay}" Width="72" IsReadOnly="True" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
                             </Border>
-                            <WrapPanel Grid.Row="2" Margin="0,10,0,0">
-                                <Button Content="添加应用规则" Click="OnAddInputRuleClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
-                                <Button Content="添加当前前台应用" Click="OnAddCurrentAppClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
-                                <Button Content="移除选中规则" Click="OnRemoveInputRuleClick" Style="{StaticResource ActionButtonStyle}" />
-                            </WrapPanel>
+                            <Border Grid.Row="2" Background="{DynamicResource SettingsCardSubtleBrush}" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" CornerRadius="0,0,16,16" Padding="14,10">
+                                <WrapPanel>
+                                    <Button Content="移除选中项" Click="OnRemoveLauncherClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
+                                    <Button Content="编辑选中项" Click="OnEditLauncherClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
+                                    <Button Content="上移" Click="OnMoveLauncherUpClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
+                                    <Button Content="下移" Click="OnMoveLauncherDownClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
+                                    <Button Content="加入轮盘" Click="OnAddLauncherToWheelClick" Style="{StaticResource ActionButtonStyle}" Margin="0,0,8,0" />
+                                    <Button Content="移出轮盘" Click="OnRemoveLauncherFromWheelClick" Style="{StaticResource ActionButtonStyle}" />
+                                </WrapPanel>
+                            </Border>
+                            <Border x:Name="LauncherDropHint"
+                                    Grid.RowSpan="3"
+                                    Panel.ZIndex="20"
+                                    Background="#B3143044"
+                                    BorderBrush="{DynamicResource SettingsAccentBrush}"
+                                    BorderThickness="2"
+                                    CornerRadius="18"
+                                    IsHitTestVisible="False"
+                                    Visibility="Collapsed">
+                                <StackPanel HorizontalAlignment="Center"
+                                            VerticalAlignment="Center">
+                                    <Border Width="54"
+                                            Height="54"
+                                            HorizontalAlignment="Center"
+                                            Background="{DynamicResource SettingsAccentBrush}"
+                                            CornerRadius="27">
+                                        <TextBlock HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   FontFamily="{StaticResource SettingsIconFont}"
+                                                   FontSize="25"
+                                                   Foreground="White"
+                                                   Text="&#xE896;" />
+                                    </Border>
+                                    <TextBlock Margin="0,14,0,0"
+                                               HorizontalAlignment="Center"
+                                               FontSize="18"
+                                               FontWeight="SemiBold"
+                                               Foreground="White"
+                                               Text="松开即可添加应用" />
+                                    <TextBlock Margin="0,4,0,0"
+                                               HorizontalAlignment="Center"
+                                               Foreground="#DDEFFBFF"
+                                               Text="支持同时拖入多个 exe 或快捷方式" />
+                                </StackPanel>
+                            </Border>
                         </Grid>
+                            </StackPanel>
+                        </ScrollViewer>
                     </TabItem>
+
+
 
                     <TabItem Style="{StaticResource NavigationTabItemStyle}" AutomationProperties.Name="AI 网页">
                         <TabItem.Header>
@@ -1183,99 +1254,7 @@
                         </ScrollViewer>
                     </TabItem>
 
-                    <TabItem Style="{StaticResource NavigationTabItemStyle}" AutomationProperties.Name="截图">
-                        <TabItem.Header>
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock FontFamily="{StaticResource SettingsIconFont}" FontSize="15" Text="&#xE7A8;" Margin="0,0,7,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
-                                <TextBlock Text="截图" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
-                            </StackPanel>
-                        </TabItem.Header>
-                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                            <StackPanel Margin="28,16,28,24" MaxWidth="1080" HorizontalAlignment="Stretch">
-                                <Border Style="{StaticResource SettingsCardStyle}">
-                                    <StackPanel>
-                                        <StackPanel Orientation="Horizontal">
-                                            <Border Style="{StaticResource SettingsIconTileStyle}">
-                                                <TextBlock Style="{StaticResource SettingsIconGlyphStyle}" Text="&#xE7A8;" />
-                                            </Border>
-                                            <StackPanel VerticalAlignment="Center">
-                                                <TextBlock Text="截图与保存" Style="{StaticResource SettingsSectionTitleStyle}" />
-                                                <TextBlock Text="设置延时、格式、标注编辑器与自动保存位置" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,2,0,0" />
-                                            </StackPanel>
-                                        </StackPanel>
-                                        <Border Style="{StaticResource SettingsSubtleCardStyle}" Margin="0,16,0,0" Padding="16,8">
-                                            <StackPanel>
-                                                <Grid Height="58">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="180" />
-                                                        <ColumnDefinition Width="*" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="截图延时" Style="{StaticResource SettingsLabelStyle}" />
-                                                    <ComboBox Grid.Column="1" SelectedIndex="{Binding CaptureDelayIndex}" Style="{StaticResource SettingsComboBoxStyle}" VerticalAlignment="Center">
-                                                        <ComboBoxItem Content="立即" />
-                                                        <ComboBoxItem Content="3 秒" />
-                                                        <ComboBoxItem Content="5 秒" />
-                                                    </ComboBox>
-                                                </Grid>
-                                                <Border BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
-                                                <Grid Height="58">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="180" />
-                                                        <ColumnDefinition Width="*" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="图片格式" Style="{StaticResource SettingsLabelStyle}" />
-                                                    <ComboBox Grid.Column="1" SelectedIndex="{Binding CaptureFormatIndex}" Style="{StaticResource SettingsComboBoxStyle}" VerticalAlignment="Center">
-                                                        <ComboBoxItem Content="PNG" />
-                                                        <ComboBoxItem Content="JPEG（质量 90）" />
-                                                    </ComboBox>
-                                                </Grid>
-                                            </StackPanel>
-                                        </Border>
-                                        <StackPanel Margin="0,12,0,0">
-                                            <CheckBox Content="输出前打开标注编辑器" IsChecked="{Binding CaptureOpenEditor}" Style="{StaticResource ToggleSwitchStyle}" Margin="0,4" />
-                                            <CheckBox Content="确认后自动保存到指定目录" IsChecked="{Binding CaptureAutoSave}" Style="{StaticResource ToggleSwitchStyle}" Margin="0,4" />
-                                        </StackPanel>
-                                        <Grid Margin="0,12,0,0">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBox Text="{Binding CaptureSaveDirectory}" IsReadOnly="True" Style="{StaticResource SettingsTextBoxStyle}" />
-                                            <Button Grid.Column="1" Content="选择目录" Click="OnChooseCaptureDirectoryClick" Style="{StaticResource ActionButtonStyle}" Margin="10,0,0,0" />
-                                        </Grid>
-                                    </StackPanel>
-                                </Border>
 
-                                <Border Style="{StaticResource SettingsCardStyle}" Margin="0,14,0,0">
-                                    <StackPanel>
-                                        <TextBlock Text="标注样式" Style="{StaticResource SettingsSectionTitleStyle}" />
-                                        <TextBlock Text="设置标注编辑器中的默认颜色、线宽与字号。" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,3,0,12" />
-                                        <Border Style="{StaticResource SettingsSubtleCardStyle}" Padding="16,8">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="190" />
-                                                    <ColumnDefinition Width="*" />
-                                                </Grid.ColumnDefinitions>
-                                                <Grid.RowDefinitions>
-                                                    <RowDefinition Height="58" />
-                                                    <RowDefinition Height="58" />
-                                                    <RowDefinition Height="58" />
-                                                </Grid.RowDefinitions>
-                                                <TextBlock Text="颜色（#RRGGBB）" Style="{StaticResource SettingsLabelStyle}" />
-                                                <TextBox Grid.Column="1" Text="{Binding AnnotationColor}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" />
-                                                <Border Grid.Row="1" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
-                                                <TextBlock Grid.Row="1" Text="线宽（1–12px）" Style="{StaticResource SettingsLabelStyle}" />
-                                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding StrokeWidthPx}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" />
-                                                <Border Grid.Row="2" Grid.ColumnSpan="2" BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0,1,0,0" />
-                                                <TextBlock Grid.Row="2" Text="字号（10–72px）" Style="{StaticResource SettingsLabelStyle}" />
-                                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding FontSizePx}" Style="{StaticResource SettingsTextBoxStyle}" VerticalAlignment="Center" />
-                                            </Grid>
-                                        </Border>
-                                    </StackPanel>
-                                </Border>
-                            </StackPanel>
-                        </ScrollViewer>
-                    </TabItem>
 
                     <TabItem x:Name="AudioSettingsTab" Style="{StaticResource NavigationTabItemStyle}" AutomationProperties.Name="音频">
                         <TabItem.Header>

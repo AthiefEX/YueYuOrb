@@ -26,27 +26,46 @@ public sealed class BrightnessControlWindow : Window, IDisposable
     public BrightnessControlWindow(IBrightnessService service, NightModeController night, BrightnessSettings settings)
     {
         _service = service; _night = night;
-        Title = "亮度调节"; Width = 340; SizeToContent = SizeToContent.Height; MaxHeight = 620;
+        Title = "亮度调节"; Width = 360; SizeToContent = SizeToContent.Height; MaxHeight = 620;
         WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize;
         AllowsTransparency = true; Background = System.Windows.Media.Brushes.Transparent;
         ShowInTaskbar = false; Topmost = true;
         Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/YueYuOrb;component/Resources/SettingsWindowResources.xaml", UriKind.Relative) });
-        var body = new StackPanel { Margin = new Thickness(16) };
+        Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/YueYuOrb;component/Resources/BrightnessControlResources.xaml", UriKind.Relative) });
+        var body = new StackPanel { Margin = new Thickness(20) };
         body.SetResourceReference(TextElement.ForegroundProperty, "SettingsInkBrush");
+        _brightness.Style = (Style)FindResource("BrightnessSliderStyle");
+        _brightness.Margin = new Thickness(0, 8, 0, 4);
+        _toggle.Style = (Style)FindResource("NightModePillStyle");
+        _toggle.HorizontalAlignment = HorizontalAlignment.Stretch;
+        _toggle.Margin = new Thickness(0, 18, 0, 14);
+        _level.FontSize = 16; _level.FontWeight = FontWeights.SemiBold;
+        _level.Margin = new Thickness(0, 18, 0, 0);
+        _devices.FontSize = 12; _devices.LineHeight = 19;
+        _devices.SetResourceReference(TextBlock.ForegroundProperty, "SettingsMutedBrush");
+        _status.FontSize = 12; _status.Margin = new Thickness(0, 10, 0, 0);
+        _status.SetResourceReference(TextBlock.ForegroundProperty, "SettingsAccentBrush");
         var title = new DockPanel();
-        var close = new Button { Content = "×", Width = 28, Height = 28, Padding = new Thickness(0) };
+        var close = new Button { Content = "×", Width = 30, Height = 30, MinWidth = 0, MinHeight = 0,
+            Padding = new Thickness(0), Style = (Style)FindResource("ActionButtonStyle") };
+        System.Windows.Automation.AutomationProperties.SetName(close, "关闭亮度面板");
         close.Click += (_, _) => Close(); DockPanel.SetDock(close, Dock.Right); title.Children.Add(close);
         title.Children.Add(new TextBlock { Text = "所有屏幕亮度", FontSize = 18, FontWeight = FontWeights.SemiBold });
         body.Children.Add(title); body.Children.Add(_level); body.Children.Add(_brightness);
-        body.Children.Add(new ScrollViewer { Content = _devices, MaxHeight = 150, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        var deviceCard = new Border { CornerRadius = new CornerRadius(12), Padding = new Thickness(12, 10, 12, 10),
+            Margin = new Thickness(0, 4, 0, 0), Child = new ScrollViewer { Content = _devices, MaxHeight = 130, VerticalScrollBarVisibility = ScrollBarVisibility.Auto } };
+        deviceCard.SetResourceReference(Border.BackgroundProperty, "SettingsCardSubtleBrush");
+        body.Children.Add(deviceCard);
         body.Children.Add(_toggle);
         var nightLevel = new TextBlock { Text = $"降暗程度 {settings.NightDimmingPercent}%" };
         body.Children.Add(nightLevel);
-        var dim = new Slider { Minimum = 0, Maximum = 90, TickFrequency = 1, IsSnapToTickEnabled = true, Value = settings.NightDimmingPercent };
+        var dim = new Slider { Minimum = 0, Maximum = 90, TickFrequency = 1, IsSnapToTickEnabled = true,
+            Value = settings.NightDimmingPercent, Style = (Style)FindResource("BrightnessSliderStyle"), Margin = new Thickness(0, 6, 0, 0) };
         System.Windows.Automation.AutomationProperties.SetName(dim, "黑夜降暗程度");
         dim.ValueChanged += (_, _) => { nightLevel.Text = $"降暗程度 {Math.Round(dim.Value)}%"; _night.SetDimmingPercent((int)dim.Value); };
         body.Children.Add(dim);
-        var recover = new Button { Content = "恢复可见亮度", Margin = new Thickness(0, 12, 0, 8) };
+        var recover = new Button { Content = "恢复可见亮度", Margin = new Thickness(0, 18, 0, 0),
+            Style = (Style)FindResource("ActionButtonStyle"), MinHeight = 40 };
         recover.Click += async (_, _) => { _night.SetEnabled(false); await ChangeAllAsync(50); };
         body.Children.Add(recover); body.Children.Add(_status);
         var card = new Border { CornerRadius = new CornerRadius(18), BorderThickness = new Thickness(1),
@@ -78,7 +97,12 @@ public sealed class BrightnessControlWindow : Window, IDisposable
         Loaded += async (_, _) => { OnNightChanged(); await RefreshAsync(); PositionNearCursor(); _night.RaiseControls(); };
         Closed += (_, _) => { _closed = true; _delay.Stop(); _night.Changed -= OnNightChanged; Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplayChanged; _lifetime.Cancel(); _lifetime.Dispose(); };
     }
-    private void OnNightChanged() { _updating = true; try { _toggle.IsChecked = _night.IsEnabled; } finally { _updating = false; } }
+    private void OnNightChanged()
+    {
+        _updating = true;
+        try { _toggle.IsChecked = _night.IsEnabled; _toggle.Content = _night.IsEnabled ? "☾  黑夜模式 · 已开启" : "☾  黑夜模式 · 已关闭"; }
+        finally { _updating = false; }
+    }
     private async Task RefreshAsync()
     {
         _brightness.IsEnabled = false;

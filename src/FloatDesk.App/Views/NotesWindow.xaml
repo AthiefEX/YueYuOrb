@@ -31,9 +31,9 @@
         <Grid Background="{DynamicResource ToolWindowContentBrush}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="48" />
-                <RowDefinition Height="82" />
+
                 <RowDefinition Height="*" />
-                <RowDefinition Height="66" />
+                <RowDefinition Height="52" />
             </Grid.RowDefinitions>
 
             <Grid x:Name="NotesTitleBar"
@@ -93,42 +93,11 @@
                 </StackPanel>
             </Grid>
 
-            <Border Grid.Row="1"
-                    Background="{DynamicResource SettingsHeroBrush}"
-                    CornerRadius="0,0,22,22"
-                    Padding="26,13">
-                <Grid>
-                    <StackPanel>
-                        <TextBlock Text="月语悬浮球记事本"
-                                   FontSize="27"
-                                   FontWeight="SemiBold"
-                                   Foreground="{DynamicResource SettingsInkBrush}" />
-                        <TextBlock Text="随手记录灵感、待办与重要片段"
-                                   Margin="1,3,0,0"
-                                   FontSize="13"
-                                   Foreground="{DynamicResource SettingsMutedBrush}" />
-                    </StackPanel>
-                    <Border Style="{StaticResource SettingsPillStyle}"
-                            HorizontalAlignment="Right"
-                            VerticalAlignment="Center">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="&#xE74E;"
-                                       FontFamily="{StaticResource SettingsIconFont}"
-                                       FontSize="14"
-                                       Margin="0,0,7,0"
-                                       Foreground="{DynamicResource SettingsAccentBrush}" />
-                            <TextBlock Text="自动保存 · 本地存储"
-                                       FontSize="12"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource SettingsMutedBrush}" />
-                        </StackPanel>
-                    </Border>
-                </Grid>
-            </Border>
 
-            <Grid Grid.Row="2" Margin="22,18,22,14">
+
+            <Grid Grid.Row="1" Margin="14,10,14,8">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="258" />
+                    <ColumnDefinition Width="220" />
                     <ColumnDefinition Width="14" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
@@ -223,8 +192,8 @@
                 </Border>
             </Grid>
 
-            <Border Grid.Row="3"
-                    Margin="22,0,22,14"
+            <Border Grid.Row="2"
+                    Margin="14,0,14,8"
                     Background="{DynamicResource SettingsCardSubtleBrush}"
                     BorderBrush="{DynamicResource SettingsLineBrush}"
                     BorderThickness="1"

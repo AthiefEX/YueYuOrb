@@ -4,6 +4,15 @@ namespace FloatDesk.Ui.Tests;
 
 public sealed class ToolWindowVisualTests
 {
+    [Theory]
+    [InlineData("AiBrowserWindow.xaml")]
+    [InlineData("NotesWindow.xaml")]
+    public void ContentWindowsDoNotReserveSpaceForLargeIntroductoryHeaders(string file)
+    {
+        var document = XDocument.Load(FindRepoFile("src/FloatDesk.App/Views/" + file));
+        Assert.DoesNotContain(document.Descendants(), element => (string?)element.Attribute("FontSize") == "27");
+        Assert.DoesNotContain(document.Descendants(), element => (string?)element.Attribute("Background") == "{DynamicResource SettingsHeroBrush}");
+    }
     [Fact]
     public void AllWindowsUsePublicBrandAndAssemblyPackUris()
     {

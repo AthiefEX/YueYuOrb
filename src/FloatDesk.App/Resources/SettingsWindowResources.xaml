@@ -181,6 +181,8 @@
                 <ControlTemplate TargetType="{x:Type TabItem}">
                     <Border x:Name="NavigationItemBackground"
                             Padding="{TemplateBinding Padding}"
+                            BorderThickness="1"
+                            BorderBrush="Transparent"
                             CornerRadius="12"
                             Background="{TemplateBinding Background}">
                         <ContentPresenter HorizontalAlignment="Center"
@@ -195,7 +197,6 @@
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="NavigationItemBackground" Property="Background" Value="{DynamicResource SettingsAccentSoftBrush}" />
                             <Setter TargetName="NavigationItemBackground" Property="BorderBrush" Value="{DynamicResource SettingsAccentOutlineBrush}" />
-                            <Setter TargetName="NavigationItemBackground" Property="BorderThickness" Value="1" />
                             <Setter Property="Foreground" Value="{DynamicResource SettingsAccentBrush}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
@@ -227,9 +228,11 @@
                             <ScrollViewer HorizontalScrollBarVisibility="Auto"
                                           VerticalScrollBarVisibility="Disabled"
                                           PanningMode="HorizontalOnly">
-                                <TabPanel IsItemsHost="True"
+                                <StackPanel IsItemsHost="True"
+                                          Orientation="Horizontal"
+                                          Margin="3"
                                           KeyboardNavigation.TabIndex="1"
-                                          HorizontalAlignment="Center" />
+                                          HorizontalAlignment="Left" />
                             </ScrollViewer>
                         </Border>
                         <ContentPresenter x:Name="PART_SelectedContentHost"

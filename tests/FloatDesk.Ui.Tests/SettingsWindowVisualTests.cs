@@ -5,6 +5,33 @@ namespace FloatDesk.Ui.Tests;
 public sealed class SettingsWindowVisualTests
 {
     [Fact]
+    public void NavigationGroupsAppsWithWheelAndInputAndCaptureWithGeneral()
+    {
+        var document = XDocument.Load(FindRepoFile("src/FloatDesk.App/Views/SettingsWindow.xaml"));
+        var tabs = document.Descendants().Where(e => e.Name.LocalName == "TabItem").ToArray();
+        Assert.Equal(["常规", "悬浮球", "轮盘", "AI 网页", "实时翻译", "音频", "亮度", "关于"],
+            tabs.Select(t => (string?)t.Attribute("AutomationProperties.Name")));
+        var general = tabs[0].ToString();
+        Assert.Contains("InputRuleGrid", general);
+        Assert.Contains("CaptureOpenEditor", general);
+        var wheel = tabs[2].ToString();
+        Assert.Contains("LauncherDropSurface", wheel);
+        Assert.Contains("OnLauncherDrop", wheel);
+        Assert.Contains("LauncherGrid", wheel);
+    }
+
+    [Fact]
+    public void NavigationUsesStableBorderThicknessAndSingleRowItemsHost()
+    {
+        var document = XDocument.Load(FindRepoFile("src/FloatDesk.App/Resources/SettingsWindowResources.xaml"));
+        Assert.Contains(document.Descendants(), e => e.Name.LocalName == "StackPanel" &&
+            (string?)e.Attribute("IsItemsHost") == "True" && (string?)e.Attribute("Orientation") == "Horizontal");
+        var background = document.Descendants().Single(e => (string?)e.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) == "NavigationItemBackground");
+        Assert.Equal("1", (string?)background.Attribute("BorderThickness"));
+        Assert.DoesNotContain(document.Descendants(), e => e.Name.LocalName == "Setter" &&
+            (string?)e.Attribute("TargetName") == "NavigationItemBackground" && (string?)e.Attribute("Property") == "BorderThickness");
+    }
+    [Fact]
     public void OrbAppearanceOffersCrystalModeWithoutChangingContourPreference()
     {
         var xaml = XDocument.Load(FindRepoFile(
@@ -116,7 +143,7 @@ public sealed class SettingsWindowVisualTests
             .Where(element => element.Name.LocalName == "TabItem")
             .ToArray();
 
-        Assert.Equal(11, tabs.Length);
+        Assert.Equal(8, tabs.Length);
         foreach (var tab in tabs)
         {
             var label = tab
@@ -172,7 +199,7 @@ public sealed class SettingsWindowVisualTests
         Assert.Equal(
             "{StaticResource NavigationTabItemStyle}",
             (string?)tabControl.Attribute("ItemContainerStyle"));
-        Assert.Equal(11, tabs.Length);
+        Assert.Equal(8, tabs.Length);
         Assert.All(
             tabs,
             tab => Assert.Equal(

@@ -198,8 +198,12 @@ public partial class SettingsWindow : Window
         object sender,
         SelectionChangedEventArgs e)
     {
-        if (SettingsTabControl is null ||
-            !SystemParameters.ClientAreaAnimation ||
+        if (SettingsTabControl is null || !ReferenceEquals(e.Source, SettingsTabControl))
+            return;
+        if (SettingsTabControl.SelectedItem is TabItem selectedTab)
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded,
+                new Action(selectedTab.BringIntoView));
+        if (!SystemParameters.ClientAreaAnimation ||
             SystemParameters.HighContrast)
         {
             return;
