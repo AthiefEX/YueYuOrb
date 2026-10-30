@@ -6,7 +6,7 @@ public enum OrbDisplayMode { Classic, Crystal }
 public enum FullscreenPolicy { FollowAlwaysOnTop, AutoHide, KeepTopmost }
 public enum CaptureMode { Region, ActiveWindow, CurrentMonitor }
 public enum ImageFormat { Png, Jpeg }
-public enum HotkeyAction { Panel, RegionCapture, WindowCapture, MonitorCapture, PauseInput, AiBrowser, Notes, TranslateSelection, TranslateRegion, ToggleSubtitles, ExtractRegionText }
+public enum HotkeyAction { Panel, RegionCapture, WindowCapture, MonitorCapture, PauseInput, AiBrowser, Notes, TranslateSelection, TranslateRegion, ToggleSubtitles, ExtractRegionText, BrightnessPanel, BrightnessPreset, BrightnessUp, BrightnessDown, ToggleNightMode, RecoverBrightness }
 public readonly record struct HotkeyChord(ShortcutModifiers Modifiers, uint VirtualKey);
 
 public sealed record GeneralSettings(bool StartWithWindows, AppTheme Theme);
@@ -81,6 +81,7 @@ public sealed record AppSettings(
 
     public IReadOnlyList<AudioCycleGroup> AudioGroups { get; init; } = [];
     public bool ShowAudioInWheel { get; init; } = true;
+    public BrightnessSettings Brightness { get; init; } = new();
 
     public BrowserThemeMode BrowserTheme { get; init; } =
         BrowserThemeMode.FollowApp;
