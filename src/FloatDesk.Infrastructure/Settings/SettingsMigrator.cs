@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using FloatDesk.Core.Models;
 
 namespace FloatDesk.Infrastructure.Settings;
@@ -20,7 +21,15 @@ public static class SettingsMigrator
         if (version < 1)
             throw new InvalidDataException("Settings schema version is invalid.");
 
-        var result = JsonSerializer.Deserialize<AppSettings>(json, options)
+        var compatible = JsonNode.Parse(json);
+        if (compatible is JsonObject root && root.FirstOrDefault(property =>
+                string.Equals(property.Key, "hotkeys", StringComparison.OrdinalIgnoreCase)).Value is JsonObject savedHotkeys)
+        {
+            foreach (var key in savedHotkeys.Select(property => property.Key).ToArray())
+                if (!Enum.TryParse<HotkeyAction>(key, ignoreCase: true, out var action) || !Enum.IsDefined(action))
+                    savedHotkeys.Remove(key);
+        }
+        var result = compatible.Deserialize<AppSettings>(options)
             ?? throw new InvalidDataException("Settings JSON was empty.");
         var hotkeys = new Dictionary<HotkeyAction, HotkeyChord>(result.Hotkeys);
         var defaultHotkeys = AppSettings.CreateDefault().Hotkeys;
@@ -34,7 +43,7 @@ public static class SettingsMigrator
         {
             hotkeys.TryAdd(action, defaultHotkeys[action]);
         }
-        result = result with { Hotkeys = hotkeys, Danmaku = (result.Danmaku ?? new()).Normalize() };
+        result = result with { Hotkeys = hotkeys };
         var errors = SettingsValidator.Validate(result);
         if (errors.Count > 0)
             throw new InvalidDataException(string.Join(" ", errors));

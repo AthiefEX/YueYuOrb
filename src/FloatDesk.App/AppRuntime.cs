@@ -185,7 +185,6 @@ internal sealed partial class AppRuntime : IDisposable
             sessionGate: _captureSessionGate,
             regionSelection: _regionSelection);
         InitializeBrightness();
-        InitializeDanmaku();
         _coordinator.WindowCreated += ApplyToolSettings;
         _settings.Changed += OnSettingsChanged;
         _input.StatusChanged += OnInputStatusChanged;
@@ -325,7 +324,6 @@ internal sealed partial class AppRuntime : IDisposable
             _translationRuntime.SubtitleStateChanged -= OnNightSubtitleChanged;
             _translationRuntime.Dispose();
             _audioWindow?.Close();
-            DisposeDanmaku();
             _nightMode?.Dispose();
             _brightnessWindow?.Close();
             _brightness.Dispose();
@@ -711,7 +709,6 @@ internal sealed partial class AppRuntime : IDisposable
     private void OnHotkeyPressed(HotkeyAction action)
     {
         if (HandleBrightnessHotkey(action)) return;
-        if (HandleDanmakuHotkey(action)) return;
         switch (action)
         {
             case HotkeyAction.Panel:
@@ -774,7 +771,6 @@ internal sealed partial class AppRuntime : IDisposable
     {
         _emergencyPaused = !_emergencyPaused;
         _translationRuntime.SetEmergencyPaused(_emergencyPaused);
-        _danmaku?.SetPaused(_emergencyPaused || _danmakuPaused);
         _panel?.Apply(
             _settings.Current,
             _manualEnglish,
@@ -1001,7 +997,6 @@ internal sealed partial class AppRuntime : IDisposable
         _orb?.ApplySettings(settings);
         KeepOrbOnCurrentMonitor();
         _translationRuntime.ApplySettings(settings);
-        _danmaku?.ApplySettings(settings.Danmaku);
         _launcherIconCache.ScheduleMaintenance(settings.Launchers);
         _panel?.Apply(
             settings,

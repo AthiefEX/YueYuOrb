@@ -89,8 +89,7 @@ public partial class SettingsWindow : Window
             _settings,
             _reloadCoordinator,
             StartupService.SetEnabled,
-            settings => Applied?.Invoke(settings),
-            StartupService.SetEnabledAsync);
+            settings => Applied?.Invoke(settings));
         _viewModel = SettingsViewModel.From(
             settings.Current,
             ocrLanguages: getOcrLanguages());
@@ -288,7 +287,7 @@ public partial class SettingsWindow : Window
                 return;
             if (savedSnapshot is not null)
             {
-                await StartupService.SetEnabledAsync(
+                StartupService.SetEnabled(
                     savedSnapshot.General.StartWithWindows);
                 Applied?.Invoke(savedSnapshot);
             }

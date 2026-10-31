@@ -4,15 +4,6 @@ namespace FloatDesk.App;
 
 public sealed class StartupService
 {
-    public static async Task SetEnabledAsync(bool enabled)
-    {
-        if (!FloatDesk.App.Danmaku.WindowsNotificationSource.HasPackageIdentity) { SetEnabled(enabled); return; }
-        var task = await global::Windows.ApplicationModel.StartupTask.GetAsync("YueYuOrbStartup");
-        if (!enabled) { task.Disable(); return; }
-        var state = await task.RequestEnableAsync();
-        if (state is not (global::Windows.ApplicationModel.StartupTaskState.Enabled or global::Windows.ApplicationModel.StartupTaskState.EnabledByPolicy))
-            throw new InvalidOperationException("开机启动未获允许，请在 Windows 设置 → 应用 → 启动中开启月语悬浮球。");
-    }
     private const string KeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ValueName = "FloatDesk";
 

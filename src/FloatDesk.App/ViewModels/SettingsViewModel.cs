@@ -216,7 +216,6 @@ public partial class SettingsViewModel : ObservableObject
         vm._baseline = settings;
         vm.LoadAudio(settings);
         vm.LoadBrightness(settings);
-        vm.LoadDanmaku(settings);
         return vm;
     }
 
@@ -346,7 +345,6 @@ public partial class SettingsViewModel : ObservableObject
         MergeHotkey(HotkeyAction.ToggleSubtitles, SubtitlesHotkey);
         MergeHotkey(HotkeyAction.ExtractRegionText, ExtractRegionTextHotkey);
         MergeBrightnessKeys(hotkeys);
-        MergeDanmakuKeys(hotkeys);
 
         return latest with
         {
@@ -365,7 +363,6 @@ public partial class SettingsViewModel : ObservableObject
             Capture = capture,
             Hotkeys = hotkeys,
             Brightness = MergeBrightness(latest.Brightness),
-            Danmaku = MergeDanmaku(latest.Danmaku),
             Windows = latest.Windows,
             WheelActions = effectiveWheelActions,
             ShowLauncherDock = showLauncherDock,

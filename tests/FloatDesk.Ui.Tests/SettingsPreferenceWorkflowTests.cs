@@ -8,19 +8,6 @@ namespace FloatDesk.Ui.Tests;
 public sealed class SettingsPreferenceWorkflowTests
 {
     [Fact]
-    public async Task AsyncStartupRegistrationIsAwaitedBeforeApplyingPreferences()
-    {
-        var settings = new RecordingSettingsCoordinator(AppSettings.CreateDefault());
-        var reload = new SettingsReloadCoordinator(() => settings.Current, new FakeCredentialStore(hasSavedKey: false), () => [], _ => { });
-        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var applied = false;
-        var workflow = new SettingsPreferenceWorkflow(settings, reload, _ => throw new InvalidOperationException("Must use async path"), _ => applied = true, _ => gate.Task);
-        var saving = workflow.ResetAsync(AppSettings.CreateDefault(), CancellationToken.None);
-        Assert.False(saving.IsCompleted); Assert.False(applied);
-        gate.SetResult();
-        Assert.True((await saving).Success); Assert.True(applied);
-    }
-    [Fact]
     public async Task ImportReloadsAndAppliesRealOcrAndCredentialState()
     {
         var current = AppSettings.CreateDefault() with
