@@ -17,12 +17,16 @@ public sealed class DanmakuSettingsPanel : UserControl
     public DanmakuSettingsPanel()
     {
         Content = new ScrollViewer { Content = _stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-        Label("消息弹幕 · 轻量通知版", true);
-        Label("仅显示 Windows 实际提供的 QQ / TIM / 微信新通知。免打扰、隐藏内容或未产生系统通知时无法显示；标题筛选不代表精准群识别。私聊插队、图片及真正的 @ 标记暂不支持。");
-        Toggle("启用消息弹幕（应用后生效）", "Enabled"); Toggle("在轮盘显示消息弹幕开关", "ShowInWheel");
+        Label("Windows 系统通知弹幕", true);
+        Label("将所选应用实际产生的 Windows 系统通知显示为弹幕。客户端自带提醒不在此范围内；不读取聊天数据库，不删除通知中心记录。", false);
+        Toggle("启用系统通知弹幕（应用后生效）", "Enabled"); Toggle("在轮盘显示通知弹幕开关", "ShowInWheel");
         _status = Label(WindowsNotificationSource.HasPackageIdentity ? "点击授权后接收新通知" : "当前为便携模式：接收消息需安装通知增强包，预览不受影响。");
         _statusTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _statusTimer.Tick += (_, _) => _status.Text = WindowsNotificationSource.HasPackageIdentity ? DanmakuLiveStatus.Text : "当前为便携版：只能预览；请退出并从开始菜单打开通知增强版。";
+        _statusTimer.Tick += (_, _) =>
+        {
+            _status.Text = WindowsNotificationSource.HasPackageIdentity ? DanmakuLiveStatus.Text : "当前为便携版：只能预览；请退出并从开始菜单打开通知增强版。";
+            if (DataContext is SettingsViewModel vm) vm.RefreshDanmakuApplications(DanmakuLiveStatus.Applications);
+        };
         Loaded += (_, _) => _statusTimer.Start();
         Unloaded += (_, _) => _statusTimer.Stop();
         var test = ActionButton("播放测试弹幕（不读取消息）");
@@ -43,17 +47,32 @@ public sealed class DanmakuSettingsPanel : UserControl
             }
             finally { access.IsEnabled = true; }
         };
-        Label("消息来源", true); Toggle("QQ", "QQ"); Toggle("TIM", "TIM"); Toggle("微信", "WeChat");
+        Label("通知来源应用", true);
+        Toggle("接收所有应用的系统通知", "ReceiveAllApplications");
+        Label("或勾选下方应用。开启并授权后，列表自动显示最近产生过系统通知的来源；未出现的应用需要先产生一次系统通知。已保存的选择会保留。");
+        var applications = new ItemsControl();
+        applications.SetBinding(ItemsControl.ItemsSourceProperty, new Binding("DanmakuApplications"));
+        applications.ItemTemplate = (DataTemplate)System.Windows.Markup.XamlReader.Parse("<DataTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'><CheckBox Content='{Binding Name}' ToolTip='{Binding Id}' IsChecked='{Binding IsSelected, Mode=TwoWay}' Style='{DynamicResource ToggleSwitchStyle}' Margin='0,5'/></DataTemplate>");
+        _stack.Children.Add(new ScrollViewer { Content = applications, MaxHeight = 240, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         Field("通知标题包含（每行一项，留空显示所有已选来源）", "TitleFilter", true);
         Field("高亮关键词（每行一项，匹配标题或正文）", "HighlightKeywords", true);
         Label("显示方式与外观", true);
+        Label("显示时机");
+        var when = new ComboBox { DisplayMemberPath = "Label", SelectedValuePath = "Mode", Margin = new Thickness(0, 4, 0, 10) };
+        when.SetResourceReference(StyleProperty, "SettingsComboBoxStyle");
+        when.SetBinding(ItemsControl.ItemsSourceProperty, new Binding("DanmakuDisplayModes"));
+        Bind(when, System.Windows.Controls.Primitives.Selector.SelectedValueProperty, "DisplayMode"); _stack.Children.Add(when);
+        Toggle("全屏时跟随前台显示器", "FollowFullscreenMonitor");
+        Label("支持无边框全屏游戏和常见全屏视频；独占全屏、受保护画面不保证显示。不会自动修改 Windows 免打扰设置；当前时机不允许显示的通知不会积压。原系统通知仍保留。");
         Toggle("纵向滚动（关闭时横向飘过）", "Vertical"); Toggle("显示应用和通知标题", "ShowTitle"); Toggle("减少动画，使用静态显示", "ReduceMotion");
         var fonts = new ComboBox { IsEditable = true, ItemsSource = Fonts.SystemFontFamilies.Select(f => f.Source).OrderBy(f => f).ToArray(), Margin = new Thickness(0, 4, 0, 10) };
+        fonts.SetResourceReference(StyleProperty, "SettingsComboBoxStyle");
         Label("字体"); Bind(fonts, ComboBox.TextProperty, "FontFamily"); _stack.Children.Add(fonts);
         Field("字体大小（8–96）", "FontSize"); Field("文字颜色（#RRGGBB）", "Color"); Field("高亮颜色（高亮同时加粗）", "HighlightColor");
         Field("不透明度（0.1–1）", "Opacity"); Field("每条显示时长（3–30 秒）", "DurationSeconds");
         Label("显示区域", true);
         var monitor = new ComboBox { DisplayMemberPath = "", Margin = new Thickness(0, 4, 0, 10) };
+        monitor.SetResourceReference(StyleProperty, "SettingsComboBoxStyle");
         monitor.SetBinding(ItemsControl.ItemsSourceProperty, new Binding("DanmakuMonitors")); Bind(monitor, System.Windows.Controls.Primitives.Selector.SelectedItemProperty, "MonitorId");
         Label("显示器（未选择时使用主屏幕）"); _stack.Children.Add(monitor);
         Field("区域宽度", "WidthDip"); Field("区域高度", "HeightDip");
@@ -72,8 +91,8 @@ public sealed class DanmakuSettingsPanel : UserControl
         window.ApplySettings(vm.GetDanmakuPreview()); window.SetEditing(true);
         window.RegionEdited += area => { vm.DanmakuMonitorId = area.MonitorId; vm.DanmakuRelativeX = area.RelativeX; vm.DanmakuRelativeY = area.RelativeY; vm.DanmakuWidthDip = Math.Round(area.WidthDip); vm.DanmakuHeightDip = Math.Round(area.HeightDip); };
         window.Closed += (_, _) => { if (ReferenceEquals(_preview, window)) _preview = null; };
-        window.Present(new("preview", "TIM", "通知预览", "这是一条模拟消息，不会读取聊天内容。"), false);
-        window.Present(new("highlight", "微信", "提醒预览", "高亮消息使用加粗和独立颜色。"), true);
+        window.Present(new("preview", "应用示例", "系统通知预览", "这是一条模拟通知，不代表已经接入真实通知。"), false);
+        window.Present(new("highlight", "应用示例", "提醒预览", "高亮消息使用加粗和独立颜色。"), true);
     }
     private TextBlock Label(string text, bool heading = false)
     {

@@ -44,9 +44,12 @@ internal sealed partial class AppRuntime
         {
             var runtime = _danmaku;
             if (runtime is null) return;
+            var context = WindowsNotificationEnvironment.Sample();
+            runtime.SetDisplayContext(context.Fullscreen, context.Window, context.MonitorId);
             try { await runtime.PollAsync(); }
             catch (Exception e) when (e is System.Runtime.InteropServices.COMException or InvalidOperationException) { runtime.Clear(); }
             DanmakuLiveStatus.Text = _danmaku?.Status ?? "弹幕已停止";
+            DanmakuLiveStatus.Applications = notificationSource.Applications;
         }, System.Windows.Application.Current.Dispatcher);
         _danmakuTimer.Start();
         SystemEvents.SessionSwitch += OnDanmakuSessionSwitch;
@@ -70,13 +73,16 @@ internal sealed partial class AppRuntime
     });
     private void OnDanmakuDisplaysChanged(object? sender, EventArgs args) => System.Windows.Application.Current.Dispatcher.BeginInvoke(() =>
     {
-        _danmakuWindow?.ApplySettings(_settings.Current.Danmaku);
+        var context = WindowsNotificationEnvironment.Sample();
+        _danmaku?.SetDisplayContext(context.Fullscreen, context.Window, context.MonitorId);
+        _danmaku?.RefreshDisplayPlacement();
     });
     private void DisposeDanmaku()
     {
         _danmakuTimer?.Stop();
         DanmakuLiveStatus.PlayTest = null;
         DanmakuLiveStatus.RequestAccess = null;
+        DanmakuLiveStatus.Applications = [];
         DanmakuLiveStatus.Text = "弹幕已停止";
         _translationRuntime.SubtitleStateChanged -= OnDanmakuSubtitleChanged;
         SystemEvents.SessionSwitch -= OnDanmakuSessionSwitch;

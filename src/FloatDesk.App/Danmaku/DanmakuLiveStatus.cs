@@ -6,4 +6,5 @@ public static class DanmakuLiveStatus
     public static string Text { get; internal set; } = "等待运行状态";
     public static Func<bool>? PlayTest { get; internal set; }
     public static Func<Task<bool>>? RequestAccess { get; internal set; }
+    public static IReadOnlyList<FloatDesk.Core.Models.NotificationApplication> Applications { get; internal set; } = [];
 }

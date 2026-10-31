@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
 using FloatDesk.Core.Danmaku;
+using FloatDesk.Core.Models;
 using Windows.UI.Notifications;
 using Windows.UI.Notifications.Management;
 using Windows.Foundation;
@@ -14,6 +15,8 @@ public interface IDanmakuNotificationSource
     Task<bool> RequestAccessAsync();
     Task<IReadOnlyList<DanmakuMessage>> PollAsync(CancellationToken cancellationToken);
     void Reset();
+    void ApplySettings(DanmakuSettings settings) { }
+    IReadOnlyList<NotificationApplication> Applications => [];
 }
 
 public sealed class WindowsNotificationSource : IDanmakuNotificationSource
@@ -26,6 +29,9 @@ public sealed class WindowsNotificationSource : IDanmakuNotificationSource
     private TypedEventHandler<UserNotificationListener, UserNotificationChangedEventArgs>? _changed;
     private bool _subscriptionUnavailable;
     private DateTimeOffset _nextPermissionCheck;
+    private DanmakuSettings _settings = new();
+    public IReadOnlyList<NotificationApplication> Applications { get; private set; } = [];
+    public void ApplySettings(DanmakuSettings settings) => _settings = settings.Normalize();
     public string Status { get; private set; } = "尚未连接 Windows 通知";
     public static bool HasPackageIdentity
     {
@@ -88,26 +94,38 @@ public sealed class WindowsNotificationSource : IDanmakuNotificationSource
             if (generation != _generation) return [];
             var items = notifications.OrderBy(n => n.CreationTime).TakeLast(4096).ToArray();
             _reads.Complete(items.Select(n => n.Id));
-            var newIds = _cursor.Accept(items.Select(Identity)).ToHashSet(StringComparer.Ordinal);
-            var recognized = items.Count(n => NotificationCursor.Platform(n.AppInfo.DisplayInfo.DisplayName) is not null);
-            List<DanmakuMessage> messages = [];
-            foreach (var item in items.Where(n => newIds.Contains(Identity(n))))
+            List<(UserNotification Item, NotificationApplication App, string Identity)> entries = [];
+            foreach (var item in items)
             {
                 try
                 {
-                    var platform = NotificationCursor.Platform(item.AppInfo.DisplayInfo.DisplayName);
-                    if (platform is null) continue;
+                    var appId = item.AppInfo.AppUserModelId;
+                    if (string.IsNullOrWhiteSpace(appId)) continue;
+                    var name = Limit(item.AppInfo.DisplayInfo.DisplayName, 100);
+                    var app = new NotificationApplication(appId, string.IsNullOrWhiteSpace(name) ? appId : name);
+                    entries.Add((item, app, Identity(item, appId)));
+                }
+                catch (Exception e) when (e is COMException or InvalidOperationException or ArgumentException) { }
+            }
+            Applications = entries.Select(e => e.App).Concat(Applications).DistinctBy(a => a.Id, StringComparer.OrdinalIgnoreCase).Take(256).ToArray();
+            var newIds = _cursor.Accept(entries.Select(e => e.Identity)).ToHashSet(StringComparer.Ordinal);
+            var allowed = entries.Count(e => _settings.AllowsApplication(e.App.Id));
+            List<DanmakuMessage> messages = [];
+            foreach (var entry in entries.Where(e => newIds.Contains(e.Identity) && _settings.AllowsApplication(e.App.Id)))
+            {
+                try
+                {
+                    var item = entry.Item;
                     var text = item.Notification.Visual.GetBinding(KnownNotificationBindings.ToastGeneric)?.GetTextElements();
                     if (text is null || text.Count == 0) continue;
                     var title = Limit(text[0].Text, 256);
                     var body = Limit(string.Join(" ", text.Skip(1).Select(t => t.Text)), 2048);
                     if (string.IsNullOrWhiteSpace(body)) body = title;
-                    messages.Add(new(Identity(item), platform, title, body));
+                    messages.Add(new(entry.Identity, entry.App.Name, title, body, entry.App.Id));
                 }
                 catch (Exception e) when (e is COMException or InvalidOperationException or ArgumentException) { /* Discard malformed notification, never log contents. */ }
             }
-            Status = $"通知权限已允许；系统通知 {items.Length} 条，其中 QQ/TIM/微信 {recognized} 条，本次新消息 {messages.Count} 条。" +
-                (recognized == 0 ? "尚未发现聊天客户端的系统通知；TIM 自带提醒不会由此接口接收。" : "仅接收启用后的新通知。");
+            Status = $"通知权限已允许；观察到 {Applications.Count} 个应用、{items.Length} 条系统通知，所选来源 {allowed} 条，本次新消息 {messages.Count} 条。仅显示启用后的新通知。";
             return messages;
         }
         catch (Exception e) when (e is COMException or UnauthorizedAccessException or InvalidOperationException)
@@ -134,6 +152,6 @@ public sealed class WindowsNotificationSource : IDanmakuNotificationSource
         _listener = null; _changed = null;
     }
     private static string Limit(string? text, int count) => (text ?? "")[..Math.Min(text?.Length ?? 0, count)];
-    private static string Identity(UserNotification item) => item.AppInfo.AppUserModelId + ":" + item.Id.ToString(CultureInfo.InvariantCulture) + ":" + item.CreationTime.UtcTicks.ToString(CultureInfo.InvariantCulture);
+    private static string Identity(UserNotification item, string appId) => appId + ":" + item.Id.ToString(CultureInfo.InvariantCulture) + ":" + item.CreationTime.UtcTicks.ToString(CultureInfo.InvariantCulture);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern int GetCurrentPackageFullName(ref int length, nint name);
 }

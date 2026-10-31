@@ -33,12 +33,12 @@ public sealed class DanmakuOverlayTests
                 Assert.True(overlay.CanPresent); Assert.False(overlay.IsVisible);
                 var settings = AppSettings.CreateDefault() with { Danmaku = new() { ShowInWheel = true, Enabled = true } };
                 panel.Apply(settings, false, "");
-                var button = ((Canvas)panel.FindName("WheelCanvas")).Children.OfType<Button>().Single(b => AutomationProperties.GetName(b).StartsWith("消息弹幕", StringComparison.Ordinal));
+                var button = ((Canvas)panel.FindName("WheelCanvas")).Children.OfType<Button>().Single(b => AutomationProperties.GetName(b).StartsWith("通知弹幕", StringComparison.Ordinal));
                 Assert.Same(panel.FindResource("RadialActionButtonStyle"), button.Style);
                 var invoked = false; panel.DanmakuRequested += () => invoked = true;
                 button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Assert.True(invoked);
                 panel.Apply(settings with { Danmaku = new() { ShowInWheel = false } }, false, "");
-                Assert.DoesNotContain(((Canvas)panel.FindName("WheelCanvas")).Children.OfType<Button>(), b => AutomationProperties.GetName(b).StartsWith("消息弹幕", StringComparison.Ordinal));
+                Assert.DoesNotContain(((Canvas)panel.FindName("WheelCanvas")).Children.OfType<Button>(), b => AutomationProperties.GetName(b).StartsWith("通知弹幕", StringComparison.Ordinal));
             }
             catch (Exception e) { error = e; }
             finally { overlay.Clear(); overlay.Close(); panel.Close(); }

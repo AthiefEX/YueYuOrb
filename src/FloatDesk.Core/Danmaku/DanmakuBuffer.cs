@@ -2,7 +2,7 @@ using FloatDesk.Core.Models;
 
 namespace FloatDesk.Core.Danmaku;
 
-public sealed record DanmakuMessage(string Id, string Platform, string Title, string Text);
+public sealed record DanmakuMessage(string Id, string Platform, string Title, string Text, string AppId = "");
 
 public sealed class DanmakuBuffer
 {
@@ -28,7 +28,7 @@ public sealed class DanmakuBuffer
     public void Clear() { _pending.Clear(); _seen.Clear(); _seenOrder.Clear(); }
     public static bool Matches(DanmakuMessage message, DanmakuSettings settings)
     {
-        var enabled = message.Platform switch { "QQ" => settings.QQ, "TIM" => settings.TIM, "微信" => settings.WeChat, _ => false };
+        var enabled = settings.AllowsApplication(message.AppId);
         var names = Lines(settings.TitleFilter);
         return enabled && !string.IsNullOrWhiteSpace(message.Text) &&
             (names.Length == 0 || names.Any(n => message.Title.Contains(n, StringComparison.OrdinalIgnoreCase)));

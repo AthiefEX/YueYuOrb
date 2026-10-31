@@ -16,13 +16,23 @@ public sealed class DanmakuTests
     }
 
     [Fact]
-    public void OnlySelectedPlatformsAndExplicitTitleMatchesPass()
+    public void OnlySelectedApplicationIdsAndExplicitTitleMatchesPass()
     {
-        var rules = new DanmakuSettings { TitleFilter = "群A\n好友B" };
-        Assert.True(DanmakuBuffer.Matches(new("1", "TIM", "群A", "你好"), rules));
-        Assert.False(DanmakuBuffer.Matches(new("2", "TIM", "群B", "群A"), rules));
-        Assert.False(DanmakuBuffer.Matches(new("3", "Other", "群A", "你好"), rules));
-        Assert.False(DanmakuBuffer.Matches(new("4", "微信", "群A", "你好"), rules with { WeChat = false }));
+        var rules = new DanmakuSettings { TitleFilter = "标题A\n好友B", SelectedApplications = [new("app-a", "同名应用")] };
+        Assert.True(DanmakuBuffer.Matches(new("1", "同名应用", "标题A", "你好", "app-a"), rules));
+        Assert.False(DanmakuBuffer.Matches(new("2", "同名应用", "标题A", "你好", "app-b"), rules));
+        Assert.False(DanmakuBuffer.Matches(new("3", "同名应用", "标题B", "标题A", "app-a"), rules));
+        Assert.False(DanmakuBuffer.Matches(new("4", "TIM", "标题A", "你好", "tim"), rules));
+        Assert.True(DanmakuBuffer.Matches(new("5", "任意应用", "标题A", "你好", "new-app"), rules with { ReceiveAllApplications = true }));
+        Assert.False(DanmakuBuffer.Matches(new("6", "任意应用", "标题A", "你好", "new-app"), new()));
+    }
+    [Fact]
+    public void ApplicationSelectionIsBoundedAndNormalized()
+    {
+        var value = new DanmakuSettings { SelectedApplications = [new("app-a", "A"), new("APP-A", "重复"), new("", "坏值")], DisplayMode = (DanmakuDisplayMode)99 }.Normalize();
+        Assert.Single(value.SelectedApplications);
+        Assert.Equal(DanmakuDisplayMode.Always, value.DisplayMode);
+        Assert.False(value.ReceiveAllApplications);
     }
 
     [Fact]

@@ -90,6 +90,11 @@ public sealed class DanmakuOverlayWindow : Window, IDanmakuSurface
             RelativeX = (rect.Left - area.Left) / (double)Math.Max(1, area.Width - (rect.Right - rect.Left)),
             RelativeY = (rect.Top - area.Top) / (double)Math.Max(1, area.Height - (rect.Bottom - rect.Top)) }).Normalize();
     }
+    public void RefreshZOrder()
+    {
+        if (!IsVisible || _editing) return;
+        SetWindowPos(new WindowInteropHelper(this).Handle, new nint(-1), 0, 0, 0, 0, 0x13);
+    }
     public void Present(DanmakuMessage message, bool highlighted)
     {
         if (!_editing && !CanPresent) return;

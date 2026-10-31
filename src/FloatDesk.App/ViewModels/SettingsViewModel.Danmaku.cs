@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using System.Collections.ObjectModel;
 using FloatDesk.Core.Models;
 namespace FloatDesk.App.ViewModels;
 
@@ -9,9 +10,12 @@ public partial class SettingsViewModel
     [ObservableProperty] private string _danmakuClearHotkey = "";
     [ObservableProperty] private bool _danmakuEnabled = false;
     [ObservableProperty] private bool _danmakuShowInWheel = false;
-    [ObservableProperty] private bool _danmakuQQ = true;
-    [ObservableProperty] private bool _danmakuTIM = true;
-    [ObservableProperty] private bool _danmakuWeChat = true;
+    [ObservableProperty] private bool _danmakuReceiveAllApplications;
+    [ObservableProperty] private DanmakuDisplayMode _danmakuDisplayMode;
+    [ObservableProperty] private bool _danmakuFollowFullscreenMonitor = true;
+    public ObservableCollection<NotificationApplicationChoice> DanmakuApplications { get; } = [];
+    public IReadOnlyList<NotificationDisplayModeOption> DanmakuDisplayModes { get; } =
+        [new(DanmakuDisplayMode.Always, "始终显示"), new(DanmakuDisplayMode.FullscreenOnly, "仅全屏游戏 / 视频时显示"), new(DanmakuDisplayMode.WindowedOnly, "仅非全屏时显示")];
     [ObservableProperty] private bool _danmakuVertical = false;
     [ObservableProperty] private string _danmakuTitleFilter = "";
     [ObservableProperty] private string _danmakuHighlightKeywords = "";
@@ -36,9 +40,11 @@ public partial class SettingsViewModel
         DanmakuClearHotkey = FormatHotkey(settings.Hotkeys.GetValueOrDefault(HotkeyAction.ClearDanmaku));
         DanmakuEnabled = settings.Danmaku.Enabled;
         DanmakuShowInWheel = settings.Danmaku.ShowInWheel;
-        DanmakuQQ = settings.Danmaku.QQ;
-        DanmakuTIM = settings.Danmaku.TIM;
-        DanmakuWeChat = settings.Danmaku.WeChat;
+        DanmakuReceiveAllApplications = settings.Danmaku.ReceiveAllApplications;
+        DanmakuDisplayMode = settings.Danmaku.DisplayMode;
+        DanmakuFollowFullscreenMonitor = settings.Danmaku.FollowFullscreenMonitor;
+        foreach (var app in settings.Danmaku.SelectedApplications)
+            DanmakuApplications.Add(new(app.Id, app.Name) { IsSelected = true });
         DanmakuVertical = settings.Danmaku.Vertical;
         DanmakuTitleFilter = settings.Danmaku.TitleFilter;
         DanmakuHighlightKeywords = settings.Danmaku.HighlightKeywords;
@@ -57,6 +63,28 @@ public partial class SettingsViewModel
         DanmakuReduceMotion = settings.Danmaku.ReduceMotion;
     }
     public DanmakuSettings GetDanmakuPreview() => MergeDanmaku(_baseline.Danmaku).Normalize();
+    public void RefreshDanmakuApplications(IReadOnlyList<NotificationApplication> applications)
+    {
+        foreach (var app in applications.Take(256))
+        {
+            var existing = DanmakuApplications.FirstOrDefault(a => string.Equals(a.Id, app.Id, StringComparison.OrdinalIgnoreCase));
+            if (existing is not null) existing.Name = app.Name;
+            else DanmakuApplications.Add(new(app.Id, app.Name));
+        }
+    }
+    private IReadOnlyList<NotificationApplication> MergeSelectedApplications(DanmakuSettings latest)
+    {
+        var selected = latest.SelectedApplications.ToDictionary(a => a.Id, StringComparer.OrdinalIgnoreCase);
+        var baselineIds = _baseline.Danmaku.SelectedApplications.Select(a => a.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var choice in DanmakuApplications)
+        {
+            if (choice.IsSelected == baselineIds.Contains(choice.Id)) continue;
+            if (choice.IsSelected) selected[choice.Id] = new(choice.Id, choice.Name);
+            else selected.Remove(choice.Id);
+        }
+        var result = selected.Values.ToArray();
+        return result.SequenceEqual(latest.SelectedApplications) ? latest.SelectedApplications : result;
+    }
     private void MergeDanmakuKeys(Dictionary<HotkeyAction, HotkeyChord> keys)
     {
         foreach (var (action, text) in new[] { (HotkeyAction.ToggleDanmaku, DanmakuToggleHotkey), (HotkeyAction.PauseDanmaku, DanmakuPauseHotkey), (HotkeyAction.ClearDanmaku, DanmakuClearHotkey) })
@@ -73,9 +101,10 @@ public partial class SettingsViewModel
         return (latest with {
             Enabled = DanmakuEnabled != baseline.Enabled ? DanmakuEnabled : latest.Enabled,
             ShowInWheel = DanmakuShowInWheel != baseline.ShowInWheel ? DanmakuShowInWheel : latest.ShowInWheel,
-            QQ = DanmakuQQ != baseline.QQ ? DanmakuQQ : latest.QQ,
-            TIM = DanmakuTIM != baseline.TIM ? DanmakuTIM : latest.TIM,
-            WeChat = DanmakuWeChat != baseline.WeChat ? DanmakuWeChat : latest.WeChat,
+            ReceiveAllApplications = DanmakuReceiveAllApplications != baseline.ReceiveAllApplications ? DanmakuReceiveAllApplications : latest.ReceiveAllApplications,
+            DisplayMode = DanmakuDisplayMode != baseline.DisplayMode ? DanmakuDisplayMode : latest.DisplayMode,
+            FollowFullscreenMonitor = DanmakuFollowFullscreenMonitor != baseline.FollowFullscreenMonitor ? DanmakuFollowFullscreenMonitor : latest.FollowFullscreenMonitor,
+            SelectedApplications = MergeSelectedApplications(latest),
             Vertical = DanmakuVertical != baseline.Vertical ? DanmakuVertical : latest.Vertical,
             TitleFilter = DanmakuTitleFilter != baseline.TitleFilter ? DanmakuTitleFilter : latest.TitleFilter,
             HighlightKeywords = DanmakuHighlightKeywords != baseline.HighlightKeywords ? DanmakuHighlightKeywords : latest.HighlightKeywords,
@@ -95,3 +124,11 @@ public partial class SettingsViewModel
         }).Normalize();
     }
 }
+
+public partial class NotificationApplicationChoice(string id, string name) : ObservableObject
+{
+    public string Id { get; } = id;
+    [ObservableProperty] private string _name = name;
+    [ObservableProperty] private bool _isSelected;
+}
+public sealed record NotificationDisplayModeOption(DanmakuDisplayMode Mode, string Label);
