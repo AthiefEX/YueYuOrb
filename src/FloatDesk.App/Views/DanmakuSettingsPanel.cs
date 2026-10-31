@@ -35,7 +35,12 @@ public sealed class DanmakuSettingsPanel : UserControl
         access.Click += async (_, _) =>
         {
             access.IsEnabled = false;
-            try { var source = new WindowsNotificationSource(); await source.RequestAccessAsync(); _status.Text = source.Status; }
+            try
+            {
+                if (DanmakuLiveStatus.RequestAccess is { } request)
+                { await request(); _status.Text = DanmakuLiveStatus.Text; }
+                else { var source = new WindowsNotificationSource(); await source.RequestAccessAsync(); _status.Text = source.Status; }
+            }
             finally { access.IsEnabled = true; }
         };
         Label("消息来源", true); Toggle("QQ", "QQ"); Toggle("TIM", "TIM"); Toggle("微信", "WeChat");

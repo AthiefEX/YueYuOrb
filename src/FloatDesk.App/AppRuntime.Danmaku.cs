@@ -27,7 +27,14 @@ internal sealed partial class AppRuntime
     private void InitializeDanmaku()
     {
         _danmakuWindow = new();
-        _danmaku = new(new WindowsNotificationSource(), _danmakuWindow);
+        var notificationSource = new WindowsNotificationSource();
+        _danmaku = new(notificationSource, _danmakuWindow);
+        DanmakuLiveStatus.RequestAccess = async () =>
+        {
+            var allowed = await notificationSource.RequestAccessAsync();
+            DanmakuLiveStatus.Text = notificationSource.Status;
+            return allowed;
+        };
         _danmaku.ApplySettings(_settings.Current.Danmaku);
         DanmakuLiveStatus.PlayTest = _danmaku.PlayTestMessage;
         _coordinator!.RegisterCaptureHiddenWindow(_danmakuWindow);
@@ -69,6 +76,7 @@ internal sealed partial class AppRuntime
     {
         _danmakuTimer?.Stop();
         DanmakuLiveStatus.PlayTest = null;
+        DanmakuLiveStatus.RequestAccess = null;
         DanmakuLiveStatus.Text = "弹幕已停止";
         _translationRuntime.SubtitleStateChanged -= OnDanmakuSubtitleChanged;
         SystemEvents.SessionSwitch -= OnDanmakuSessionSwitch;
