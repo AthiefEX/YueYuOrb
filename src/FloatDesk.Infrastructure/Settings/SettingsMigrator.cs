@@ -34,7 +34,7 @@ public static class SettingsMigrator
         {
             hotkeys.TryAdd(action, defaultHotkeys[action]);
         }
-        result = result with { Hotkeys = hotkeys };
+        result = result with { Hotkeys = hotkeys, Danmaku = (result.Danmaku ?? new()).Normalize() };
         var errors = SettingsValidator.Validate(result);
         if (errors.Count > 0)
             throw new InvalidDataException(string.Join(" ", errors));

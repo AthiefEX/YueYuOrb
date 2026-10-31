@@ -126,6 +126,7 @@ public partial class QuickPanelWindow : Window
         }
         ApplyAudioWheel(settings);
         ApplyBrightnessWheel(settings);
+        ApplyDanmakuWheel(settings);
         WheelScroller.Visibility = GetVisibleWheelButtons().Length > 0
             ? Visibility.Visible
             : Visibility.Collapsed;

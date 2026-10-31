@@ -7,21 +7,22 @@ internal sealed class SettingsPreferenceWorkflow
 {
     private readonly ISettingsCoordinator _settings;
     private readonly SettingsReloadCoordinator _reload;
-    private readonly Action<bool> _setStartupEnabled;
+    private readonly Func<bool, Task> _setStartupEnabled;
     private readonly Action<AppSettings> _applied;
 
     public SettingsPreferenceWorkflow(
         ISettingsCoordinator settings,
         SettingsReloadCoordinator reload,
         Action<bool> setStartupEnabled,
-        Action<AppSettings> applied)
+        Action<AppSettings> applied,
+        Func<bool, Task>? setStartupEnabledAsync = null)
     {
         _settings = settings ??
             throw new ArgumentNullException(nameof(settings));
         _reload = reload ??
             throw new ArgumentNullException(nameof(reload));
-        _setStartupEnabled = setStartupEnabled ??
-            throw new ArgumentNullException(nameof(setStartupEnabled));
+        ArgumentNullException.ThrowIfNull(setStartupEnabled);
+        _setStartupEnabled = setStartupEnabledAsync ?? (enabled => { setStartupEnabled(enabled); return Task.CompletedTask; });
         _applied = applied ??
             throw new ArgumentNullException(nameof(applied));
     }
@@ -38,7 +39,7 @@ internal sealed class SettingsPreferenceWorkflow
             return result;
 
         cancellationToken.ThrowIfCancellationRequested();
-        _setStartupEnabled(imported.General.StartWithWindows);
+        await _setStartupEnabled(imported.General.StartWithWindows);
         await _reload.ReloadAsync(
             savedSnapshot: _settings.Current,
             cancellationToken);
@@ -58,7 +59,7 @@ internal sealed class SettingsPreferenceWorkflow
             return result;
 
         cancellationToken.ThrowIfCancellationRequested();
-        _setStartupEnabled(false);
+        await _setStartupEnabled(false);
         await _reload.ReloadAsync(
             savedSnapshot: _settings.Current,
             cancellationToken);

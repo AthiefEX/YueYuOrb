@@ -1358,6 +1358,15 @@
                             </StackPanel>
                         </ScrollViewer>
                     </TabItem>
+                    <TabItem Style="{StaticResource NavigationTabItemStyle}" AutomationProperties.Name="消息弹幕">
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock FontFamily="{StaticResource SettingsIconFont}" FontSize="15" Text="&#xE8F2;" Margin="0,0,7,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                                <TextBlock Text="消息弹幕" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                            </StackPanel>
+                        </TabItem.Header>
+                        <views:DanmakuSettingsPanel />
+                    </TabItem>
                     <TabItem Style="{StaticResource NavigationTabItemStyle}" AutomationProperties.Name="关于">
                         <TabItem.Header>
                             <StackPanel Orientation="Horizontal">
