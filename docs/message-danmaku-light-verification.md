@@ -36,3 +36,15 @@ Ruling: 轮盘弹幕入口默认不勾选 — 保持现有菜单布局，用户�
 准备了 `scripts/install-notification-test-package.ps1`：显式开关、管理员检查及ShouldProcess确认；仅在用户授权后创建6个月有效的不可导出本地代码签名证书，导入本机TrustedPeople（不修改Root），签名并安装当前MSIX。脚本不自动授权通知访问；用户在软件中自行授权。正式发布仍应使用正式可信签名。
 
 未执行安装脚本；本次代码检查与打包不涉及聊天账号登录、发送消息或读取历史数据库。
+
+## 2026-10-31 后续：提醒闪现排查
+
+用户随后授权安装，通知包1.2.0.1已签名注册。后续先发现用户打开了便携版，已提供通知版快捷方式；本次故障时确认进程运行在已安装通知包目录。
+
+截图中的白色消息列表为TIM原生提醒。窗口位置/前台采样只看PID、窗口类、坐标，不读取正文；本次采样没有捕获该提醒，尚未复现其跟随鼠标闪现，不能把下面的窗口交互修正声称为已经解决TIM自身问题。
+
+- 新回归 `DanmakuPointerTests.PassiveOverlayRejectsMouseHitAndActivationAndEditorRestoresHitTesting` 在修复前失败（期待HTTRANSPARENT，实际0），修复后通过。被动弹幕显式返回HTTRANSPARENT与MA_NOACTIVATE，WPF层也禁用命中和焦点；编辑时恢复交互。隐藏窗口不再重复Hide。
+- 设置页实时显示权限和消息计数，读取错误给出HRESULT，不含正文；不再把“已连接”当作已接入聊天消息。
+- 新增独立本地测试弹幕，不经过消息读取，暂停/锁屏/字幕/截图期间拒绝播放；回归 `LocalTestDoesNotReadNotificationsAndRespectsPrivacyPauses`。
+- 通知包版本1.2.0.2。完整回归889项通过（Core171、Infrastructure116、Windows96、UI506），Release构建0警告0错误。
+- 保留当前用户进程，不强制关闭；使用原本地测试证书签名并准备延迟更新，退出旧版后生效。真实TIM通知接收及原生提醒闪烁仍需实机观察。

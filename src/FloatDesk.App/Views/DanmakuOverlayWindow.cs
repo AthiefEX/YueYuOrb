@@ -37,7 +37,19 @@ public sealed class DanmakuOverlayWindow : Window, IDanmakuSurface
         bar.Children.Add(hint);
         _editor = new Border { BorderBrush = Brushes.LightSkyBlue, BorderThickness = new Thickness(1), Child = bar, Visibility = Visibility.Collapsed };
         _root.Children.Add(_editor); Content = _root;
-        SourceInitialized += (_, _) => UpdateMouseStyle();
+        IsHitTestVisible = false; Focusable = false;
+        SourceInitialized += (_, _) =>
+        {
+            UpdateMouseStyle();
+            HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(FilterPassiveMouse);
+        };
+    }
+    private nint FilterPassiveMouse(nint hwnd, int message, nint wparam, nint lparam, ref bool handled)
+    {
+        if (_editing) return 0;
+        if (message == 0x84) { handled = true; return new nint(-1); }
+        if (message == 0x21) { handled = true; return new nint(3); }
+        return 0;
     }
     private void UpdateMouseStyle()
     {
@@ -63,6 +75,7 @@ public sealed class DanmakuOverlayWindow : Window, IDanmakuSurface
     public void SetEditing(bool editing)
     {
         _editing = editing; _editor.Visibility = editing ? Visibility.Visible : Visibility.Collapsed;
+        IsHitTestVisible = editing; Focusable = editing;
         ResizeMode = editing ? ResizeMode.CanResizeWithGrip : ResizeMode.NoResize;
         Background = editing ? new SolidColorBrush(Color.FromArgb(55, 24, 43, 61)) : Brushes.Transparent;
         UpdateMouseStyle();
@@ -127,7 +140,7 @@ public sealed class DanmakuOverlayWindow : Window, IDanmakuSurface
             item.BeginAnimation(OpacityProperty, null);
             if (item.RenderTransform is TranslateTransform move) { move.BeginAnimation(TranslateTransform.XProperty, null); move.BeginAnimation(TranslateTransform.YProperty, null); }
         }
-        _canvas.Children.Clear(); if (!_editing) Hide();
+        _canvas.Children.Clear(); if (!_editing && IsVisible) Hide();
     }
     [StructLayout(LayoutKind.Sequential)] private struct Rect { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] private static extern bool GetWindowRect(nint hwnd, out Rect rect);

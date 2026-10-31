@@ -13,6 +13,7 @@ public sealed class DanmakuSettingsPanel : UserControl
     private readonly StackPanel _stack = new() { Margin = new Thickness(16) };
     private readonly TextBlock _status;
     private DanmakuOverlayWindow? _preview;
+    private readonly System.Windows.Threading.DispatcherTimer _statusTimer;
     public DanmakuSettingsPanel()
     {
         Content = new ScrollViewer { Content = _stack, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -20,6 +21,16 @@ public sealed class DanmakuSettingsPanel : UserControl
         Label("仅显示 Windows 实际提供的 QQ / TIM / 微信新通知。免打扰、隐藏内容或未产生系统通知时无法显示；标题筛选不代表精准群识别。私聊插队、图片及真正的 @ 标记暂不支持。");
         Toggle("启用消息弹幕（应用后生效）", "Enabled"); Toggle("在轮盘显示消息弹幕开关", "ShowInWheel");
         _status = Label(WindowsNotificationSource.HasPackageIdentity ? "点击授权后接收新通知" : "当前为便携模式：接收消息需安装通知增强包，预览不受影响。");
+        _statusTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _statusTimer.Tick += (_, _) => _status.Text = WindowsNotificationSource.HasPackageIdentity ? DanmakuLiveStatus.Text : "当前为便携版：只能预览；请退出并从开始菜单打开通知增强版。";
+        Loaded += (_, _) => _statusTimer.Start();
+        Unloaded += (_, _) => _statusTimer.Stop();
+        var test = ActionButton("播放测试弹幕（不读取消息）");
+        test.Click += (_, _) =>
+        {
+            if (DanmakuLiveStatus.PlayTest?.Invoke() != true)
+                _status.Text = "测试暂未播放：请停止字幕翻译、解除暂停，或等待现有弹幕结束。";
+        };
         var access = ActionButton("授权通知访问");
         access.Click += async (_, _) =>
         {

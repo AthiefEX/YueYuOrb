@@ -19,7 +19,13 @@ public sealed class DanmakuRuntime(IDanmakuNotificationSource source, IDanmakuSu
     private CancellationTokenSource _operation = new();
     private int _generation, _captureDepth;
     private bool _polling, _locked, _paused, _disposed, _subtitleActive;
-    public string Status => !_settings.Enabled ? "消息弹幕已关闭" : _paused ? "弹幕已暂停" : _locked || _captureDepth > 0 ? "弹幕暂时隐藏" : source.Status;
+    public string Status => !_settings.Enabled ? "消息弹幕已关闭" : _paused ? "弹幕已暂停" : _subtitleActive ? "字幕翻译期间暂停消息弹幕" : _locked || _captureDepth > 0 ? "弹幕暂时隐藏" : source.Status;
+    public bool PlayTestMessage()
+    {
+        if (_disposed || _locked || _captureDepth > 0 || _subtitleActive || _paused || !surface.CanPresent) return false;
+        surface.Present(new("local-test", "月语", "测试弹幕", "这是一条本地测试弹幕，不代表已接收到聊天消息。"), true);
+        return true;
+    }
     private bool Active => !_disposed && _settings.Enabled && !_paused && !_locked && !_subtitleActive && _captureDepth == 0;
     public void ApplySettings(DanmakuSettings settings)
     {

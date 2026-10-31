@@ -7,6 +7,16 @@ namespace FloatDesk.Ui.Tests;
 public sealed class DanmakuRuntimeTests
 {
     [Fact]
+    public void LocalTestDoesNotReadNotificationsAndRespectsPrivacyPauses()
+    {
+        var source = new FakeSource(); var surface = new FakeSurface();
+        using var runtime = new DanmakuRuntime(source, surface);
+        Assert.True(runtime.PlayTestMessage()); Assert.Equal(1, surface.Presented); Assert.Equal(0, source.Polls);
+        runtime.SetPaused(true); Assert.False(runtime.PlayTestMessage());
+        runtime.SetPaused(false); runtime.SetSessionLocked(true); Assert.False(runtime.PlayTestMessage());
+        runtime.SetSessionLocked(false); runtime.SetSubtitleSessionActive(true); Assert.False(runtime.PlayTestMessage());
+    }
+    [Fact]
     public async Task RevokedAccessDropsPendingMessagesAndSubtitleSessionSuppressesDelivery()
     {
         var source = new FakeSource(); var surface = new FakeSurface();

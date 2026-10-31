@@ -42,7 +42,7 @@ public sealed class WindowsNotificationSource : IDanmakuNotificationSource
             return granted == UserNotificationListenerAccessStatus.Allowed;
         }
         catch (Exception e) when (e is COMException or UnauthorizedAccessException or InvalidOperationException)
-        { HasAccess = false; Status = "无法申请通知权限，请检查通知增强包安装及系统权限。"; return false; }
+        { HasAccess = false; Status = $"无法申请通知权限（0x{e.HResult:X8}），请检查通知增强包及系统权限。"; return false; }
     }
     public async Task<IReadOnlyList<DanmakuMessage>> PollAsync(CancellationToken cancellationToken)
     {
@@ -59,6 +59,7 @@ public sealed class WindowsNotificationSource : IDanmakuNotificationSource
             if (generation != _generation) return [];
             var items = notifications.OrderBy(n => n.CreationTime).TakeLast(4096).ToArray();
             var newIds = _cursor.Accept(items.Select(Identity)).ToHashSet(StringComparer.Ordinal);
+            var recognized = items.Count(n => NotificationCursor.Platform(n.AppInfo.DisplayInfo.DisplayName) is not null);
             List<DanmakuMessage> messages = [];
             foreach (var item in items.Where(n => newIds.Contains(Identity(n))))
             {
@@ -75,11 +76,12 @@ public sealed class WindowsNotificationSource : IDanmakuNotificationSource
                 }
                 catch (Exception e) when (e is COMException or InvalidOperationException or ArgumentException) { /* Discard malformed notification, never log contents. */ }
             }
-            Status = "已连接，仅显示启用后 Windows 实际提供的新通知";
+            Status = $"通知权限已允许；系统通知 {items.Length} 条，其中 QQ/TIM/微信 {recognized} 条，本次新消息 {messages.Count} 条。" +
+                (recognized == 0 ? "尚未发现聊天客户端的系统通知；TIM 自带提醒不会由此接口接收。" : "仅接收启用后的新通知。");
             return messages;
         }
         catch (Exception e) when (e is COMException or UnauthorizedAccessException or InvalidOperationException)
-        { HasAccess = false; _cursor.Reset(); Status = "通知连接不可用，请重新检查授权。"; return []; }
+        { HasAccess = false; _cursor.Reset(); Status = $"通知读取失败（0x{e.HResult:X8}），请检查系统授权。"; return []; }
     }
     public void Reset() { _generation++; _cursor.Reset(); }
     private static string Limit(string? text, int count) => (text ?? "")[..Math.Min(text?.Length ?? 0, count)];
