@@ -898,7 +898,10 @@ public sealed class SubtitleTranslationControllerTests
     [Fact(Timeout = 10_000)]
     public async Task EmptyOcrCancelsPendingCaptionAndKeepsLastText()
     {
-        var source = new AlternatingSubtitleSource();
+        var source = new SequenceSubtitleSource(
+            [0x10, 0x10, 0xE0, 0xE0, 0x10, 0x10],
+            finishedAfterCaptures: null);
+        var clock = new ControlledIntervalClock(TimeSpan.FromMilliseconds(300));
         var secondEntered = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var secondCancelled = new TaskCompletionSource(
@@ -966,7 +969,7 @@ public sealed class SubtitleTranslationControllerTests
             ocr,
             source,
             host,
-            new ImmediateClock());
+            clock);
 
         try
         {
@@ -976,7 +979,10 @@ public sealed class SubtitleTranslationControllerTests
                     "第一句",
                     StringComparer.Ordinal),
                 TimeSpan.FromSeconds(2));
+            // Keep each caption current until its translation has started.
+            clock.ReleaseFirstInterval();
             await secondEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            clock.ReleaseSecondInterval();
             await secondCancelled.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
             Assert.Equal(["第一句"], host.SubtitleTexts);

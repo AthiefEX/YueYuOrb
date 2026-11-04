@@ -8,7 +8,7 @@
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/License-GPLv3-c9a961.svg)](./LICENSE)
 [![Windows 10/11 x64](https://img.shields.io/badge/Windows-10%20%2F%2011%20x64-2b7a78.svg)](#系统要求)
-[![Release v1.3.0](https://img.shields.io/badge/Release-v1.3.0-d8b46a.svg)](https://github.com/AthiefEX/YueYuOrb/releases/tag/v1.3.0)
+[![Release v1.4.0](https://img.shields.io/badge/Release-v1.4.0-d8b46a.svg)](https://github.com/AthiefEX/YueYuOrb/releases/tag/v1.4.0)
 
 </div>
 
@@ -28,15 +28,15 @@
 
 ## 快速开始
 
-v1.3.0 新增多屏亮度调节与黑夜模式，优化设置导航、AI 网页和记事本布局，并支持浮动面板外部点击关闭、拖动与位置记忆。详见 [本次更新说明](docs/release-notes-v1.3.0.md)。
+v1.4.0 新增 CPU、内存与 GPU 占用液面/环形显示、环形粗细与可视化颜色设置，优化轮盘折扇动画，并修复黑夜模式、单键快捷键与开机启动体验。详见 [本次更新说明](docs/release-notes-v1.4.0.md)。
 
-前往 [GitHub Releases](https://github.com/AthiefEX/YueYuOrb/releases/tag/v1.3.0) 下载：
+前往 [GitHub Releases](https://github.com/AthiefEX/YueYuOrb/releases/tag/v1.4.0) 下载：
 
 | 方式 | 文件 | 使用说明 |
 |---|---|---|
-| 便携版 | [YueYuOrb-1.3.0-win-x64-portable.zip](https://github.com/AthiefEX/YueYuOrb/releases/download/v1.3.0/YueYuOrb-1.3.0-win-x64-portable.zip) | 解压后运行 `YueYuOrb.exe`，不需要安装 |
-| 安装版 | [YueYuOrb-1.3.0-win-x64-setup.exe](https://github.com/AthiefEX/YueYuOrb/releases/download/v1.3.0/YueYuOrb-1.3.0-win-x64-setup.exe) | 当前用户安装，包含开始菜单入口和可选桌面快捷方式 |
-| 校验值 | [SHA256SUMS.txt](https://github.com/AthiefEX/YueYuOrb/releases/download/v1.3.0/SHA256SUMS.txt) | 下载后核对便携包和安装包 |
+| 便携版 | [YueYuOrb-1.4.0-win-x64-portable.zip](https://github.com/AthiefEX/YueYuOrb/releases/download/v1.4.0/YueYuOrb-1.4.0-win-x64-portable.zip) | 解压后运行 `YueYuOrb.exe`，不需要安装 |
+| 安装版 | [YueYuOrb-1.4.0-win-x64-setup.exe](https://github.com/AthiefEX/YueYuOrb/releases/download/v1.4.0/YueYuOrb-1.4.0-win-x64-setup.exe) | 当前用户安装，包含开始菜单入口和可选桌面快捷方式 |
+| 校验值 | [SHA256SUMS.txt](https://github.com/AthiefEX/YueYuOrb/releases/download/v1.4.0/SHA256SUMS.txt) | 下载后核对便携包和安装包 |
 
 发行包为 .NET 10 self-contained，不要求目标机器安装 .NET SDK 或 .NET Desktop Runtime。安装包尚未进行代码签名，Windows SmartScreen 可能显示“未知发布者”警告。
 
@@ -83,7 +83,7 @@ cd YueYuOrb
 dotnet restore FloatDesk.sln --locked-mode
 dotnet build FloatDesk.sln -c Release --no-restore
 .\scripts\test.ps1 -Configuration Release
-.\scripts\publish.ps1 -Version 1.3.0 -Installer
+.\scripts\publish.ps1 -Version 1.4.0 -Installer
 ```
 
 项目内部保留 `FloatDesk.*` 命名空间和解决方案名以兼容现有代码与设置，正式产品名、程序集和可执行文件为月语悬浮球、`YueYuOrb.dll` 和 `YueYuOrb.exe`。
@@ -99,7 +99,7 @@ dotnet build FloatDesk.sln -c Release --no-restore
 - 混合 DPI、多屏旋转、HDR、独占全屏和游戏覆盖。
 - 未签名安装包的长期升级与 SmartScreen 体验。
 
-详细说明见 [v1.3.0 更新说明](docs/release-notes-v1.3.0.md)、[用户手册](docs/user-guide.md)、[架构说明](docs/architecture.md)、[兼容性报告](docs/compatibility.md) 和 [手工验收记录](docs/manual-tests.md)。
+详细说明见 [v1.4.0 更新说明](docs/release-notes-v1.4.0.md)、[用户手册](docs/user-guide.md)、[架构说明](docs/architecture.md)、[兼容性报告](docs/compatibility.md) 和 [手工验收记录](docs/manual-tests.md)。
 
 ## 开源许可
 

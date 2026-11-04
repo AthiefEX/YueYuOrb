@@ -87,6 +87,7 @@ public partial class OrbWindow : Window
         AddMenu(menu, "退出", _exit);
         OrbRoot.ContextMenu = menu;
         InitializeEdgeCollapse();
+        InitializeResourceUsage();
     }
 
     public void ApplySettings(AppSettings settings)
@@ -101,6 +102,8 @@ public partial class OrbWindow : Window
         Width = _sizeDip + (OrbChromePadding * 2);
         OrbRoot.Width = _sizeDip;
         OrbRoot.Height = _sizeDip;
+        OrbVisualHost.Width = OrbVisualHost.Height = _sizeDip;
+        ApplyResourceUsage(settings.ResourceUsage);
         Opacity = settings.Orb.Opacity;
         var imageInset = crystal ? _sizeDip * 0.035 : 0;
         var imageDiameter = _sizeDip - imageInset * 2;
@@ -121,6 +124,8 @@ public partial class OrbWindow : Window
                 imageDiameter / 2)
             : null;
         var showClock = settings.Orb.ShowClock;
+        try { ClockText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(settings.Orb.ClockColor)); }
+        catch { ClockText.Foreground = Brushes.White; }
         ClockBorder.Visibility = showClock
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -136,6 +141,8 @@ public partial class OrbWindow : Window
 
         var bitmap = TryLoadBitmap(_orbImagePath);
         OrbImage.Source = bitmap;
+        UsageLiquid.OpacityMask = _imageShape == OrbImageShape.Contour && bitmap is not null
+            ? new ImageBrush(bitmap) { Stretch = Stretch.UniformToFill } : null;
         OrbImage.Visibility = bitmap is null ? Visibility.Collapsed : Visibility.Visible;
         OrbCircle.Visibility = bitmap is null ? Visibility.Visible : Visibility.Collapsed;
         FallbackText.Visibility = bitmap is null && !showClock
@@ -185,6 +192,7 @@ public partial class OrbWindow : Window
 
     private void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        CloseResourceDetails();
         _panelOpenAtPress = _panelOpenState?.Invoke() ?? false;
         if (GetCursorPos(out var cursor))
         {
@@ -441,6 +449,13 @@ public partial class OrbWindow : Window
         var orbSize = _sizeDip;
         var x = point.X;
         var y = point.Y;
+        if (_settings?.ResourceUsage.RingsEnabled == true)
+        {
+            var distance = Math.Sqrt(Math.Pow(x - orbSize / 2, 2) + Math.Pow(y - orbSize / 2, 2));
+            var thickness = ResourceUsageGeometry.ThicknessPercent(_settings.ResourceUsage.RingThicknessPercent);
+            if (Math.Abs(distance - ResourceUsageGeometry.RingRadius(orbSize, thickness)) <= orbSize * (thickness / 200 + .005))
+                return false;
+        }
         if (x < 0 || y < 0 || x >= orbSize || y >= orbSize)
             return true;
         if (_imageShape == OrbImageShape.Circle)

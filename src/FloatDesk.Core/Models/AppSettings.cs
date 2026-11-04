@@ -9,7 +9,10 @@ public enum ImageFormat { Png, Jpeg }
 public enum HotkeyAction { Panel, RegionCapture, WindowCapture, MonitorCapture, PauseInput, AiBrowser, Notes, TranslateSelection, TranslateRegion, ToggleSubtitles, ExtractRegionText, BrightnessPanel, BrightnessPreset, BrightnessUp, BrightnessDown, ToggleNightMode, RecoverBrightness }
 public readonly record struct HotkeyChord(ShortcutModifiers Modifiers, uint VirtualKey);
 
-public sealed record GeneralSettings(bool StartWithWindows, AppTheme Theme);
+public sealed record GeneralSettings(bool StartWithWindows, AppTheme Theme, bool ShowSystemNotifications = true)
+{
+    public int WheelExpandDurationMs { get; init; } = 400;
+}
 public sealed record OrbSettings(
     int SizeDip,
     double Opacity,
@@ -22,6 +25,7 @@ public sealed record OrbSettings(
 {
     public OrbDisplayMode DisplayMode { get; init; } = OrbDisplayMode.Classic;
     public bool AutoCollapseAtEdge { get; init; }
+    public string ClockColor { get; init; } = "#FFFFFF";
 }
 public sealed record OverlaySettings(bool AlwaysOnTop, FullscreenPolicy FullscreenPolicy);
 public sealed record InputLockSettings(bool AutoEnabled, string TargetKlid, IReadOnlyList<AppRule> Rules);
@@ -78,6 +82,7 @@ public sealed record AppSettings(
         DefaultWheelActions;
 
     public bool ShowLauncherDock { get; init; } = true;
+    public ResourceUsageSettings ResourceUsage { get; init; } = new();
 
     public IReadOnlyList<AudioCycleGroup> AudioGroups { get; init; } = [];
     public bool ShowAudioInWheel { get; init; } = true;

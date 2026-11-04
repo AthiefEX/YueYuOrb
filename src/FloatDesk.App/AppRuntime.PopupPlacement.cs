@@ -51,6 +51,7 @@ internal sealed partial class AppRuntime
                 _audioWindow?.Close();
                 _brightnessWindow?.Close();
             }, timeout.Token);
+            await _nightDimmingSave.WaitAsync(timeout.Token);
             return true;
         }
         catch (OperationCanceledException)

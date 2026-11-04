@@ -45,7 +45,7 @@ public partial class SettingsViewModel
             if (key.Text == FormatHotkey(_baseline.Hotkeys.GetValueOrDefault(key.Action))) continue;
             if (string.IsNullOrWhiteSpace(key.Text)) keys.Remove(key.Action);
             else if (TryParseHotkey(key.Text, out var chord)) keys[key.Action] = chord;
-            else throw new InvalidOperationException($"{key.Label}快捷键格式无效，请使用 Ctrl+Alt+F8 等格式。");
+            else throw new InvalidOperationException($"{key.Label}快捷键“{key.Text}”无效，可填写 Add、Subtract、F8 等单键或 Ctrl+Alt+Up 等组合。");
         }
     }
 }

@@ -19,8 +19,9 @@ public partial class App : System.Windows.Application, IDisposable
         {
             if (lockResult.ErrorCode == "AlreadyRunning")
             {
-                await SingleInstanceService.SignalPrimaryAsync(
-                    CancellationToken.None);
+                if (StartupService.ShouldNotifyExistingInstance(e.Args))
+                    await SingleInstanceService.SignalPrimaryAsync(
+                        CancellationToken.None);
                 Shutdown();
                 return;
             }

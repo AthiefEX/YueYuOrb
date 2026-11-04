@@ -110,6 +110,15 @@ internal sealed partial class AppRuntime : IDisposable
     {
         await _logger.WriteAsync("startup.begin");
         await _settings.InitializeAsync(_lifetime.Token);
+        if (_settings.Current.General.StartWithWindows)
+        {
+            try { StartupService.SetEnabled(true); }
+            catch (Exception exception)
+            {
+                await _logger.WriteAsync("startup.registration.failed",
+                    new Dictionary<string, object?> { ["errorType"] = exception.GetType().Name });
+            }
+        }
         await _notes.InitializeAsync(_lifetime.Token);
         _ = _notes.PurgeDeletedAsync(
             DateTimeOffset.UtcNow.AddDays(-30),
@@ -204,7 +213,8 @@ internal sealed partial class AppRuntime : IDisposable
             stopSubtitles: OnStopSubtitlesRequested,
             extractRegionText: OnExtractRegionTextRequested,
             toggleNightMode: ToggleNightMode,
-            recoverBrightness: RecoverBrightness);
+            recoverBrightness: RecoverBrightness,
+            notificationsEnabled: () => _settings.Current.General.ShowSystemNotifications);
         UpdateSubtitleTrayState();
 
         await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
@@ -326,6 +336,9 @@ internal sealed partial class AppRuntime : IDisposable
             _audioWindow?.Close();
             _nightMode?.Dispose();
             _brightnessWindow?.Close();
+            // Saves run without the UI dispatcher, including the last value committed by Close.
+            try { _nightDimmingSave.Wait(TimeSpan.FromSeconds(5)); }
+            catch (AggregateException) { }
             _brightness.Dispose();
             _audio.Dispose();
             _translationRegionCapture.Dispose();
@@ -948,8 +961,7 @@ internal sealed partial class AppRuntime : IDisposable
         {
             if (_panel is null)
                 return;
-            _panel.Apply(
-                _settings.Current,
+            _panel.UpdateInputStatus(
                 _manualEnglish,
                 _emergencyPaused ? "紧急暂停已开启" : status.Reason);
             UpdateInputPollingCadence();
@@ -993,7 +1005,7 @@ internal sealed partial class AppRuntime : IDisposable
     private void ApplySettings(AppSettings settings)
     {
         ThemeService.Apply(settings.General.Theme);
-        _nightMode?.SetDimmingPercent(settings.Brightness.NightDimmingPercent);
+        _nightMode?.SetDimmingPercent(_nightDimmingPreference?.Resolve() ?? settings.Brightness.NightDimmingPercent);
         _orb?.ApplySettings(settings);
         KeepOrbOnCurrentMonitor();
         _translationRuntime.ApplySettings(settings);

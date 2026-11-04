@@ -59,6 +59,7 @@ public partial class OrbWindow
         if (collapse && !_edgeCollapsed)
         {
             _edgeCollapsed = true;
+            RefreshResourceSampling();
             EdgeStrip.Height = _sizeDip;
             EdgeStrip.HorizontalAlignment = side < 0 ? HorizontalAlignment.Left : HorizontalAlignment.Right;
             EdgeStrip.Visibility = Visibility.Visible;
@@ -80,6 +81,7 @@ public partial class OrbWindow
     {
         _edgeState.Update(false, 0, false, false, _edgeClock.Elapsed);
         _edgeCollapsed = false;
+        RefreshResourceSampling();
         OrbRoot.IsHitTestVisible = true;
         EdgeStrip.Visibility = Visibility.Collapsed;
         AnimateEdge(1, 1, animate);

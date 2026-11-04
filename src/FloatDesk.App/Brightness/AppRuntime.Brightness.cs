@@ -12,9 +12,12 @@ internal sealed partial class AppRuntime
     private BrightnessControlWindow? _brightnessWindow;
     private bool _brightnessBusy;
     private (int Value, bool Relative)? _nextBrightness;
+    private Task _nightDimmingSave = Task.CompletedTask;
+    private NightDimmingPreference? _nightDimmingPreference;
 
     private void InitializeBrightness()
     {
+        _nightDimmingPreference = new(_settings);
         _nightMode = new(System.Windows.Application.Current.Dispatcher);
         _nightMode.SetDimmingPercent(_settings.Current.Brightness.NightDimmingPercent);
         _nightMode.Changed += () => _panel?.SetNightModeEnabled(_nightMode.IsEnabled);
@@ -50,7 +53,7 @@ internal sealed partial class AppRuntime
         window.Closed += (_, _) =>
         {
             if (previewModel is not null) previewModel.PropertyChanged -= handler;
-            _nightMode?.SetDimmingPercent(_settings.Current.Brightness.NightDimmingPercent);
+            _nightMode?.SetDimmingPercent(_nightDimmingPreference?.Resolve() ?? _settings.Current.Brightness.NightDimmingPercent);
         };
     }
     private void OnNightSubtitleChanged() => System.Windows.Application.Current.Dispatcher.Invoke(() =>
@@ -73,7 +76,10 @@ internal sealed partial class AppRuntime
         if (_popupShutdownInProgress) return;
         if (_nightMode is null) return;
         if (_brightnessWindow is { IsVisible: true }) { _brightnessWindow.Activate(); return; }
-        var window = new BrightnessControlWindow(_brightness, _nightMode, _settings.Current.Brightness);
+        var window = new BrightnessControlWindow(_brightness, _nightMode, _settings.Current.Brightness with
+        { NightDimmingPercent = _nightDimmingPreference!.Resolve() });
+        window.DimmingPreviewChanged += _nightDimmingPreference.Preview;
+        window.DimmingCommitted += value => _nightDimmingSave = SaveNightDimmingAsync(value);
         RememberPopupPosition(window, "brightness-panel");
         _brightnessWindow = window;
         _coordinator?.RegisterCaptureHiddenWindow(window);
@@ -83,6 +89,13 @@ internal sealed partial class AppRuntime
             if (ReferenceEquals(_brightnessWindow, window)) _brightnessWindow = null;
         };
         window.Show();
+    }
+    private async Task SaveNightDimmingAsync(int value)
+    {
+        var result = await _nightDimmingPreference!.Commit(value).ConfigureAwait(false);
+        if (!result.Success && !_disposed)
+            _ = System.Windows.Application.Current.Dispatcher.BeginInvoke(() =>
+                ShowBrightnessMessage("降暗程度保存失败，请重新调整后重试。"));
     }
     private bool HandleBrightnessHotkey(HotkeyAction action)
     {

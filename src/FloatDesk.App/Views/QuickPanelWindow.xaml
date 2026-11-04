@@ -231,14 +231,8 @@
                         Width="660"
                         Height="560"
                         Opacity="0">
-                    <Path x:Name="ActionBeamsPath"
-                          Fill="{DynamicResource MenuActionBeamBrush}"
-                          IsHitTestVisible="False"
-                          Opacity="1">
-                        <Path.Effect>
-                            <BlurEffect Radius="5" />
-                        </Path.Effect>
-                    </Path>
+                    <Canvas x:Name="ActionBeamsLayer" Width="660" Height="560"
+                            IsHitTestVisible="False" />
 
                     <ScrollViewer x:Name="WheelScroller"
                                   Width="380"
@@ -703,6 +697,8 @@
 
             </Canvas>
             </ScrollViewer>
+                    <Canvas x:Name="WheelEntranceLayer" Width="660" Height="560"
+                            PreviewMouseWheel="OnWheelMouseWheel" />
                 </Canvas>
 
             <Border x:Name="LauncherDock"

@@ -38,7 +38,7 @@ public sealed class SettingsCoordinator : ISettingsCoordinator, IDisposable
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(update);
-        await _gate.WaitAsync(cancellationToken);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (!_initialized)
@@ -47,7 +47,7 @@ public sealed class SettingsCoordinator : ISettingsCoordinator, IDisposable
             var errors = SettingsValidator.Validate(candidate);
             if (errors.Count > 0)
                 return OperationResult.Fail("InvalidSettings", string.Join(" ", errors));
-            await _store.SaveAsync(candidate, cancellationToken);
+            await _store.SaveAsync(candidate, cancellationToken).ConfigureAwait(false);
             _current = candidate;
         }
         catch (OperationCanceledException)

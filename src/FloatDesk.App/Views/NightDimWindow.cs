@@ -31,6 +31,11 @@ public sealed class NightDimWindow : Window
         var handle = new WindowInteropHelper(this).EnsureHandle();
         SetWindowPos(handle, new nint(-1), rect.Left, rect.Top, rect.Width, rect.Height, 0x10);
     }
+    public void RaiseWithoutActivation()
+    {
+        if (!IsVisible) return;
+        SetWindowPos(new WindowInteropHelper(this).Handle, new nint(-1), 0, 0, 0, 0, 0x13);
+    }
     private static nint Hook(nint hwnd, int message, nint wparam, nint lparam, ref bool handled)
     {
         if (message == 0x84) { handled = true; return new nint(-1); }

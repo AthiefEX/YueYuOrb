@@ -23,6 +23,10 @@ public sealed class BrightnessControlWindow : Window, IDisposable
     private readonly DispatcherTimer _delay = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private bool _updating, _busy, _closed;
     private int? _pending;
+    private readonly DispatcherTimer _dimSaveDelay = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    private int? _pendingDimming;
+    public event Action<int>? DimmingCommitted;
+    public event Action<int>? DimmingPreviewChanged;
     public WindowPlacement? RememberedPlacement { get; set; }
     private bool _userMoved;
     public BrightnessControlWindow(IBrightnessService service, NightModeController night, BrightnessSettings settings)
@@ -67,7 +71,17 @@ public sealed class BrightnessControlWindow : Window, IDisposable
         var dim = new Slider { Minimum = 0, Maximum = 90, TickFrequency = 1, IsSnapToTickEnabled = true,
             Value = settings.NightDimmingPercent, Style = (Style)FindResource("BrightnessSliderStyle"), Margin = new Thickness(0, 6, 0, 0) };
         System.Windows.Automation.AutomationProperties.SetName(dim, "黑夜降暗程度");
-        dim.ValueChanged += (_, _) => { nightLevel.Text = $"降暗程度 {Math.Round(dim.Value)}%"; _night.SetDimmingPercent((int)dim.Value); };
+        dim.ValueChanged += (_, _) =>
+        {
+            var value = (int)Math.Round(dim.Value);
+            nightLevel.Text = $"降暗程度 {value}%";
+            DimmingPreviewChanged?.Invoke(value);
+            _night.SetDimmingPercent(value);
+            _pendingDimming = value;
+            _dimSaveDelay.Stop(); _dimSaveDelay.Start();
+        };
+        _dimSaveDelay.Tick += (_, _) => CommitDimming();
+        Closing += (_, _) => CommitDimming();
         body.Children.Add(dim);
         var recover = new Button { Content = "恢复可见亮度", Margin = new Thickness(0, 18, 0, 0),
             Style = (Style)FindResource("ActionButtonStyle"), MinHeight = 40 };
@@ -101,6 +115,13 @@ public sealed class BrightnessControlWindow : Window, IDisposable
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); };
         Loaded += async (_, _) => { OnNightChanged(); await RefreshAsync(); PositionNearCursor(); _night.RaiseControls(); };
         Closed += (_, _) => { _closed = true; _delay.Stop(); _night.Changed -= OnNightChanged; Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplayChanged; _lifetime.Cancel(); _lifetime.Dispose(); };
+    }
+    private void CommitDimming()
+    {
+        _dimSaveDelay.Stop();
+        if (_pendingDimming is not { } value) return;
+        _pendingDimming = null;
+        DimmingCommitted?.Invoke(value);
     }
     private void OnNightChanged()
     {

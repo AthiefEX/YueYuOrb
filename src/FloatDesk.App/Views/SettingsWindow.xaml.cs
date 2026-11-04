@@ -98,6 +98,7 @@ public partial class SettingsWindow : Window
         ApplyTranslationProviderLayout();
         Loaded += OnSettingsWindowLoaded;
         DataContextChanged += OnAudioDataContextChanged;
+        InitializeResourceUsageSettings();
         Closing += (_, args) =>
         {
             CancelLauncherDrop();
@@ -480,6 +481,7 @@ public partial class SettingsWindow : Window
     {
         CancelLauncherDrop();
         _viewModel = viewModel;
+        _viewModel.SetResourceGpuDevices(_resourceGpuDevices);
         _viewModel.LauncherIconProvider = _launcherIconProvider;
         DataContext = _viewModel;
         ApplyTranslationProviderLayout();

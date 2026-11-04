@@ -37,6 +37,8 @@ public partial class SettingsViewModel : ObservableObject
     private AppSettings _baseline = AppSettings.CreateDefault();
 
     [ObservableProperty] private bool _startWithWindows;
+    [ObservableProperty] private bool _showSystemNotifications = true;
+    [ObservableProperty] private int _wheelExpandDurationMs = 400;
     [ObservableProperty] private int _themeIndex;
     [ObservableProperty] private int _orbSizeDip;
     [ObservableProperty]
@@ -46,6 +48,7 @@ public partial class SettingsViewModel : ObservableObject
     public bool IsClassicOrbMode => OrbDisplayModeIndex == (int)OrbDisplayMode.Classic;
     [ObservableProperty] private double _orbOpacityPercent;
     [ObservableProperty] private bool _showClock;
+    [ObservableProperty] private string _clockColor = "#FFFFFF";
     [ObservableProperty] private bool _showSeconds;
     [ObservableProperty] private bool _clock24Hour;
     [ObservableProperty] private bool _snapToEdge;
@@ -120,11 +123,14 @@ public partial class SettingsViewModel : ObservableObject
         var vm = new SettingsViewModel
         {
             StartWithWindows = settings.General.StartWithWindows,
+            ShowSystemNotifications = settings.General.ShowSystemNotifications,
+            WheelExpandDurationMs = Math.Clamp(settings.General.WheelExpandDurationMs, 200, 800),
             ThemeIndex = (int)settings.General.Theme,
             OrbSizeDip = settings.Orb.SizeDip,
             OrbDisplayModeIndex = (int)settings.Orb.DisplayMode,
             OrbOpacityPercent = Math.Round(settings.Orb.Opacity * 100),
             ShowClock = settings.Orb.ShowClock,
+            ClockColor = settings.Orb.ClockColor,
             ShowSeconds = settings.Orb.ShowSeconds,
             Clock24Hour = settings.Orb.Clock24Hour,
             SnapToEdge = settings.Orb.SnapToEdge,
@@ -216,6 +222,7 @@ public partial class SettingsViewModel : ObservableObject
         vm._baseline = settings;
         vm.LoadAudio(settings);
         vm.LoadBrightness(settings);
+        vm.LoadResourceUsage(settings.ResourceUsage);
         return vm;
     }
 
@@ -224,6 +231,10 @@ public partial class SettingsViewModel : ObservableObject
         var general = latest.General;
         if (StartWithWindows != _baseline.General.StartWithWindows)
             general = general with { StartWithWindows = StartWithWindows };
+        if (ShowSystemNotifications != _baseline.General.ShowSystemNotifications)
+            general = general with { ShowSystemNotifications = ShowSystemNotifications };
+        if (WheelExpandDurationMs != _baseline.General.WheelExpandDurationMs)
+            general = general with { WheelExpandDurationMs = Math.Clamp(WheelExpandDurationMs, 200, 800) };
         if ((AppTheme)ThemeIndex != _baseline.General.Theme)
             general = general with { Theme = (AppTheme)ThemeIndex };
 
@@ -236,6 +247,8 @@ public partial class SettingsViewModel : ObservableObject
             orb = orb with { Opacity = OrbOpacityPercent / 100.0 };
         if (ShowClock != _baseline.Orb.ShowClock)
             orb = orb with { ShowClock = ShowClock };
+        if (ClockColor != _baseline.Orb.ClockColor)
+            orb = orb with { ClockColor = ClockColor };
         if (ShowSeconds != _baseline.Orb.ShowSeconds)
             orb = orb with { ShowSeconds = ShowSeconds };
         if (Clock24Hour != _baseline.Orb.Clock24Hour)
@@ -363,6 +376,7 @@ public partial class SettingsViewModel : ObservableObject
             Capture = capture,
             Hotkeys = hotkeys,
             Brightness = MergeBrightness(latest.Brightness),
+            ResourceUsage = BuildResourceUsage(latest.ResourceUsage),
             Windows = latest.Windows,
             WheelActions = effectiveWheelActions,
             ShowLauncherDock = showLauncherDock,
@@ -531,7 +545,7 @@ public partial class SettingsViewModel : ObservableObject
         if (invalidBrightnessKey is not null)
         {
             candidate = latest;
-            error = $"{invalidBrightnessKey.Label}快捷键格式无效，请使用 Ctrl+Alt+F8 等格式。";
+            error = $"{invalidBrightnessKey.Label}快捷键“{invalidBrightnessKey.Text}”无效。可填写单键（如 Add、Subtract、F8）或 Ctrl+Alt+Up 等组合。";
             return false;
         }
         if (!TryParseHotkey(PanelHotkey, out _))
@@ -582,6 +596,17 @@ public partial class SettingsViewModel : ObservableObject
         {
             candidate = latest;
             error = "启用自动保存时必须选择有效的绝对目录。";
+            return false;
+        }
+        if (!ValidateResourceUsage(BuildResourceUsage(latest.ResourceUsage), out error))
+        {
+            candidate = latest;
+            return false;
+        }
+        if (!IsAppearanceColor(ClockColor))
+        {
+            candidate = latest;
+            error = "时间字体颜色无效，请使用 #RRGGBB 或 #AARRGGBB。";
             return false;
         }
         candidate = BuildCandidate(latest);
@@ -690,6 +715,9 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (chord.VirtualKey == 0)
             return "";
+        if (ModifierForHotkeyKey(chord.VirtualKey) is var ownModifier &&
+            ownModifier != ShortcutModifiers.None && chord.Modifiers == ownModifier)
+            return FormatHotkeyKey(chord.VirtualKey);
         var parts = new List<string>();
         if (chord.Modifiers.HasFlag(ShortcutModifiers.Control)) parts.Add("Ctrl");
         if (chord.Modifiers.HasFlag(ShortcutModifiers.Alt)) parts.Add("Alt");
@@ -697,14 +725,22 @@ public partial class SettingsViewModel : ObservableObject
         if (chord.Modifiers.HasFlag(ShortcutModifiers.Win)) parts.Add("Win");
         parts.Add(chord.VirtualKey switch
         {
-            0x20 => "Space",
-            >= 0x70 and <= 0x87 => $"F{chord.VirtualKey - 0x6F}",
-            >= 0x30 and <= 0x39 => ((char)chord.VirtualKey).ToString(),
-            >= 0x41 and <= 0x5A => ((char)chord.VirtualKey).ToString(),
-            _ => $"0x{chord.VirtualKey:X2}"
+            // Preserve an explicit main key when it is itself a modifier.
+            0x10 => "ShiftKey", 0x11 => "ControlKey", 0x12 => "Menu", 0x5B => "LWin",
+            _ => FormatHotkeyKey(chord.VirtualKey)
         });
         return string.Join("+", parts);
     }
+
+    private static string FormatHotkeyKey(uint key) => NamedHotkeyKeys.TryGetValue(key, out var name) ? name : key switch
+        {
+            0x20 => "Space",
+            >= 0x70 and <= 0x87 => $"F{key - 0x6F}",
+            >= 0x30 and <= 0x39 => ((char)key).ToString(),
+            >= 0x41 and <= 0x5A => ((char)key).ToString(),
+            _ => key <= 0xFE && Enum.IsDefined((System.Windows.Forms.Keys)key)
+                ? ((System.Windows.Forms.Keys)key).ToString() : $"0x{key:X2}"
+        };
 
     private static HotkeyChord ParseHotkey(string text, HotkeyChord fallback)
         => TryParseHotkey(text, out var chord) ? chord : fallback;
@@ -714,9 +750,30 @@ public partial class SettingsViewModel : ObservableObject
         chord = default;
         if (string.IsNullOrWhiteSpace(text))
             return false;
-        var parts = text.Split(
+        var normalized = text.Trim()
+            .Replace("小键盘+", "Add", StringComparison.OrdinalIgnoreCase)
+            .Replace("小键盘-", "Subtract", StringComparison.OrdinalIgnoreCase)
+            .Replace("NumPad+", "Add", StringComparison.OrdinalIgnoreCase)
+            .Replace("NumPad-", "Subtract", StringComparison.OrdinalIgnoreCase);
+        // Literal standalone +/- identify the keypad keys. Main keyboard keys can
+        // be named explicitly as Plus/Minus (or OemPlus/OemMinus).
+        if (normalized == "+") normalized = "Add";
+        else if (normalized == "-") normalized = "Subtract";
+        if (!normalized.Contains('+') && TryParseHotkeyKey(normalized, out var singleKey))
+        {
+            chord = new HotkeyChord(ModifierForHotkeyKey(singleKey), singleKey);
+            return true;
+        }
+        // The final '+' can be the main keyboard's plus key, e.g. Ctrl+Alt++.
+        if (normalized.EndsWith('+'))
+        {
+            var prefix = normalized[..^1].TrimEnd();
+            if (!prefix.EndsWith('+')) return false;
+            normalized = prefix + "Plus";
+        }
+        var parts = normalized.Split(
             '+',
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            StringSplitOptions.TrimEntries);
         if (parts.Length == 0)
             return false;
         var modifiers = ShortcutModifiers.None;
@@ -738,27 +795,70 @@ public partial class SettingsViewModel : ObservableObject
                 case "WIN":
                     modifiers |= ShortcutModifiers.Win;
                     break;
-                case "SPACE":
-                    key = 0x20;
-                    break;
                 default:
-                    if (part.Length == 1 && char.IsAsciiLetter(part[0]))
-                        key = char.ToUpperInvariant(part[0]);
-                    else if (part.StartsWith('F') &&
-                             int.TryParse(part.AsSpan(1), out var fn) &&
-                             fn is >= 1 and <= 24 &&
-                             key == 0)
-                        key = (uint)(0x6F + fn);
-                    else if (part.Length == 1 && char.IsAsciiDigit(part[0]))
-                        key = part[0];
-                    else
+                    if (key != 0 || !TryParseHotkeyKey(part, out key))
                         return false;
                     break;
             }
         }
-        if (key == 0 || modifiers == ShortcutModifiers.None)
+        if (key == 0)
             return false;
-        chord = new HotkeyChord(modifiers, key);
+        chord = new HotkeyChord(modifiers | ModifierForHotkeyKey(key), key);
         return true;
     }
+
+    private static readonly Dictionary<uint, string> NamedHotkeyKeys = new()
+    {
+        [0x08] = "Backspace", [0x09] = "Tab", [0x0D] = "Enter", [0x1B] = "Escape",
+        [0x10] = "Shift", [0x11] = "Ctrl", [0x12] = "Alt", [0x5B] = "Win",
+        [0x20] = "Space", [0x21] = "PageUp", [0x22] = "PageDown", [0x23] = "End",
+        [0x24] = "Home", [0x25] = "Left", [0x26] = "Up", [0x27] = "Right",
+        [0x28] = "Down", [0x2D] = "Insert", [0x2E] = "Delete",
+        [0x6B] = "Add", [0x6D] = "Subtract", [0xBB] = "Plus", [0xBD] = "Minus"
+    };
+
+    private static readonly Dictionary<string, uint> StandardHotkeyKeys =
+        Enum.GetNames<System.Windows.Forms.Keys>()
+            .Select(name => new KeyValuePair<string, uint>(name, (uint)Enum.Parse<System.Windows.Forms.Keys>(name)))
+            .Where(pair => pair.Value is >= 0x08 and <= 0xFE)
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+
+    private static bool TryParseHotkeyKey(string text, out uint key)
+    {
+        var normalized = text.ToUpperInvariant() switch
+        {
+            "↑" or "ARROWUP" => "UP", "↓" or "ARROWDOWN" => "DOWN",
+            "←" or "ARROWLEFT" => "LEFT", "→" or "ARROWRIGHT" => "RIGHT",
+            "PGUP" or "PRIOR" => "PAGEUP", "PGDN" or "NEXT" => "PAGEDOWN",
+            "ESC" => "ESCAPE", "RETURN" => "ENTER", "DEL" => "DELETE", "INS" => "INSERT",
+            "=" or "OEMPLUS" => "PLUS", "-" or "OEMMINUS" => "MINUS",
+            "NUMPADADD" => "ADD", "NUMPADSUBTRACT" => "SUBTRACT",
+            _ => text.ToUpperInvariant()
+        };
+        foreach (var pair in NamedHotkeyKeys)
+            if (pair.Value.Equals(normalized, StringComparison.OrdinalIgnoreCase))
+            { key = pair.Key; return true; }
+        key = 0;
+        if (normalized.Length == 1 && char.IsAsciiLetterOrDigit(normalized[0]))
+            key = normalized[0];
+        else if (normalized.StartsWith('F') && int.TryParse(normalized.AsSpan(1), out var fn) && fn is >= 1 and <= 24)
+            key = (uint)(0x6F + fn);
+        else if (StandardHotkeyKeys.TryGetValue(normalized, out var standardKey))
+            key = standardKey;
+        else if (normalized.StartsWith("0X", StringComparison.Ordinal) &&
+                 uint.TryParse(normalized.AsSpan(2), System.Globalization.NumberStyles.HexNumber,
+                     System.Globalization.CultureInfo.InvariantCulture, out var hex) &&
+                 hex is >= 0x08 and <= 0xFE)
+            key = hex;
+        return key != 0;
+    }
+
+    private static ShortcutModifiers ModifierForHotkeyKey(uint key) => key switch
+    {
+        0x10 or 0xA0 or 0xA1 => ShortcutModifiers.Shift,
+        0x11 or 0xA2 or 0xA3 => ShortcutModifiers.Control,
+        0x12 or 0xA4 or 0xA5 => ShortcutModifiers.Alt,
+        0x5B or 0x5C => ShortcutModifiers.Win,
+        _ => ShortcutModifiers.None
+    };
 }

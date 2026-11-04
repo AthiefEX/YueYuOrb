@@ -9,6 +9,25 @@ namespace FloatDesk.Infrastructure.Tests;
 public sealed class SettingsStoreTests : IDisposable
 {
     [Fact]
+    public async Task NotificationChoicePersistsAndMissingLegacyFieldDefaultsToEnabled()
+    {
+        using var store = new JsonSettingsStore(_root);
+        var expected = AppSettings.CreateDefault();
+        Assert.True(expected.General.ShowSystemNotifications);
+        expected = expected with { General = expected.General with { ShowSystemNotifications = false, Theme = AppTheme.Dark } };
+        await store.SaveAsync(expected, CancellationToken.None);
+        Assert.False((await store.LoadAsync(CancellationToken.None)).General.ShowSystemNotifications);
+        var path = Path.Combine(_root, "settings.json");
+        var json = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsObject();
+        Assert.True(json["general"]!.AsObject().Remove("showSystemNotifications"));
+        await File.WriteAllTextAsync(path, json.ToJsonString());
+        var legacy = await store.LoadAsync(CancellationToken.None);
+        Assert.True(legacy.General.ShowSystemNotifications);
+        Assert.Equal(AppTheme.Dark, legacy.General.Theme);
+        Assert.Equal(AppSettings.CurrentSchemaVersion, legacy.SchemaVersion);
+    }
+
+    [Fact]
     public void LegacySettingsAddExtractionHotkeyWithoutOverwritingExistingShortcut()
     {
         var options = new JsonSerializerOptions

@@ -652,10 +652,13 @@ public sealed class QuickPanelWindowLayoutTests
                     new Point(opensLeft ? 623 : 37, 280),
                     opensLeft);
 
-                var beams = Assert.IsType<System.Windows.Shapes.Path>(
-                    window.FindName("ActionBeamsPath"));
-                Assert.Null(beams.Stroke);
-                Assert.IsAssignableFrom<Geometry>(beams.Data);
+                var beams = Assert.IsType<Canvas>(window.FindName("ActionBeamsLayer"));
+                Assert.NotEmpty(beams.Children);
+                Assert.All(beams.Children.OfType<System.Windows.Shapes.Polygon>(), beam =>
+                {
+                    Assert.Null(beam.Stroke);
+                    Assert.Equal(3, beam.Points.Count);
+                });
 
                 var halo = Assert.IsType<System.Windows.Shapes.Ellipse>(
                     window.FindName("AnchorHalo"));
@@ -829,15 +832,12 @@ public sealed class QuickPanelWindowLayoutTests
 
                 var fan = Assert.IsType<System.Windows.Shapes.Path>(
                     window.FindName("FanWash"));
-                var beams = Assert.IsType<System.Windows.Shapes.Path>(
-                    window.FindName("ActionBeamsPath"));
+                var beams = Assert.IsType<Canvas>(window.FindName("ActionBeamsLayer"));
 
                 Assert.Equal(Visibility.Collapsed, fan.Visibility);
-                Assert.NotNull(beams.Fill);
                 Assert.NotEqual(Visibility.Collapsed, beams.Visibility);
-                Assert.False(
-                    Assert.IsAssignableFrom<Geometry>(beams.Data).Bounds.IsEmpty,
-                    "The radial white pointer beams must remain visible.");
+                Assert.NotEmpty(beams.Children);
+                Assert.All(beams.Children.OfType<System.Windows.Shapes.Polygon>(), beam => Assert.NotNull(beam.Fill));
             }
             catch (Exception exception)
             {
@@ -1339,45 +1339,26 @@ public sealed class QuickPanelWindowLayoutTests
                     window.FindName("WheelScroller"));
                 var fanLayer = Assert.IsType<Canvas>(
                     window.FindName("WheelFanLayer"));
-                var beams = Assert.IsType<System.Windows.Shapes.Path>(
-                    window.FindName("ActionBeamsPath"));
+                var beams = Assert.IsType<Canvas>(window.FindName("ActionBeamsLayer"));
                 Assert.True(fanLayer.IsAncestorOf(scroller));
                 Assert.True(
                     fanLayer.IsAncestorOf(beams),
                     "Pointer beams must follow the same fan transform.");
-                var fanTransforms = Assert.IsType<TransformGroup>(
-                    fanLayer.RenderTransform);
-                var fanRotation = Assert.Single(
-                    fanTransforms.Children.OfType<RotateTransform>());
-                var fanOffset = Assert.Single(
-                    fanTransforms.Children.OfType<TranslateTransform>());
-                Assert.Equal(opensLeft ? -1 : 1, Math.Sign(fanRotation.Angle));
-                Assert.True(
-                    fanOffset.Y >= 12,
-                    "The folded wheel must start below its final position.");
-
-                var top = Assert.IsType<Button>(
-                    window.FindName("RegionCaptureButton"));
-                var bottom = Assert.IsType<Button>(
-                    window.FindName("SettingsButton"));
-                var topTransforms = Assert.IsType<TransformGroup>(
-                    top.RenderTransform);
-                var bottomTransforms = Assert.IsType<TransformGroup>(
-                    bottom.RenderTransform);
-                var topRotation = Assert.Single(
-                    topTransforms.Children.OfType<RotateTransform>());
-                var bottomRotation = Assert.Single(
-                    bottomTransforms.Children.OfType<RotateTransform>());
-                var topOffset = Assert.Single(
-                    topTransforms.Children.OfType<TranslateTransform>());
-                var bottomOffset = Assert.Single(
-                    bottomTransforms.Children.OfType<TranslateTransform>());
-
-                Assert.NotEqual(0, topRotation.Angle);
-                Assert.NotEqual(0, bottomRotation.Angle);
-                Assert.True(
-                    topOffset.Y > bottomOffset.Y,
-                    "Upper actions must unfold from farther down the fan.");
+                Assert.True(fanLayer.RenderTransform.Value.IsIdentity,
+                    "The shared layer must not rotate labels independently of beams.");
+                var entrance = Assert.IsType<Canvas>(window.FindName("WheelEntranceLayer"));
+                var moving = entrance.Children.OfType<Button>().ToArray();
+                Assert.NotEmpty(moving);
+                var startY = Canvas.GetTop(moving[0]);
+                Assert.All(moving, button =>
+                {
+                    Assert.Equal(startY, Canvas.GetTop(button), 5);
+                    Assert.True(button.RenderTransform.Value.IsIdentity);
+                    Assert.Equal(0, button.Opacity);
+                });
+                Assert.Equal(moving.Length,
+                    entrance.Children.OfType<System.Windows.Shapes.Polygon>().Count());
+                window.PrepareForScreenCapture();
             }
             catch (Exception exception)
             {

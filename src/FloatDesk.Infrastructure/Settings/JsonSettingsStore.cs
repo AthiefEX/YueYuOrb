@@ -64,7 +64,7 @@ public sealed class JsonSettingsStore : ISettingsStore, IDisposable
         if (errors.Count > 0)
             throw new InvalidDataException(string.Join(" ", errors));
 
-        await _writeGate.WaitAsync(cancellationToken);
+        await _writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             Directory.CreateDirectory(_directory);
@@ -72,7 +72,7 @@ public sealed class JsonSettingsStore : ISettingsStore, IDisposable
             try
             {
                 var json = JsonSerializer.Serialize(value, JsonOptions);
-                await File.WriteAllTextAsync(temporary, json, cancellationToken);
+                await File.WriteAllTextAsync(temporary, json, cancellationToken).ConfigureAwait(false);
                 if (File.Exists(PrimaryPath))
                     File.Replace(temporary, PrimaryPath, BackupPath, ignoreMetadataErrors: true);
                 else

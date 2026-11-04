@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Threading;
+using System.Runtime.InteropServices;
+using System.Windows.Interop;
 using FloatDesk.App.Views;
 using Microsoft.Win32;
 
@@ -14,12 +16,20 @@ public sealed class NightModeController : IDisposable
     private IDisposable? _lockLease;
     private IDisposable? _subtitleLease;
     private bool _disposed;
+    private readonly DispatcherTimer _stackTimer;
+    private readonly WinEventCallback _windowEventCallback;
+    private readonly List<nint> _stackHooks = [];
+    private bool _maintainingStack;
     public bool IsEnabled => _state.IsEnabled;
     public event Action? Changed;
 
     public NightModeController(Dispatcher dispatcher)
     {
         _dispatcher = dispatcher;
+        _windowEventCallback = OnWindowEvent;
+        _stackTimer = new DispatcherTimer(DispatcherPriority.Background, dispatcher)
+        { Interval = TimeSpan.FromMilliseconds(100) };
+        _stackTimer.Tick += (_, _) => MaintainStacking();
         _state.Changed += Update;
         SystemEvents.DisplaySettingsChanged += OnDisplaysChanged;
         SystemEvents.SessionSwitch += OnSessionSwitch;
@@ -47,15 +57,83 @@ public sealed class NightModeController : IDisposable
     });
     public void RaiseControls() => _dispatcher.Invoke(() =>
     {
-        if (!_state.IsVisible || _disposed || Application.Current is null) return;
-        foreach (Window window in Application.Current.Windows)
+        if (!_state.IsVisible || _disposed || Application.Current is not { } app || !app.Dispatcher.CheckAccess()) return;
+        foreach (Window window in app.Windows)
         {
             if (window is NightDimWindow || !window.IsVisible) continue;
             _originalTopmost.TryAdd(window, window.Topmost);
-            window.Topmost = false;
             window.Topmost = true;
+            RaiseWindow(new WindowInteropHelper(window).Handle);
         }
     });
+    private void MaintainStacking()
+    {
+        if (_disposed || !_state.IsVisible || _maintainingStack) return;
+        _maintainingStack = true;
+        try { MaintainStackingCore(); }
+        finally { _maintainingStack = false; }
+    }
+    private void MaintainStackingCore()
+    {
+        var controls = (Application.Current is { } app && app.Dispatcher.CheckAccess() ? app.Windows.Cast<Window>() : [])
+            .Where(w => w is not NightDimWindow && w.IsVisible)
+            .Select(w => new WindowInteropHelper(w).Handle).ToHashSet();
+        var masks = _windows.Select(w => new WindowInteropHelper(w).Handle).ToHashSet();
+        foreach (var mask in masks)
+        {
+            if (!GetWindowRect(mask, out var bounds)) continue;
+            for (var above = GetWindow(mask, 3); above != 0; above = GetWindow(above, 3))
+            {
+                if (masks.Contains(above) || controls.Contains(above) || !IsWindowVisible(above) ||
+                    !GetWindowRect(above, out var rect) || !bounds.Intersects(rect)) continue;
+                // A newly shown topmost popup can cover a mask which was already topmost.
+                // Reorder only our own windows; never focus, move or inspect the popup.
+                foreach (var window in _windows) window.RaiseWithoutActivation();
+                RaiseControls();
+                return;
+            }
+        }
+    }
+    private void StartWindowEvents()
+    {
+        if (_stackHooks.Count != 0) return;
+        // OUTOFCONTEXT callbacks are delivered on this dispatcher's thread. They only
+        // read window geometry and reorder our masks; no target process is injected.
+        foreach (var eventId in new uint[] { 0x0003, 0x8002, 0x8004, 0x800B })
+        {
+            var hook = SetWinEventHook(eventId, eventId, 0, _windowEventCallback, 0, 0, 0);
+            if (hook != 0) _stackHooks.Add(hook);
+        }
+    }
+    private void StopWindowEvents()
+    {
+        foreach (var hook in _stackHooks) UnhookWinEvent(hook);
+        _stackHooks.Clear();
+    }
+    private void OnWindowEvent(nint hook, uint eventId, nint window, int objectId, int childId, uint threadId, uint time)
+    {
+        if (_disposed || !_state.IsVisible || _maintainingStack || !_dispatcher.CheckAccess()) return;
+        if (childId != 0 || (objectId != 0 && eventId != 0x8004)) return;
+        if (window != 0 && eventId != 0x8004 &&
+            (!IsWindowVisible(window) || GetAncestor(window, 2) != window)) return;
+        // Do not queue behind rendering or wait for the fallback timer.
+        MaintainStacking();
+    }
+    private delegate void WinEventCallback(nint hook, uint eventId, nint window, int objectId, int childId, uint threadId, uint time);
+    [DllImport("user32.dll")] private static extern nint SetWinEventHook(uint minEvent, uint maxEvent, nint module, WinEventCallback callback, uint processId, uint threadId, uint flags);
+    [DllImport("user32.dll")] private static extern bool UnhookWinEvent(nint hook);
+    [DllImport("user32.dll")] private static extern nint GetAncestor(nint window, uint flags);
+    private static void RaiseWindow(nint handle) => SetWindowPos(handle, new nint(-1), 0, 0, 0, 0, 0x13);
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left, Top, Right, Bottom;
+        public readonly bool Intersects(NativeRect other) => Left < other.Right && Right > other.Left && Top < other.Bottom && Bottom > other.Top;
+    }
+    [DllImport("user32.dll")] private static extern nint GetWindow(nint handle, uint command);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(nint handle);
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(nint handle, out NativeRect rect);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(nint handle, nint after, int x, int y, int width, int height, uint flags);
     private void Update()
     {
         if (_disposed) return;
@@ -71,9 +149,17 @@ public sealed class NightModeController : IDisposable
             window.Opacity = _state.DimmingPercent / 100d;
             if (_state.IsVisible) window.Show(); else window.Hide();
         }
-        if (_state.IsVisible) RaiseControls();
+        if (_state.IsVisible)
+        {
+            StartWindowEvents();
+            _stackTimer.Start();
+            MaintainStacking();
+            RaiseControls();
+        }
         else
         {
+            _stackTimer.Stop();
+            StopWindowEvents();
             foreach (var (window, topmost) in _originalTopmost) if (window.IsLoaded) window.Topmost = topmost;
             _originalTopmost.Clear();
         }
@@ -84,6 +170,8 @@ public sealed class NightModeController : IDisposable
         if (_disposed) return;
         _state.SetEnabled(false);
         _disposed = true;
+        _stackTimer.Stop();
+        StopWindowEvents();
         SystemEvents.DisplaySettingsChanged -= OnDisplaysChanged;
         SystemEvents.SessionSwitch -= OnSessionSwitch;
         foreach (var window in _windows) window.Close();

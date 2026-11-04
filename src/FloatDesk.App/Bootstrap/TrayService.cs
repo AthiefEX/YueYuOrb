@@ -12,6 +12,8 @@ public sealed class TrayService : IDisposable
     private readonly ToolStripMenuItem _subtitleStopItem;
     private readonly SynchronizationContext? _synchronizationContext;
     private readonly int _createdThreadId;
+    private readonly Func<bool> _notificationsEnabled;
+    private bool _disposed;
 
     public TrayService(
         Action openPanel,
@@ -27,10 +29,12 @@ public sealed class TrayService : IDisposable
         Action stopSubtitles,
         Action? extractRegionText = null,
         Action? toggleNightMode = null,
-        Action? recoverBrightness = null)
+        Action? recoverBrightness = null,
+        Func<bool>? notificationsEnabled = null)
     {
         _synchronizationContext = SynchronizationContext.Current;
         _createdThreadId = Environment.CurrentManagedThreadId;
+        _notificationsEnabled = notificationsEnabled ?? (() => true);
         var menu = new ContextMenuStrip();
         menu.Items.Add("显示/隐藏悬浮球", null, (_, _) => toggleOrb());
         menu.Items.Add("打开快捷面板", null, (_, _) => openPanel());
@@ -91,15 +95,20 @@ public sealed class TrayService : IDisposable
     public void ShowWarning(string title, string message)
     {
         RunOnCreatedThread(() =>
-            _icon.ShowBalloonTip(
+        {
+            if (_disposed) return;
+            SystemNotificationPolicy.Deliver(_notificationsEnabled, () => _icon.ShowBalloonTip(
                 6000,
                 title,
                 message,
                 ToolTipIcon.Warning));
+        });
     }
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         _icon.Visible = false;
         _icon.Dispose();
     }
@@ -113,6 +122,14 @@ public sealed class TrayService : IDisposable
         }
 
         _synchronizationContext?.Post(_ => action(), null);
+    }
+}
+
+internal static class SystemNotificationPolicy
+{
+    public static void Deliver(Func<bool> enabled, Action show)
+    {
+        if (enabled()) show();
     }
 }
 

@@ -72,21 +72,18 @@ public partial class QuickPanelWindow : Window
     {
         _launcherIconProvider = launcherIcons;
         InitializeComponent();
-        ActionBeamsPath.Fill ??= ThemeBrush(
-            "MenuActionBeamBrush",
-            Color.FromArgb(0x34, 0xFF, 0xFF, 0xFF));
         SourceInitialized += OnSourceInitialized;
+        Closed += (_, _) => { CancelQueuedEntranceAnimation(); CompleteFoldMotion(); };
     }
 
     public void Apply(AppSettings settings, bool manualLockEnabled, string inputStatus)
     {
+        CompleteFoldMotion();
+        _wheelExpandDurationMs = Math.Clamp(settings.General.WheelExpandDurationMs, 200, 800);
         AnchorGlowSurface.Visibility = settings.Orb.DisplayMode == OrbDisplayMode.Crystal
             ? Visibility.Collapsed
             : Visibility.Visible;
-        InputLockTitle.Text = manualLockEnabled ? "停止锁定" : "锁定英文";
-        InputLockGlyph.Text = manualLockEnabled ? "\uE785" : "\uE72E";
-        InputLockGlyphHost.Background = (Brush)FindResource(
-            manualLockEnabled ? "MenuGreenBrush" : "MenuBlueBrush");
+        UpdateInputStatus(manualLockEnabled, inputStatus);
 
         var enabledWheelActions = settings.WheelActions.ToHashSet();
         foreach (var (button, kind) in GetFixedWheelActions())
@@ -166,6 +163,14 @@ public partial class QuickPanelWindow : Window
         if (_wheelLayoutReady)
             ArrangeMenu(_wheelAnchor, _wheelOpensLeft);
     }
+    public void UpdateInputStatus(bool manualLockEnabled, string inputStatus)
+    {
+        InputLockTitle.Text = manualLockEnabled ? "停止锁定" : "锁定英文";
+        InputLockGlyph.Text = manualLockEnabled ? "\uE785" : "\uE72E";
+        InputLockGlyphHost.Background = (Brush)FindResource(
+            manualLockEnabled ? "MenuGreenBrush" : "MenuBlueBrush");
+    }
+
     public void SetRegionCaptureHotkey(string hotkey)
     {
         RegionCaptureButton.ToolTip = $"框选截图（{hotkey}）";
@@ -354,6 +359,7 @@ public partial class QuickPanelWindow : Window
 
     private void ArrangeMenu(Point anchor, bool opensLeft)
     {
+        CompleteFoldMotion();
         _wheelAnchor = anchor;
         _wheelOpensLeft = opensLeft;
         _wheelLayoutReady = true;
@@ -525,7 +531,7 @@ public partial class QuickPanelWindow : Window
             WheelScroller.Visibility != Visibility.Visible)
         {
             FanWash.Data = Geometry.Empty;
-            ActionBeamsPath.Data = Geometry.Empty;
+            ActionBeamsLayer.Children.Clear();
             WheelScroller.Clip = null;
             return;
         }
@@ -607,31 +613,20 @@ public partial class QuickPanelWindow : Window
         double direction,
         Button[] actions)
     {
-        var beams = new StreamGeometry();
-        using (var context = beams.Open())
+        ActionBeamsLayer.Children.Clear();
+        foreach (var action in actions.OrderByDescending(action => GetWheelButtonMenuBounds(action).Top))
         {
-            foreach (var action in actions)
-            {
-                var bounds = GetWheelButtonMenuBounds(action);
-                if (!IsInsideWheelViewport(bounds))
-                    continue;
-                var targetX = direction > 0
-                    ? bounds.Left
-                    : bounds.Right;
-                var targetY = bounds.Top + (bounds.Height / 2);
-                context.BeginFigure(anchor, isFilled: true, isClosed: true);
-                context.LineTo(
-                    new Point(targetX, targetY - 18),
-                    isStroked: false,
-                    isSmoothJoin: true);
-                context.LineTo(
-                    new Point(targetX, targetY + 18),
-                    isStroked: false,
-                    isSmoothJoin: true);
-            }
+            var bounds = GetWheelButtonMenuBounds(action);
+            if (!IsInsideWheelViewport(bounds))
+                continue;
+            var targetX = direction > 0 ? bounds.Left : bounds.Right;
+            var targetY = bounds.Top + bounds.Height / 2;
+            var beam = CreateActionBeam(action);
+            beam.Points[0] = anchor;
+            beam.Points[1] = new Point(targetX, targetY - 18);
+            beam.Points[2] = new Point(targetX, targetY + 18);
+            ActionBeamsLayer.Children.Add(beam);
         }
-        beams.Freeze();
-        ActionBeamsPath.Data = beams;
     }
 
     private Rect GetWheelButtonMenuBounds(FrameworkElement button) =>
@@ -723,121 +718,20 @@ public partial class QuickPanelWindow : Window
 
     private void StartEntranceWheelMotion()
     {
-        var outEase = new QuinticEase
-        {
-            EasingMode = EasingMode.EaseOut
-        };
-        var fanEase = new CubicEase
-        {
-            EasingMode = EasingMode.EaseOut
-        };
-        MenuRoot.BeginAnimation(
-            OpacityProperty,
-            MotionAnimation(0, 1, 160, 0, outEase));
-        MenuScaleTransform.BeginAnimation(
-            ScaleTransform.ScaleXProperty,
-            MotionAnimation(0.985, 1, 220, 0, outEase));
-        MenuScaleTransform.BeginAnimation(
-            ScaleTransform.ScaleYProperty,
-            MotionAnimation(0.985, 1, 220, 0, outEase));
-        MenuTranslateTransform.BeginAnimation(
-            TranslateTransform.XProperty,
-            MotionAnimation(
-                _wheelOpensLeft ? 4 : -4,
-                0,
-                210,
-                0,
-                outEase));
-
-        WheelScroller.Opacity = 1;
-        WheelFanLayer.BeginAnimation(
-            OpacityProperty,
-            MotionAnimation(0, 1, 150, 12, fanEase));
-        _wheelFanRotation?.BeginAnimation(
-            RotateTransform.AngleProperty,
-            MotionAnimation(
-                _wheelFanRotation.Angle,
-                0,
-                280,
-                12,
-                fanEase));
-        _wheelFanTranslation?.BeginAnimation(
-            TranslateTransform.YProperty,
-            MotionAnimation(
-                _wheelFanTranslation.Y,
-                0,
-                300,
-                12,
-                fanEase));
+        MenuScaleTransform.ScaleX = MenuScaleTransform.ScaleY = 1;
+        MenuTranslateTransform.X = 0;
+        WheelFanLayer.RenderTransform = Transform.Identity;
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var fadeDuration = Math.Min(120, _wheelExpandDurationMs);
+        MenuRoot.BeginAnimation(OpacityProperty, MotionAnimation(0, 1, fadeDuration, 0, ease));
+        WheelFanLayer.BeginAnimation(OpacityProperty, MotionAnimation(0, 1, fadeDuration, 0, ease));
         if (LauncherDock.Visibility == Visibility.Visible)
         {
-            var dockOffset = (TranslateTransform)LauncherDock.RenderTransform;
-            LauncherDock.BeginAnimation(
-                OpacityProperty,
-                MotionAnimation(0, 1, 190, 40, outEase));
-            dockOffset.BeginAnimation(
-                TranslateTransform.YProperty,
-                MotionAnimation(9, 0, 210, 40, outEase));
+            LauncherDock.BeginAnimation(OpacityProperty, MotionAnimation(0, 1, fadeDuration, 0, ease));
+            ((TranslateTransform)LauncherDock.RenderTransform).BeginAnimation(
+                TranslateTransform.YProperty, MotionAnimation(9, 0, fadeDuration, 0, ease));
         }
-
-        var items = GetVisibleWheelButtons()
-            .Where(button =>
-                IsInsideWheelViewport(
-                    GetWheelButtonMenuBounds(button)))
-            .OrderByDescending(button =>
-            {
-                var bounds = GetWheelButtonMenuBounds(button);
-                return bounds.Top + (bounds.Height / 2);
-            })
-            .Take(10)
-            .ToArray();
-        var bottomCenterY = items.Length == 0
-            ? _wheelAnchor.Y
-            : items.Max(button =>
-            {
-                var bounds = GetWheelButtonMenuBounds(button);
-                return bounds.Top + (bounds.Height / 2);
-            });
-        for (var index = 0; index < items.Length; index++)
-        {
-            var delay = index * 28;
-            var button = items[index];
-            var (scale, rotation, translate) =
-                ConfigureWheelItemMotion(button, bottomCenterY);
-            button.BeginAnimation(
-                OpacityProperty,
-                MotionAnimation(0, 1, 170, delay, fanEase));
-            scale.BeginAnimation(
-                ScaleTransform.ScaleXProperty,
-                MotionAnimation(0.82, 1, 250, delay, fanEase));
-            scale.BeginAnimation(
-                ScaleTransform.ScaleYProperty,
-                MotionAnimation(0.82, 1, 250, delay, fanEase));
-            rotation.BeginAnimation(
-                RotateTransform.AngleProperty,
-                MotionAnimation(
-                    rotation.Angle,
-                    0,
-                    240,
-                    delay,
-                    fanEase));
-            translate.BeginAnimation(
-                TranslateTransform.XProperty,
-                MotionAnimation(
-                    translate.X,
-                    0,
-                    280,
-                    delay,
-                    fanEase));
-            translate.BeginAnimation(
-                TranslateTransform.YProperty,
-                MotionAnimation(
-                    translate.Y,
-                    0,
-                    300,
-                    delay,
-                    fanEase));
-        }
+        BeginFoldMotion();
     }
 
     private void StartAnchorGlowMotion()
@@ -867,7 +761,7 @@ public partial class QuickPanelWindow : Window
         MenuScaleTransform.ScaleX = 0.985;
         MenuScaleTransform.ScaleY = 0.985;
         MenuTranslateTransform.X = _wheelOpensLeft ? 4 : -4;
-        ActionBeamsPath.Opacity = 1;
+        ActionBeamsLayer.Opacity = 1;
         AnchorGlowSurface.Opacity = 0;
         AnchorHalo.Opacity = 1;
         WheelScroller.Opacity = 0;
@@ -905,7 +799,7 @@ public partial class QuickPanelWindow : Window
         MenuScaleTransform.ScaleX = 1;
         MenuScaleTransform.ScaleY = 1;
         MenuTranslateTransform.X = 0;
-        ActionBeamsPath.Opacity = 1;
+        ActionBeamsLayer.Opacity = 1;
         AnchorGlowSurface.Opacity = 1;
         AnchorHalo.Opacity = 1;
         WheelScroller.Opacity = 1;
@@ -937,6 +831,7 @@ public partial class QuickPanelWindow : Window
 
     private void ClearMotionAnimations()
     {
+        CompleteFoldMotion();
         MenuRoot.BeginAnimation(OpacityProperty, null);
         MenuScaleTransform.BeginAnimation(
             ScaleTransform.ScaleXProperty,
@@ -1101,6 +996,7 @@ public partial class QuickPanelWindow : Window
         object sender,
         MouseWheelEventArgs e)
     {
+        CompleteFoldMotion();
         if (WheelScroller.ScrollableHeight <= 0)
             return;
         BeginSmoothWheelScroll(e.Delta);
@@ -1111,6 +1007,12 @@ public partial class QuickPanelWindow : Window
         object sender,
         ScrollChangedEventArgs e)
     {
+        // Layout/extent notifications also arrive after moving buttons into the
+        // entrance layer. Only an actual scroll should interrupt the fold.
+        if (e.VerticalChange != 0 || e.HorizontalChange != 0)
+            CompleteFoldMotion();
+        if (_foldItems.Length > 0)
+            return;
         if (!_smoothWheelAnimationActive)
             _smoothWheelTargetOffset = WheelScroller.VerticalOffset;
         UpdateWheelForScroll();
