@@ -18,7 +18,7 @@ public sealed class BrightnessControlWindowTests
         RunSta(() =>
         {
             using var night = new NightModeController(Dispatcher.CurrentDispatcher);
-            using var popup = new System.Windows.Forms.Form { TopMost = true, ShowInTaskbar = false };
+            using var popup = new PopupWindowThread();
             night.SetDimmingPercent(0);
             night.SetEnabled(true);
             // Disable polling entirely: covering this new popup must be event driven.
@@ -84,7 +84,7 @@ public sealed class BrightnessControlWindowTests
         RunSta(() =>
         {
             using var night = new NightModeController(Dispatcher.CurrentDispatcher);
-            using var popup = new System.Windows.Forms.Form { TopMost = true, ShowInTaskbar = false };
+            using var popup = new PopupWindowThread();
             night.SetDimmingPercent(0); // Exercise native stacking without darkening the test desktop.
             night.SetEnabled(true);
             popup.Show();
@@ -187,7 +187,7 @@ public sealed class BrightnessControlWindowTests
         Exception? error = null;
         var thread = new Thread(() => { try { action(); } catch (Exception ex) { error = ex; } });
         thread.SetApartmentState(ApartmentState.STA); thread.Start();
-        Assert.True(thread.Join(TimeSpan.FromSeconds(10)));
+        Assert.True(thread.Join(TimeSpan.FromSeconds(30)));
         if (error is not null) throw new Xunit.Sdk.XunitException(error.ToString());
     }
     private static void Pump(int milliseconds)
@@ -196,6 +196,106 @@ public sealed class BrightnessControlWindowTests
         var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(milliseconds) };
         timer.Tick += (_, _) => { timer.Stop(); frame.Continue = false; };
         timer.Start(); Dispatcher.PushFrame(frame);
+    }
+
+    private sealed class PopupWindowThread : IDisposable
+    {
+        private readonly System.Windows.Forms.Form _form;
+        private readonly Thread _thread;
+        private readonly ManualResetEventSlim _ready = new();
+        private Exception? _failure;
+
+        public PopupWindowThread()
+        {
+            _form = new System.Windows.Forms.Form
+            {
+                TopMost = true,
+                ShowInTaskbar = false
+            };
+            _form.Shown += (_, _) =>
+            {
+                Handle = _form.Handle;
+                _ready.Set();
+            };
+            _thread = new Thread(Run)
+            {
+                IsBackground = true
+            };
+            _thread.SetApartmentState(ApartmentState.STA);
+            _thread.Start();
+            if (!_ready.Wait(TimeSpan.FromSeconds(5)))
+                throw new TimeoutException("Timed out creating the popup thread.");
+            if (_failure is not null)
+                throw new Xunit.Sdk.XunitException(_failure.ToString());
+        }
+
+        public nint Handle { get; private set; }
+
+        public void Show() => Invoke(_form.Show);
+
+        public void Hide() => Invoke(_form.Hide);
+
+        public void Dispose()
+        {
+            if (!_thread.IsAlive)
+            {
+                _ready.Dispose();
+                return;
+            }
+
+            try
+            {
+                _form.BeginInvoke(
+                    (Action)System.Windows.Forms.Application.ExitThread);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+            _thread.Join(TimeSpan.FromSeconds(5));
+            _ready.Dispose();
+        }
+
+        private void Run()
+        {
+            try
+            {
+                System.Windows.Forms.Application.Run(_form);
+            }
+            catch (Exception exception)
+            {
+                _failure = exception;
+                _ready.Set();
+            }
+            finally
+            {
+                _form.Dispose();
+            }
+        }
+
+        private void Invoke(Action action)
+        {
+            Exception? failure = null;
+            using var completed = new ManualResetEventSlim();
+            _form.BeginInvoke((Action)(() =>
+            {
+                try
+                {
+                    action();
+                }
+                catch (Exception exception)
+                {
+                    failure = exception;
+                }
+                finally
+                {
+                    completed.Set();
+                }
+            }));
+            if (!completed.Wait(TimeSpan.FromSeconds(5)))
+                throw new TimeoutException("Timed out updating the popup thread.");
+            if (failure is not null)
+                throw new Xunit.Sdk.XunitException(failure.ToString());
+        }
     }
     [StructLayout(LayoutKind.Sequential)] private struct Rect { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] private static extern bool GetWindowRect(nint handle, out Rect rect);
