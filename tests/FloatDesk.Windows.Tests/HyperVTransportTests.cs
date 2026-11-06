@@ -1,6 +1,7 @@
 using FloatDesk.Core.Models;
 using FloatDesk.SessionAgent;
 using FloatDesk.Windows.DesktopSessions;
+using System.IO;
 using System.IO.Pipes;
 
 namespace FloatDesk.Windows.Tests;

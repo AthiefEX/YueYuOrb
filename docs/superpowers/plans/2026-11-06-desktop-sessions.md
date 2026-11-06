@@ -152,11 +152,11 @@ Astra 审查明确使用 model=gpt-6-astra、reasoning_effort=low。审查不代
 
 **Dependencies:** 任务2/3；接后端后双路线验收
 
-- [ ] 写行为测试并断言：ClickNotRetriedAfterLostAck；WaitRetriesAtMost3；CancelKillsOnlyOwnedScriptTree；CoordinatesRejectChangedResolution；PasswordsNotLogged；HostInputApiNotCalled；200StepsAccepted201Rejected。
-- [ ] 使用通用聚焦命令运行对应测试类，确认因目标行为缺失而失败。
-- [ ] 按本项接口实现，遵守设计中的数值上限、身份校验和生命周期。
-- [ ] 聚焦测试通过，提交Astra low审查diff及测试证据。
-- [ ] 修复发现并回归；记录已验证/未验证能力与提交哈希；精确暂存本项文件提交。
+- [x] 写行为测试并断言：ClickNotRetriedAfterLostAck；WaitRetriesAtMost3；CancelKillsOnlyOwnedScriptTree；CoordinatesRejectChangedResolution；PasswordsNotLogged；HostInputApiNotCalled；200StepsAccepted201Rejected。另覆盖步骤超时、取消失败、传输中断、处理器异常和输入释放失败。
+- [x] 使用通用聚焦命令运行对应测试类，确认因目标行为缺失而失败。
+- [x] 按本项接口实现，遵守设计中的数值上限、身份校验和生命周期。
+- [x] 聚焦测试通过；按用户指令由当前模型完成审查，未调用Astra。
+- [x] 修复发现并回归；记录已验证/未验证能力与提交哈希；精确暂存本项文件提交。
 
 ### Task 8: 触发、编辑与轮盘整合
 

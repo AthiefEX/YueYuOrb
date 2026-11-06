@@ -22,7 +22,15 @@ internal static class Program
 
             try
             {
-                await SessionAgentServer.RunAsync(options, secret);
+                using var scriptRunner = new JobObjectScriptRunner();
+                var executor = new AutomationStepExecutor(
+                    new WindowsSessionAutomationBackend(),
+                    scriptRunner,
+                    new FloatDesk.Core.Contracts.SystemClock());
+                await SessionAgentServer.RunAsync(
+                    options,
+                    secret,
+                    executor);
                 return 0;
             }
             finally

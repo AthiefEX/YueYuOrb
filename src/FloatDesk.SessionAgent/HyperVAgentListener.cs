@@ -14,7 +14,8 @@ public static class HyperVAgentListener
     public static async Task ServeAsync(
         Stream stream,
         HyperVAgentListenerOptions options,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ISessionInputExecutor? executor = null)
     {
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(options);
@@ -105,6 +106,7 @@ public static class HyperVAgentListener
         CryptographicOperations.ZeroMemory(pairingSecret);
         await SessionAgentServer.RunProtocolLoopAsync(
             stream,
-            options.Binding).ConfigureAwait(false);
+            options.Binding,
+            executor).ConfigureAwait(false);
     }
 }

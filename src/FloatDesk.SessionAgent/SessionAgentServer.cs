@@ -12,7 +12,8 @@ internal static class SessionAgentServer
 {
     public static async Task RunAsync(
         SessionAgentOptions options,
-        ReadOnlyMemory<byte> bootstrapSecret)
+        ReadOnlyMemory<byte> bootstrapSecret,
+        ISessionInputExecutor? executor = null)
     {
         var currentIdentity = WindowsIdentity.GetCurrent();
         if (currentIdentity.User?.Value != options.Binding.UserSid)
@@ -38,7 +39,8 @@ internal static class SessionAgentServer
                 await ServeAsync(
                     server,
                     options,
-                    bootstrapSecret).ConfigureAwait(false);
+                    bootstrapSecret,
+                    executor).ConfigureAwait(false);
             }
             catch (Exception exception) when (
                 exception is IOException or
@@ -53,7 +55,8 @@ internal static class SessionAgentServer
     private static async Task ServeAsync(
         NamedPipeServerStream pipe,
         SessionAgentOptions options,
-        ReadOnlyMemory<byte> bootstrapSecret)
+        ReadOnlyMemory<byte> bootstrapSecret,
+        ISessionInputExecutor? executor)
     {
         using var timeout =
             new CancellationTokenSource(SessionProtocol.HandshakeTimeout);
@@ -131,17 +134,22 @@ internal static class SessionAgentServer
 
         await RunProtocolLoopAsync(
             pipe,
-            options.Binding).ConfigureAwait(false);
+            options.Binding,
+            executor).ConfigureAwait(false);
     }
 
     internal static async Task RunProtocolLoopAsync(
         Stream pipe,
-        SessionAgentBinding binding)
+        SessionAgentBinding binding,
+        ISessionInputExecutor? executor = null)
     {
         var writeGate = new SemaphoreSlim(1, 1);
         var lease = new SessionInputLease();
-        var executor = new ProtocolInputExecutor();
-        var dispatcher = new SessionCommandDispatcher(binding, executor);
+        var commandExecutor =
+            executor ?? new ProtocolInputExecutor();
+        var dispatcher = new SessionCommandDispatcher(
+            binding,
+            commandExecutor);
         var activeCommands = new ConcurrentDictionary<Guid, Task>();
         using var lifetime = new CancellationTokenSource();
         var leaseMonitor = MonitorLeaseAsync(
