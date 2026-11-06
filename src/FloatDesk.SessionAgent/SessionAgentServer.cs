@@ -134,8 +134,8 @@ internal static class SessionAgentServer
             options.Binding).ConfigureAwait(false);
     }
 
-    private static async Task RunProtocolLoopAsync(
-        NamedPipeServerStream pipe,
+    internal static async Task RunProtocolLoopAsync(
+        Stream pipe,
         SessionAgentBinding binding)
     {
         var writeGate = new SemaphoreSlim(1, 1);
@@ -273,7 +273,7 @@ internal static class SessionAgentServer
     private static async Task ProcessCommandAsync(
         SessionCommandDispatcher dispatcher,
         SessionCommand command,
-        NamedPipeServerStream pipe,
+        Stream pipe,
         SemaphoreSlim writeGate,
         Guid requestId,
         CancellationToken cancellationToken)
@@ -347,7 +347,7 @@ internal static class SessionAgentServer
             errorCode);
 
     private static async Task WriteResponseAsync(
-        NamedPipeServerStream pipe,
+        Stream pipe,
         SemaphoreSlim writeGate,
         SessionWireEnvelope response,
         CancellationToken cancellationToken)
