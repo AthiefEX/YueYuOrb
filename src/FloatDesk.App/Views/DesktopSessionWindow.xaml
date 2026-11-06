@@ -1,0 +1,60 @@
+<Window x:Class="FloatDesk.App.Views.DesktopSessionWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wf="clr-namespace:System.Windows.Forms.Integration;assembly=WindowsFormsIntegration"
+        Title="桌面分身"
+        Width="1280"
+        Height="760"
+        MinWidth="800"
+        MinHeight="600"
+        Background="#0B1422"
+        Foreground="#EAF6FF"
+        ShowActivated="False">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Padding="14,9"
+                Background="#161F2D"
+                BorderBrush="#2C4A61"
+                BorderThickness="0,0,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="EnvironmentNameText"
+                           FontSize="14"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center" />
+                <TextBlock x:Name="StatusText"
+                           Grid.Column="1"
+                           Foreground="#8FD9F2"
+                           FontSize="12"
+                           VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <wf:WindowsFormsHost x:Name="RdpHost" />
+            <Border x:Name="PlaceholderPanel"
+                    Background="#0B1422"
+                    IsHitTestVisible="False">
+                <StackPanel HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                    <TextBlock Text="正在准备本机子会话"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="RDP 控件将在连接成功后显示"
+                               Margin="0,8,0,0"
+                               Foreground="#8CA6B8"
+                               HorizontalAlignment="Center" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
