@@ -58,6 +58,31 @@ public sealed class DesktopSessionDiagnosticsTests : IDisposable
                     item.State == "未提供");
     }
 
+    [Fact]
+    public void RuntimeWithoutBrokerKeepsBothBackendsUnavailable()
+    {
+        CreateTool("agent", "YueYuOrb.SessionAgent.exe");
+        CreateTool("client", "YueYuOrb.SessionClient.exe");
+        var diagnostics = new DesktopSessionDiagnostics(_root);
+
+        var items = diagnostics.Inspect(
+            AppSettings.CreateDefault().DesktopSessions,
+            runtimeAvailable: true);
+
+        Assert.Contains(
+            items,
+            item => item.Name == "本机子会话" &&
+                    item.State == "不可用");
+        Assert.Contains(
+            items,
+            item => item.Name == "Hyper-V" &&
+                    item.State == "不可用");
+        Assert.Contains(
+            items,
+            item => item.Name == "输入隔离" &&
+                    item.State == "未开放");
+    }
+
     private void CreateTool(string folder, string file)
     {
         var directory = Path.Combine(

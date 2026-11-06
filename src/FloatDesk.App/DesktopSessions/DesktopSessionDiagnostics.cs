@@ -31,7 +31,7 @@ public sealed class DesktopSessionDiagnostics
         var broker = ToolExists(
             "broker",
             "YueYuOrb.SessionBroker.exe");
-        var localReady = runtimeAvailable && broker;
+        var backendReady = runtimeAvailable && broker;
         return
         [
             new(
@@ -60,20 +60,22 @@ public sealed class DesktopSessionDiagnostics
                     : "本机子会话和 Hyper-V 引导所需的 broker/准备流程尚未随当前构建提供。"),
             new(
                 "本机子会话",
-                localReady ? "实验性" : "不可用",
-                localReady
+                backendReady ? "实验性" : "不可用",
+                backendReady
                     ? "仍需完成 WTS、RDP ActiveX、锁屏和混合 DPI 实机验收。"
                     : "运行时或窄权限准备组件未就绪。"),
             new(
                 "Hyper-V",
-                runtimeAvailable ? "实验性" : "不可用",
-                runtimeAvailable
+                backendReady ? "实验性" : "不可用",
+                backendReady
                     ? "仍需完成真实 Hyper-V socket、来宾助手与 DPAPI 配对实机验收。"
-                    : "生产宿主未接入；不会从主桌面替代执行。"),
+                    : "生产宿主或窄权限准备组件未就绪；不会从主桌面替代执行。"),
             new(
                 "输入隔离",
-                runtimeAvailable ? "强制校验" : "未开放",
-                "任务不使用宿主 SendInput；无受信助手会话时拒绝执行。")
+                backendReady ? "强制校验" : "未开放",
+                backendReady
+                    ? "任务不使用宿主 SendInput；无受信助手会话时拒绝执行。"
+                    : "完整运行时准备前不开放输入自动化。")
         ];
     }
 
