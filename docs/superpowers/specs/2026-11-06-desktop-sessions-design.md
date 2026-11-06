@@ -31,6 +31,7 @@ SessionRuntime：持有每个环境的状态机、命令排队、超时、人工
 ISessionBackend：本机与 Hyper-V 的能力检测、启动、展示、停止；不执行任务步骤。
 YueYuOrb.SessionAgent：在目标用户交互会话执行 UI Automation、SendInput、进程启动和截图，绝不能在宿主会话代执行。
 每个命令绑定 EnvironmentId(Guid)、Generation(Guid)、WindowsSessionId(uint)、CommandId(Guid)、DeadlineUtc；重连产生新 Generation，旧命令直接拒绝。
+IDesktopSessionTransport：ConnectAsync返回并与SessionHandle核对Generation与LoginInstanceId；Acquire/Renew/ReleaseInputLease管理自动化输入租约；CancelAsync使用独立控制通道；SendAsync是唯一命令输入入口。SessionRuntime按环境串行派发，运行中最多一个命令，队列上限20，并为每条命令续约。
 本机通过限定用户 SID 的命名管道，校验对端 PID、会话身份和一次性握手；不能仅信任客户端提交的 SessionId。虚拟机采用 Hyper-V socket 通道，限定 VM ID、服务 GUID并使用本次配对的秘密完成握手；秘密使用 DPAPI 保存，不写日志、命令行或普通设置 JSON。若 Hyper-V socket 不可用，报告不支持，不静默开放 TCP 监听。
 助手默认标准用户运行。需提升的系统准备使用窄权限辅助进程；任务自身提权需用户显式允许，不把任意外部请求传给管理员 shell。
 

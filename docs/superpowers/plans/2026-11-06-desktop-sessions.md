@@ -62,11 +62,13 @@ Astra 审查明确使用 model=gpt-6-astra、reasoning_effort=low。审查不代
 
 **Dependencies:** 无
 
-- [ ] 写行为测试并断言：OldSettingsLoadWithSessionsDisabled；InvalidLimitsRejected：步骤201、队列21、超时0/601、自启动延迟301、重复环境ID被拒；RoundTripPreservesExistingPreferences。
-- [ ] 使用通用聚焦命令运行对应测试类，确认因目标行为缺失而失败。
-- [ ] 按本项接口实现，遵守设计中的数值上限、身份校验和生命周期。
-- [ ] 聚焦测试通过，提交Astra low审查diff及测试证据。
-- [ ] 修复发现并回归；记录已验证/未验证能力与提交哈希；精确暂存本项文件提交。
+- [x] 写行为测试并断言：OldSettingsLoadWithSessionsDisabled；InvalidLimitsRejected：步骤201、队列21、超时0/601、自启动延迟301、重复环境ID被拒；RoundTripPreservesExistingPreferences。
+- [x] 使用通用聚焦命令运行对应测试类，确认因目标行为缺失而失败。
+- [x] 按本项接口实现，遵守设计中的数值上限、身份校验和生命周期。
+- [x] 聚焦测试通过，提交Astra low审查diff及测试证据。
+- [x] 修复发现并回归；记录已验证/未验证能力与提交哈希；精确暂存本项文件提交。
+
+完成记录：`24bebfd..7dde2ea`；聚焦 Core 18/18、Infrastructure 18/18；完整 Release 测试 1071/1071，构建 0 警告/0 错误；Astra low 复审无 Critical/Important，确认可进入 Task 2。
 
 ### Task 2: 运行状态机与命令代理
 
@@ -76,11 +78,13 @@ Astra 审查明确使用 model=gpt-6-astra、reasoning_effort=low。审查不代
 
 **Dependencies:** 任务1
 
-- [ ] 写行为测试并断言：StaleGenerationRejected；DisconnectMarksUnknownOutcomeWithoutReplay；ManualControlWaitsForInputRelease；QueueLimit20；StartCancellationCleansOnlyOwnedResources。
-- [ ] 使用通用聚焦命令运行对应测试类，确认因目标行为缺失而失败。
-- [ ] 按本项接口实现，遵守设计中的数值上限、身份校验和生命周期。
-- [ ] 聚焦测试通过，提交Astra low审查diff及测试证据。
-- [ ] 修复发现并回归；记录已验证/未验证能力与提交哈希；精确暂存本项文件提交。
+- [x] 写行为测试并断言：StaleGenerationRejected；DisconnectMarksUnknownOutcomeWithoutReplay；ManualControlWaitsForInputRelease；QueueLimit20；StartCancellationCleansOnlyOwnedResources。
+- [x] 使用通用聚焦命令运行对应测试类，确认因目标行为缺失而失败。
+- [x] 按本项接口实现，遵守设计中的数值上限、身份校验和生命周期。
+- [x] 聚焦测试通过，由当前模型完成验证审查（用户指定 Astra low 额度不足后改由当前模型审查）。
+- [x] 修复发现并回归；记录已验证/未验证能力与提交哈希；精确暂存本项文件提交。
+
+完成记录：聚焦 `DesktopSessionRuntimeTests` 11/11；完整 Release 测试 1082/1082，构建 0 警告/0 错误。已覆盖断线未知结果不重放、人工接管等待输入释放、独立控制取消、1 个运行+20 个排队上限、启动取消清理、握手代际不匹配拒绝、故障句柄未清理禁止重启，以及启动/停止清理失败后保留自有句柄供重试。尚未实机验证 RDP/VM 通道、真实助手输入释放和 5 秒租约到期；分别由 Task 3-5 的自动与实机门槛继续覆盖。
 
 ### Task 3: 会话助手与本机 IPC
 
