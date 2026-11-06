@@ -166,11 +166,13 @@ Astra 审查明确使用 model=gpt-6-astra、reasoning_effort=low。审查不代
 
 **Dependencies:** 任务1/2/6/7；共享文件由单一集成人员修改
 
-- [ ] 写行为测试并断言：ScheduleMissedWhileUnavailableIsSkipped；DstDuplicateTimeRunsOnce；ReconnectDoesNotTriggerReadyTaskAgain；OldWheelItemsRemainValid；SettingsMergePreservesOtherPages；SessionViewNotDismissedOnDeactivate。
-- [ ] 使用通用聚焦命令运行对应测试类，确认因目标行为缺失而失败。
-- [ ] 按本项接口实现，遵守设计中的数值上限、身份校验和生命周期。
-- [ ] 聚焦测试通过，提交Astra low审查diff及测试证据。
-- [ ] 修复发现并回归；记录已验证/未验证能力与提交哈希；精确暂存本项文件提交。
+- [x] 写行为测试并断言：ScheduleMissedWhileUnavailableIsSkipped；DstDuplicateTimeRunsOnce；ReconnectDoesNotTriggerReadyTaskAgain；OldWheelItemsRemainValid；SettingsMergePreservesOtherPages；SessionViewNotDismissedOnDeactivate。
+- [x] 使用通用聚焦命令运行对应测试类，确认因目标行为缺失而失败。
+- [x] 按本项接口实现，遵守设计中的数值上限、身份校验和生命周期。
+- [x] 聚焦测试通过；按用户指令由当前模型完成验证审查，未调用Astra。
+- [x] 修复发现并回归；记录已验证/未验证能力与提交哈希；精确暂存本项文件提交。
+
+完成记录：`cbdbd3a`（验证基础设施修复另见 `a226654`）；Task 8 聚焦测试 13/13，完整串行 Release 测试 1150/1150（Core 179、Infrastructure 140、Windows 141、UI 690），Release 构建 0 警告/0 错误。当前模型自审修复了控制管道 `run` 在功能关闭、任务停用和运行时未配置时的错误分支，并让轮盘“桌面分身”入口直达设置页。已验证设置草稿合并、旧轮盘枚举兼容、会话窗口失焦不关闭、定时/环境就绪去重、错过不补跑和持久化执行账本。运行时宿主仍未接入生产启动链；控制管道在未准备宿主时明确返回不可用，不回退主桌面。尚未实机验证 WTS 子会话、RDP ActiveX、Hyper-V socket/DPAPI、真实 SessionAgent 自动化、Windows 11 x64 和混合 DPI。
 
 ### Task 9: 打包、诊断与完整验收
 
