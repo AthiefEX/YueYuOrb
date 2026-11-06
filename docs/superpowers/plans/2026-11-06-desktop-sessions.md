@@ -182,11 +182,18 @@ Astra 审查明确使用 model=gpt-6-astra、reasoning_effort=low。审查不代
 
 **Dependencies:** 所有任务及两条路线审查通过
 
-- [ ] 写行为测试并断言：PackageContainsAgentDependencies；DisabledFeatureDoesNotProbeOrLaunch；UpgradeKeepsSettings；FullSuiteRegression；DualBackendIsolationManual。
-- [ ] 使用通用聚焦命令运行对应测试类，确认因目标行为缺失而失败。
-- [ ] 按本项接口实现，遵守设计中的数值上限、身份校验和生命周期。
-- [ ] 聚焦测试通过，提交Astra low审查diff及测试证据。
-- [ ] 修复发现并回归；记录已验证/未验证能力与提交哈希；精确暂存本项文件提交。
+- [x] 写行为测试并断言：PackageContainsAgentDependencies；DisabledFeatureDoesNotProbeOrLaunch；UpgradeKeepsSettings；FullSuiteRegression。
+- [ ] `DualBackendIsolationManual`：等待真实 WTS/RDP 与 Hyper-V 后端完成隔离验收；当前构建明确不可用，不以 mock 结果替代。
+- [x] 使用通用聚焦命令运行对应测试类，确认因目标行为缺失而失败。
+- [x] 按本项接口实现，遵守设计中的数值上限、身份校验和生命周期。
+- [x] 聚焦测试通过；按用户指令由当前模型完成验证审查，未调用 Astra。
+- [x] 修复发现并回归；记录已验证/未验证能力与提交哈希；精确暂存本项文件提交。
+
+完成记录：Task 9 主体提交 `be12d5e`，最终自审修复提交 `7851c7b`。自审修复统一以“生产宿主已接入且窄权限 broker 随包存在”作为本机子会话、Hyper-V 和输入隔离的可用门槛，避免仅接入宿主但缺少 broker 时误报“实验性”。诊断聚焦测试 3/3；完整串行 Release 测试 1155/1155（Core 179、Infrastructure 141、Windows 141、UI 694）；Release 构建 0 警告/0 错误。
+
+发布脚本已完整生成并核验主程序、便携包、独立来宾助手包和 Inno Setup 安装包；便携包包含 `YueYuOrb.exe`、`desktop-sessions/agent/YueYuOrb.SessionAgent.exe`、`desktop-sessions/client/YueYuOrb.SessionClient.exe`、桌面分身手册和用户指南。单实例冒烟通过：观察到 `startup.complete`、首实例保持运行、第二实例退出码 0。发布产物的 SHA256 记录在 `artifacts/desktop-sessions/SHA256SUMS.txt`。
+
+当前仍未提供 `src/FloatDesk.SessionBroker` 和生产 `IDesktopSessionExecutionHost` 接线，`AppRuntime` 保持 `host: null`；诊断会显示运行时未准备、窄权限准备组件未提供，功能默认关闭，所有执行请求明确拒绝且不会回退主桌面。WTS 子会话、RDP ActiveX、Hyper-V socket/DPAPI、真实 SessionAgent、锁屏、混合 DPI、Windows 11 x64 和双后端隔离均未实机验收。
 
 ## 审查提交模板
 
