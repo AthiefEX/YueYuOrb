@@ -15,6 +15,7 @@ public interface IDesktopSessionBackend
 
     Task<SessionHandle> StartAsync(
         EnvironmentProfile profile,
+        PreparationResult preparation,
         CancellationToken cancellationToken);
 
     Task ShowAsync(

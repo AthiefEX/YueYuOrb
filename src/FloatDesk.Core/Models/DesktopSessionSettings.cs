@@ -76,7 +76,8 @@ public sealed record SessionStartupEntry(
     int Order,
     int DelaySeconds,
     bool Enabled,
-    bool WaitForExit);
+    bool WaitForExit,
+    int Revision = 1);
 
 public sealed record SessionTaskStep(
     Guid Id,
@@ -99,6 +100,11 @@ public sealed record DesktopSessionTask(
     SessionTaskTrigger Trigger,
     int Revision,
     bool Enabled);
+
+public static class DesktopSessionFormat
+{
+    public const int CurrentTaskFormatVersion = 1;
+}
 
 public sealed record DesktopSessionSettings(
     bool Enabled,
@@ -182,6 +188,8 @@ public sealed record SessionResourceOwnership(
     uint? WindowsSessionId,
     int? ProcessId,
     DateTimeOffset? ProcessStartedAtUtc,
+    string AuthenticationId,
+    string CreatingStepId,
     DateTimeOffset CreatedAtUtc);
 
 public static class DesktopSessionSettingsValidator
@@ -246,9 +254,11 @@ public static class DesktopSessionSettingsValidator
             environment => environment.Id);
         foreach (var task in settings.Tasks)
         {
-            if (!Enum.IsDefined(task.Trigger.Kind) ||
+            if (task.Trigger is null ||
+                !Enum.IsDefined(task.Trigger.Kind) ||
                 task.Steps is null ||
-                task.Trigger is null ||
+                task.FormatVersion !=
+                    DesktopSessionFormat.CurrentTaskFormatVersion ||
                 task.Steps.Any(step =>
                     step is null ||
                     !Enum.IsDefined(step.Kind) ||

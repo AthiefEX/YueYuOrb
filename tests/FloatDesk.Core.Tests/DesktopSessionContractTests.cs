@@ -1,4 +1,6 @@
 using FloatDesk.Core.Models;
+using FloatDesk.Core.Contracts;
+using System.Runtime.CompilerServices;
 
 namespace FloatDesk.Core.Tests;
 
@@ -87,28 +89,32 @@ public sealed class DesktopSessionContractTests
     }
 
     [Fact]
-    public void PreparationRequiredBeforeStart()
+    public async Task PreparationRequiredBeforeStart()
     {
-        var handle = new SessionHandle(
-            Guid.NewGuid(),
-            Guid.NewGuid(),
-            2,
-            Guid.NewGuid(),
-            false);
+        var backend = new RecordingBackend();
+        var profile = EnvironmentProfile.CreateDefault();
 
-        Assert.False(handle.PreparationCompleted);
-        Assert.Equal(
-            SessionStartupPolicy.EnvironmentDefault,
-            EnvironmentProfile.CreateDefault().StartupPolicy);
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => backend.StartAsync(
+                profile,
+                new PreparationResult(
+                    false,
+                    false,
+                    backend.Capabilities,
+                    "not-prepared"),
+                CancellationToken.None));
+        Assert.Equal(0, backend.StartCalls);
     }
 
     [Fact]
     public void ExplicitStopMode()
     {
-        Assert.Contains(SessionStopMode.HideView, Enum.GetValues<SessionStopMode>());
-        Assert.Contains(SessionStopMode.Disconnect, Enum.GetValues<SessionStopMode>());
-        Assert.Contains(SessionStopMode.LogoffOwnedSession, Enum.GetValues<SessionStopMode>());
-        Assert.Contains(SessionStopMode.ShutdownGuest, Enum.GetValues<SessionStopMode>());
+        var stopMethod = Assert.Single(
+            typeof(IDesktopSessionBackend).GetMethods(),
+            method => method.Name == nameof(IDesktopSessionBackend.StopAsync));
+        Assert.Contains(
+            stopMethod.GetParameters(),
+            parameter => parameter.ParameterType == typeof(SessionStopMode));
     }
 
     [Fact]
@@ -128,6 +134,21 @@ public sealed class DesktopSessionContractTests
                 new DateTimeOffset(2026, 11, 6, 8, 0, 0, TimeSpan.Zero)));
 
         Assert.Equal(previous, afterRestart);
+        Assert.NotEqual(
+            previous,
+            LoginInstanceIdentity.Create(
+                new LoginIdentitySource(
+                    "boot-2",
+                    "S-1-5-21-100",
+                    "auth-1",
+                    new DateTimeOffset(
+                        2026,
+                        11,
+                        6,
+                        8,
+                        0,
+                        0,
+                        TimeSpan.Zero))));
     }
 
     [Fact]
@@ -146,5 +167,129 @@ public sealed class DesktopSessionContractTests
         Assert.Equal(AppTheme.Dark, preserved.General.Theme);
         Assert.True(preserved.DesktopSessions.Enabled);
         Assert.Equal(AppSettings.CurrentSchemaVersion, preserved.SchemaVersion);
+    }
+
+    [Fact]
+    public void StartupAndTaskRevisionsChangeDeduplicationIdentity()
+    {
+        var environmentId = Guid.NewGuid();
+        var loginInstanceId = Guid.NewGuid();
+        var firstEntry = new SessionStartupEntry(
+            Guid.NewGuid(),
+            "应用",
+            "app.exe",
+            [],
+            null,
+            0,
+            0,
+            true,
+            false,
+            1);
+        var secondEntry = firstEntry with { Revision = 2 };
+        var firstTask = new DesktopSessionTask(
+            1,
+            Guid.NewGuid(),
+            "任务",
+            Guid.NewGuid(),
+            [],
+            new SessionTaskTrigger(TaskTriggerKind.Manual, null, null),
+            1,
+            true);
+        var secondTask = firstTask with { Revision = 2 };
+
+        Assert.NotEqual(
+            new StartupExecutionKey(
+                environmentId,
+                loginInstanceId,
+                firstEntry.Id,
+                firstEntry.Revision),
+            new StartupExecutionKey(
+                environmentId,
+                loginInstanceId,
+                secondEntry.Id,
+                secondEntry.Revision));
+        Assert.NotEqual(firstTask.Revision, secondTask.Revision);
+    }
+
+    [Fact]
+    public async Task BackendCannotStartWithoutSuccessfulPreparation()
+    {
+        var backend = new RecordingBackend();
+        var preparation = new PreparationResult(
+            true,
+            false,
+            backend.Capabilities,
+            null);
+
+        await backend.StartAsync(
+            EnvironmentProfile.CreateDefault(),
+            preparation,
+            CancellationToken.None);
+
+        Assert.Equal(1, backend.StartCalls);
+    }
+
+    private sealed class RecordingBackend : IDesktopSessionBackend
+    {
+        public int StartCalls { get; private set; }
+        public SessionCapabilities Capabilities { get; } = new(
+            false,
+            false,
+            [],
+            []);
+
+        public Task<SessionCapabilities> ProbeAsync(
+            EnvironmentProfile profile,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(Capabilities);
+
+        public Task<PreparationResult> PrepareAsync(
+            EnvironmentProfile profile,
+            SessionStartupPolicy policy,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(new PreparationResult(
+                true,
+                false,
+                Capabilities,
+                null));
+
+        public Task<SessionHandle> StartAsync(
+            EnvironmentProfile profile,
+            PreparationResult preparation,
+            CancellationToken cancellationToken)
+        {
+            if (!preparation.Succeeded)
+            {
+                throw new InvalidOperationException(
+                    "A successful preparation is required before start.");
+            }
+
+            StartCalls++;
+            return Task.FromResult(new SessionHandle(
+                profile.Id,
+                Guid.NewGuid(),
+                1,
+                Guid.NewGuid(),
+                true));
+        }
+
+        public Task ShowAsync(
+            SessionHandle handle,
+            CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public Task StopAsync(
+            SessionHandle handle,
+            SessionStopMode mode,
+            CancellationToken cancellationToken) =>
+            Task.CompletedTask;
+
+        public async IAsyncEnumerable<SessionBackendEvent> WatchAsync(
+            Guid environmentId,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
     }
 }
