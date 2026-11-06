@@ -12,22 +12,10 @@ public static partial class SettingsValidator
         {
             DesktopSessionSettingsValidator.Validate(value.DesktopSessions);
         }
-        catch (InvalidOperationException exception)
+        catch (Exception exception) when (
+            exception is InvalidOperationException or ArgumentException)
         {
             errors.Add(exception.Message);
-        }
-
-        if (value.DesktopSessions.Environments.Any(environment =>
-                !Enum.IsDefined(environment.Backend)))
-        {
-            errors.Add("Desktop session backend is invalid.");
-        }
-
-        if (value.DesktopSessions.Tasks.Any(task =>
-                !Enum.IsDefined(task.Trigger.Kind) ||
-                task.Steps.Count > 200))
-        {
-            errors.Add("Desktop session tasks contain invalid limits.");
         }
     }
 }
