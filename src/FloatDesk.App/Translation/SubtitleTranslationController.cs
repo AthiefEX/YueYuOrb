@@ -341,10 +341,10 @@ public sealed class SubtitleTranslationController : IDisposable
             operation = _operation;
         }
 
+        _ocrWork?.Clear();
         CancelQuietly(captureIteration);
         CancelQuietly(ocrIteration);
         CancelQuietly(translationCancellation);
-        _ocrWork?.Clear();
         ObserveAbandonedTask(abandonedTranslation);
 
         if (operation is { } current)
