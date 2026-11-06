@@ -212,6 +212,56 @@ public sealed class DesktopSessionContractTests
     }
 
     [Fact]
+    public void RevisionAdvancesOnEveryConfigurationEdit()
+    {
+        var entry = new SessionStartupEntry(
+            Guid.NewGuid(),
+            "应用",
+            "app.exe",
+            [],
+            null,
+            0,
+            0,
+            true,
+            false,
+            1);
+        var edited = entry with
+        {
+            Arguments = ["--changed"],
+            Revision = DesktopSessionRevision.Next(entry.Revision)
+        };
+        var task = new DesktopSessionTask(
+            DesktopSessionFormat.CurrentTaskFormatVersion,
+            Guid.NewGuid(),
+            "任务",
+            Guid.NewGuid(),
+            [],
+            new SessionTaskTrigger(TaskTriggerKind.Manual, null, null),
+            1,
+            true);
+        var editedTask = task with
+        {
+            Steps =
+            [
+                new SessionTaskStep(
+                    Guid.NewGuid(),
+                    SessionCommandKind.Delay,
+                    new Dictionary<string, string>
+                    {
+                        ["milliseconds"] = "100"
+                    },
+                    30,
+                    0)
+            ],
+            Revision = DesktopSessionRevision.Next(task.Revision)
+        };
+
+        Assert.Equal(2, edited.Revision);
+        Assert.Equal(2, editedTask.Revision);
+        Assert.Equal(1, DesktopSessionRevision.Next(int.MaxValue));
+    }
+
+    [Fact]
     public async Task BackendCannotStartWithoutSuccessfulPreparation()
     {
         var backend = new RecordingBackend();
@@ -258,11 +308,7 @@ public sealed class DesktopSessionContractTests
             PreparationResult preparation,
             CancellationToken cancellationToken)
         {
-            if (!preparation.Succeeded)
-            {
-                throw new InvalidOperationException(
-                    "A successful preparation is required before start.");
-            }
+            DesktopSessionPreparationGuard.RequireSuccessful(preparation);
 
             StartCalls++;
             return Task.FromResult(new SessionHandle(

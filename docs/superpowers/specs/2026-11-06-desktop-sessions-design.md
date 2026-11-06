@@ -120,6 +120,7 @@ VM ManagedOnly限定专用账户的HKCU Run/RunOnce、该账户Startup文件夹�
 LoginInstanceId在任务1定义，来自受信broker的系统启动标识+账户SID+认证LUID+登录时间组合映射，不由每次宿主启动随机生成；Generation每次握手更新。
 持久日志以(EnvironmentId,LoginInstanceId,StartupEntryId,EntryRevision)去重自启动；定时键为(TaskId,TaskRevision,TimeZoneId,计划本地日期时间)，夏令时重复时段只选一次，明确采用较早UTC时刻。
 先原子持久化Started再执行，再记录Completed；崩溃后Started且无完成记录标UnknownOutcome，禁止自动补跑。自启动记录保留到确认登录结束后30天；定时记录保留90天，且不补跑已过期时刻。手动明确重新执行生成新RunId。
+任何启动项内容编辑必须通过`DesktopSessionRevision.Next`生成新的EntryRevision；任何任务定义编辑必须通过同一方法生成新的TaskRevision。禁止在内容变化后保留旧修订号，否则会错误复用执行去重记录。
 宿主/助手重启时无法核实旧登录身份即暂停待重新建立，不虚构新登录触发自启动。
 
 ### 6. 后端事件与所有权
@@ -130,6 +131,7 @@ LoginInstanceId在任务1定义，来自受信broker的系统启动标识+账户
 - StopAsync(SessionHandle,SessionStopMode,CancellationToken): Task
 SessionStopMode为HideView、Disconnect、LogoffOwnedSession、ShutdownGuest；强制断电不在首版公开接口。
 事件包含EnvironmentId、Generation、ObservedAt、Kind（Connected/Disconnected/Locked/Unlocked/ResolutionChanged/AgentExited/SessionEnded/CapabilitiesChanged）、登录实例和尺寸。
+所有后端Start实现必须先调用`DesktopSessionPreparationGuard.RequireSuccessful`，不得仅依赖调用方或测试替身检查准备结果。
 Preparing -> Starting -> Ready需要准备、连接、认证均成功；掉线/锁屏/助手退出从Ready/Running转Paused或Reconnecting；代际校验成功且无UnknownOutcome才能恢复，运行中的任务不自动重放。SessionEnded转Stopped；错误清理不完整转Faulted。
 资源账本记录VM GUID、会话认证LUID、PID/创建时间、拥有者和创建步骤。每次注销/终止/关机前重新查询匹配，无法证明所有权只断开自己的连接。外部修改及崩溃恢复不能扩大清理范围。
 默认退出月语：取消自有任务，释放输入、断开自有查看；不关外部VM。显式注销仅允许当前拥有的子会话，重新启动时不把外部现存子会话当作可恢复资产。
