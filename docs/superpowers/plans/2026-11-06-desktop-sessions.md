@@ -238,7 +238,29 @@ Astra 审查明确使用 model=gpt-6-astra、reasoning_effort=low。审查不代
 
 2026-11-06 后续提交已加入 `src/FloatDesk.SessionBroker`、生产 `IDesktopSessionExecutionHost` 和 `AppRuntime` 本机路线接线；诊断区分“本机子会话实验性”和“Hyper-V 不可用”，功能仍默认关闭，任何未准备路线都不会回退主桌面。自审还修复了助手端把宿主父会话误判为子会话、会阻断真实命名管道握手的问题，并增加父会话身份测试。
 
-当前真实证据仅到：Broker 发布程序 `--console` 可持续运行并被停止；本机只读 WTS 探测显示子会话能力已启用但当前没有子会话；发布包冒烟通过。以下均未实机验收：UAC 服务安装/卸载、真实 Broker 服务启动、创建子会话、RDP ActiveX 连接、父/子会话助手握手、真实 UIAutomation/SendInput 隔离、锁屏、混合 DPI、Windows 11 x64、Hyper-V socket/DPAPI、来宾助手和双后端隔离。
+本机后端已能完成 Broker 服务生命周期和发布包启动验证；真实子会话创建、RDP ActiveX 连接、父/子会话助手握手、真实 UIAutomation/SendInput 隔离、锁屏、混合 DPI、Windows 11 x64、Hyper-V socket/DPAPI、来宾助手和双后端隔离仍未实机验收。下面记录本轮可直接复核的证据与边界。
+
+### 本机子会话后端补齐与最终证据（2026-11-06）
+
+**提交：** `c7c7baf feat: add protected local desktop session broker`
+
+**真实证据：**
+
+- Broker 服务生命周期：从最终发布目录执行 `YueYuOrb.SessionBroker.exe --install` 返回 0；`sc query YueYuOrbSessionBroker` 返回 `RUNNING`；`%ProgramFiles%\YueYuOrb\desktop-sessions` 中 broker、agent 和 agent SHA256 清单均存在；执行 `--uninstall` 返回 0，随后服务查询返回 1060，受保护目录不存在。
+- Broker 控制台入口：最终发布程序使用 `--console` 启动后持续存活，人工停止后正常退出。
+- 只读 WTS 探测：`WTSIsChildSessionsEnabled` 调用成功且返回 true；`WTSGetChildSessionId` 返回 false、会话值 `4294967295`、错误 1168；父/控制台会话与当前进程会话均为 1。这只证明能力已启用且当前没有子会话，不是子会话创建成功。
+- 发布包冒烟：最终 `YueYuOrb.exe` 观察到 `startup.complete`，设置窗口标题出现，首实例持续存活，第二实例退出码 0。
+- 自动化：完整串行 Release 测试 1164/1164 通过（Core 179、Infrastructure 141、Windows 145、UI 699）；Release 构建 0 警告、0 错误。
+- 包结构：便携包 1115 个条目，包含主程序、README、LICENSE、Broker、Agent、Agent 哈希清单、SessionClient 和桌面分身文档；Agent 发布哈希清单与文件实算 SHA256 一致。
+
+**最终 1.4.2 产物：**
+
+- 便携包：`artifacts/desktop-sessions/YueYuOrb-1.4.2-win-x64-portable.zip`，SHA256 `74284da5f3b32ce6ad1f3a053f83419b0139ec2e2ea1a09565c07882fa3b94ca`
+- 安装包：`artifacts/desktop-sessions/YueYuOrb-1.4.2-win-x64-setup.exe`，SHA256 `1f1687d9d86c3f8050cd35e2ed065576a16936917fe50f256a895b430a03af25`
+- 来宾助手包：`artifacts/desktop-sessions/YueYuOrb-1.4.2-session-agent-win-x64.zip`，SHA256 `dd550fce35395f880efce0c3aeff6b99f2953d8a3713ab2e02374a79b27e14af`
+- 哈希清单：`artifacts/desktop-sessions/SHA256SUMS.txt`
+
+**仍未完成：** 真实子会话创建、RDP ActiveX 登录、父/子会话命名管道握手、Agent 内真实 UI Automation/SendInput 隔离、锁屏、混合 DPI、Windows 11 x64、Hyper-V 生产执行宿主/来宾身份探测/DPAPI 配对/来宾助手、双后端隔离。安装包未签名。不得把本节的打包、服务生命周期和 WTS 只读探测视为上述未验证能力已经完成。
 
 ## 审查提交模板
 
