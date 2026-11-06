@@ -46,3 +46,10 @@ T01（发行工具与证据）：进行中。
 
 验证：待运行聚焦测试、发布脚本验证和完整 Release 验证。
 真实验收：待在干净发布目录启动真实设置窗口并检查完整工具目录；Hyper-V/来宾端到端不因打包通过而标记完成。
+
+T02（宿主能力检测）：已完成本轮可执行部分。
+
+- 修复前问题：管理工具状态依赖固定的 `Hyper-V.psd1` 路径；该路径缺失时会误报不可用，即使 PowerShell 能加载 `Get-VM`。
+- 改动：使用系统原生 64 位 Windows PowerShell 的 `Get-Command Get-VM` 能力探测，并以 JSON 结构化结果读取；保留 DISM、BCD、systeminfo 的独立状态，不把“需重启”误报为已运行。
+- 聚焦验证：`dotnet test tests/FloatDesk.Windows.Tests/FloatDesk.Windows.Tests.csproj -c Release --no-restore -p:NuGetAudit=false --filter FullyQualifiedName~HyperVFeatureManagementTests`，23/23 通过；`git diff --check` 通过。
+- 真实验收：当前会话没有执行 Hyper-V 安装或重启；尚未取得可用 VM，也未将 Hyper-V 标记为端到端可用。
