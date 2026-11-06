@@ -83,6 +83,31 @@ public sealed class DesktopSessionDiagnosticsTests : IDisposable
                     item.State == "未开放");
     }
 
+    [Fact]
+    public void BrokerDoesNotMakeHyperVAppearAvailable()
+    {
+        CreateTool("agent", "YueYuOrb.SessionAgent.exe");
+        CreateTool("client", "YueYuOrb.SessionClient.exe");
+        CreateTool("broker", "YueYuOrb.SessionBroker.exe");
+        var diagnostics = new DesktopSessionDiagnostics(_root);
+
+        var items = diagnostics.Inspect(
+            AppSettings.CreateDefault().DesktopSessions,
+            runtimeAvailable: true);
+
+        Assert.Contains(
+            items,
+            item => item.Name == "本机子会话" &&
+                    item.State == "实验性");
+        Assert.Contains(
+            items,
+            item => item.Name == "Hyper-V" &&
+                    item.State == "不可用" &&
+                    item.Detail.Contains(
+                        "尚未接入",
+                        StringComparison.Ordinal));
+    }
+
     private void CreateTool(string folder, string file)
     {
         var directory = Path.Combine(

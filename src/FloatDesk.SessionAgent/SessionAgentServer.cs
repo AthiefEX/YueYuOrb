@@ -69,8 +69,9 @@ internal static class SessionAgentServer
                 timeout.Token).ConfigureAwait(false);
             if (hello is null)
                 throw new InvalidOperationException("Handshake hello missing.");
-            SessionConnectionAuthorization.Validate(
+            SessionConnectionAuthorization.ValidateHostClientPeer(
                 options.Binding,
+                options.HostWindowsSessionId,
                 peer,
                 hello);
         }

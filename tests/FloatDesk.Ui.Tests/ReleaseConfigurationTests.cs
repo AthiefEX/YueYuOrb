@@ -77,11 +77,27 @@ public sealed class ReleaseConfigurationTests
             script,
             StringComparison.Ordinal);
         Assert.Contains(
+            "src/FloatDesk.SessionBroker/FloatDesk.SessionBroker.csproj",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "'desktop-sessions/agent'",
             script,
             StringComparison.Ordinal);
         Assert.Contains(
             "'desktop-sessions/client'",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "'desktop-sessions/broker'",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "YueYuOrb.SessionAgent.exe.sha256",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "-p:PublishSingleFile=true",
             script,
             StringComparison.Ordinal);
         Assert.Contains(

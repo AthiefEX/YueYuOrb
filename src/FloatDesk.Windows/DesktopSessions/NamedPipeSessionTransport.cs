@@ -34,7 +34,8 @@ public sealed record SessionAgentBinding(
 public sealed record SessionPeerIdentity(
     uint ProcessId,
     uint SessionId,
-    string UserSid);
+    string UserSid,
+    DateTimeOffset ProcessStartedAtUtc = default);
 
 public sealed record SessionClientHello(
     int Version,
@@ -71,7 +72,7 @@ public sealed record SessionWireEnvelope(
 
 public static class SessionConnectionAuthorization
 {
-    public static void Validate(
+    public static void ValidateAgentServerPeer(
         SessionAgentBinding binding,
         SessionPeerIdentity peer,
         SessionClientHello hello)
@@ -86,6 +87,34 @@ public static class SessionConnectionAuthorization
                 "The pipe peer is not in the configured session.");
         }
 
+        ValidateBindingUserAndClientIdentity(binding, peer, hello);
+    }
+
+    public static void ValidateHostClientPeer(
+        SessionAgentBinding binding,
+        uint hostWindowsSessionId,
+        SessionPeerIdentity peer,
+        SessionClientHello hello)
+    {
+        ArgumentNullException.ThrowIfNull(binding);
+        ArgumentNullException.ThrowIfNull(peer);
+        ArgumentNullException.ThrowIfNull(hello);
+        if (hostWindowsSessionId == 0 ||
+            hostWindowsSessionId == binding.WindowsSessionId ||
+            peer.SessionId != hostWindowsSessionId)
+        {
+            throw new InvalidOperationException(
+                "The pipe peer is not the configured host session.");
+        }
+
+        ValidateBindingUserAndClientIdentity(binding, peer, hello);
+    }
+
+    private static void ValidateBindingUserAndClientIdentity(
+        SessionAgentBinding binding,
+        SessionPeerIdentity peer,
+        SessionClientHello hello)
+    {
         if (!string.Equals(
                 peer.UserSid,
                 binding.UserSid,
@@ -311,7 +340,12 @@ public static class NamedPipePeerIdentity
             var sid = identity.User?.Value ??
                 throw new InvalidOperationException(
                     "The pipe peer user SID is unavailable.");
-            return new SessionPeerIdentity(processId, sessionId, sid);
+            var startedAt = process.StartTime.ToUniversalTime();
+            return new SessionPeerIdentity(
+                processId,
+                sessionId,
+                sid,
+                new DateTimeOffset(startedAt, TimeSpan.Zero));
         }
         finally
         {
@@ -353,7 +387,9 @@ public sealed class NamedPipeSessionTransport :
     IDesktopSessionTransport,
     IAsyncDisposable
 {
-    private readonly byte[] _bootstrapSecret;
+    private readonly byte[]? _bootstrapSecret;
+    private readonly Func<SessionHandle, ChildSessionAgentBootstrap>?
+        _bootstrapProvider;
     private readonly TimeSpan _handshakeTimeout;
     private readonly ConcurrentDictionary<Guid, SessionConnection> _connections =
         new();
@@ -379,6 +415,21 @@ public sealed class NamedPipeSessionTransport :
         }
     }
 
+    public NamedPipeSessionTransport(
+        Func<SessionHandle, ChildSessionAgentBootstrap> bootstrapProvider,
+        TimeSpan? handshakeTimeout = null)
+    {
+        _bootstrapProvider = bootstrapProvider ??
+            throw new ArgumentNullException(nameof(bootstrapProvider));
+        _handshakeTimeout =
+            handshakeTimeout ?? SessionProtocol.HandshakeTimeout;
+        if (_handshakeTimeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(handshakeTimeout));
+        }
+    }
+
     public async Task<SessionTransportHandshake> ConnectAsync(
         SessionHandle handle,
         CancellationToken cancellationToken)
@@ -389,6 +440,21 @@ public sealed class NamedPipeSessionTransport :
                 out var existing))
         {
             return existing.Handshake;
+        }
+
+        var bootstrap = _bootstrapProvider?.Invoke(handle);
+        var secret = bootstrap?.BootstrapSecret.ToArray() ??
+            _bootstrapSecret?.ToArray() ??
+            throw new InvalidOperationException(
+                "The session agent bootstrap secret is unavailable.");
+        if (secret.Length != SessionProtocol.BootstrapSecretSize)
+        {
+            CryptographicOperations.ZeroMemory(secret);
+            if (bootstrap is not null)
+                CryptographicOperations.ZeroMemory(
+                    bootstrap.BootstrapSecret);
+            throw new InvalidOperationException(
+                "The session agent bootstrap secret has an invalid length.");
         }
 
         using var timeout =
@@ -407,6 +473,20 @@ public sealed class NamedPipeSessionTransport :
             {
                 throw new InvalidOperationException(
                     "The session agent is running in the wrong Windows session.");
+            }
+            if (bootstrap is not null &&
+                (peer.ProcessId != bootstrap.ProcessId ||
+                 peer.ProcessStartedAtUtc == default ||
+                 Math.Abs(
+                     (peer.ProcessStartedAtUtc -
+                      bootstrap.ProcessStartedAtUtc).TotalSeconds) > 2 ||
+                 !string.Equals(
+                     peer.UserSid,
+                     bootstrap.UserSid,
+                     StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidOperationException(
+                    "The session agent process identity does not match the broker launch.");
             }
 
             var clientNonce = SessionHandshake.CreateNonce();
@@ -437,12 +517,12 @@ public sealed class NamedPipeSessionTransport :
                     serverHello.ErrorCode ?? "Session handshake rejected.");
             }
 
-            SessionConnectionAuthorization.Validate(
+            SessionConnectionAuthorization.ValidateAgentServerPeer(
                 serverHello.Binding,
                 peer,
                 hello);
             var expectedServerProof = SessionHandshake.CreateProof(
-                _bootstrapSecret,
+                secret,
                 clientNonce,
                 serverHello.ServerNonce,
                 serverHello.Binding,
@@ -456,7 +536,7 @@ public sealed class NamedPipeSessionTransport :
             }
 
             var clientProof = SessionHandshake.CreateProof(
-                _bootstrapSecret,
+                secret,
                 clientNonce,
                 serverHello.ServerNonce,
                 serverHello.Binding,
@@ -488,6 +568,13 @@ public sealed class NamedPipeSessionTransport :
         {
             await stream.DisposeAsync().ConfigureAwait(false);
             throw;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(secret);
+            if (bootstrap is not null)
+                CryptographicOperations.ZeroMemory(
+                    bootstrap.BootstrapSecret);
         }
     }
 
@@ -567,7 +654,8 @@ public sealed class NamedPipeSessionTransport :
         foreach (var connection in _connections.Values)
             await connection.DisposeAsync().ConfigureAwait(false);
         _connections.Clear();
-        CryptographicOperations.ZeroMemory(_bootstrapSecret);
+        if (_bootstrapSecret is not null)
+            CryptographicOperations.ZeroMemory(_bootstrapSecret);
     }
 
     private async Task SendControlAsync(

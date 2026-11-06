@@ -31,7 +31,7 @@ public sealed class DesktopSessionDiagnostics
         var broker = ToolExists(
             "broker",
             "YueYuOrb.SessionBroker.exe");
-        var backendReady = runtimeAvailable && broker;
+        var localChildReady = runtimeAvailable && broker;
         return
         [
             new(
@@ -57,23 +57,21 @@ public sealed class DesktopSessionDiagnostics
                 broker ? "已随包提供" : "未提供",
                 broker
                     ? "仅允许验证父/子会话、启动固定路径助手和交付一次性引导秘密。"
-                    : "本机子会话和 Hyper-V 引导所需的 broker/准备流程尚未随当前构建提供。"),
+                    : "本机子会话引导所需的 broker 尚未随当前构建提供。"),
             new(
                 "本机子会话",
-                backendReady ? "实验性" : "不可用",
-                backendReady
+                localChildReady ? "实验性" : "不可用",
+                localChildReady
                     ? "仍需完成 WTS、RDP ActiveX、锁屏和混合 DPI 实机验收。"
                     : "运行时或窄权限准备组件未就绪。"),
             new(
                 "Hyper-V",
-                backendReady ? "实验性" : "不可用",
-                backendReady
-                    ? "仍需完成真实 Hyper-V socket、来宾助手与 DPAPI 配对实机验收。"
-                    : "生产宿主或窄权限准备组件未就绪；不会从主桌面替代执行。"),
+                "不可用",
+                "生产 Hyper-V 执行宿主与来宾身份探测尚未接入；不会从主桌面替代执行。"),
             new(
                 "输入隔离",
-                backendReady ? "强制校验" : "未开放",
-                backendReady
+                localChildReady ? "强制校验" : "未开放",
+                localChildReady
                     ? "任务不使用宿主 SendInput；无受信助手会话时拒绝执行。"
                     : "完整运行时准备前不开放输入自动化。")
         ];

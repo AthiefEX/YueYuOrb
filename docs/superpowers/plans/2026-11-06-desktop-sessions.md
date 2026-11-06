@@ -88,13 +88,13 @@ Astra 审查明确使用 model=gpt-6-astra、reasoning_effort=low。审查不代
 | GPU 列表异步刷新 | 是 | 是 | 是 | 是，真实窗口探针 | 快速切换压力与多 GPU 热插拔未测 |
 | 单实例唤起设置 | 是 | 是 | 是 | 是，发布包冒烟 | 无 |
 | 便携包/安装包构建 | 是 | 是 | 是 | 文件与 ZIP 结构已核验 | 干净机安装未测 |
-| 本机 RDP 子会话 | 部分 | **否，执行宿主为 `null`** | 模拟 WTS 测试 | **否** | 缺生产执行宿主与真实隔离验收 |
-| 窄权限 SessionBroker | **否** | **否** | 否 | **否** | 目录与服务均未实现 |
-| Hyper-V 桌面分身 | 部分 | **否** | 模拟协议/生命周期测试 | **否** | 缺真实 Hyper-V socket、DPAPI 与来宾端到端验收 |
-| 桌面任务自动执行 | 部分 | **否** | 执行器/调度器测试 | **否** | 无可用生产会话宿主 |
+| 本机 RDP 子会话 | 是 | 是 | 生产宿主、Broker 与服务协议测试 | **否** | 缺真实 WTS/RDP、助手握手和输入隔离验收 |
+| 窄权限 SessionBroker | 是 | 是 | 命名管道、哈希与启动参数测试 | **否** | 服务安装/UAC、真实子会话启动未测 |
+| Hyper-V 桌面分身 | 部分 | **否** | 模拟协议/生命周期测试 | **否** | 缺生产执行宿主、来宾身份探测与端到端验收 |
+| 桌面任务自动执行 | 是 | 是（仅本机路线） | 执行器/调度器/生产宿主测试 | **否** | 真实 UIAutomation 与键鼠隔离未测 |
 | 双后端隔离 | 否 | 否 | 否 | **否** | 必须在两条真实后端接通后验收 |
 
-**结论：** 设置闪退修复包可以交付人工测试；桌面分身仍处于“界面、契约和模拟测试存在，但生产后端未接通”的状态，不得标记完成。
+**结论：** 设置闪退修复包可以交付人工测试；本机路线的生产宿主和窄权限 Broker 已接线，但尚未完成真实 WTS/RDP 端到端验收，Hyper-V 生产后端仍未接通，因此桌面分身整体不得标记完成。
 
 
 ### Task 1: 共享契约与配置
@@ -236,7 +236,9 @@ Astra 审查明确使用 model=gpt-6-astra、reasoning_effort=low。审查不代
 
 发布脚本已完整生成并核验主程序、便携包、独立来宾助手包和 Inno Setup 安装包；便携包包含 `YueYuOrb.exe`、`desktop-sessions/agent/YueYuOrb.SessionAgent.exe`、`desktop-sessions/client/YueYuOrb.SessionClient.exe`、桌面分身手册和用户指南。单实例冒烟通过：观察到 `startup.complete`、首实例保持运行、第二实例退出码 0。发布产物的 SHA256 记录在 `artifacts/desktop-sessions/SHA256SUMS.txt`。
 
-当前仍未提供 `src/FloatDesk.SessionBroker` 和生产 `IDesktopSessionExecutionHost` 接线，`AppRuntime` 保持 `host: null`；诊断会显示运行时未准备、窄权限准备组件未提供，功能默认关闭，所有执行请求明确拒绝且不会回退主桌面。WTS 子会话、RDP ActiveX、Hyper-V socket/DPAPI、真实 SessionAgent、锁屏、混合 DPI、Windows 11 x64 和双后端隔离均未实机验收。
+2026-11-06 后续提交已加入 `src/FloatDesk.SessionBroker`、生产 `IDesktopSessionExecutionHost` 和 `AppRuntime` 本机路线接线；诊断区分“本机子会话实验性”和“Hyper-V 不可用”，功能仍默认关闭，任何未准备路线都不会回退主桌面。自审还修复了助手端把宿主父会话误判为子会话、会阻断真实命名管道握手的问题，并增加父会话身份测试。
+
+当前真实证据仅到：Broker 发布程序 `--console` 可持续运行并被停止；本机只读 WTS 探测显示子会话能力已启用但当前没有子会话；发布包冒烟通过。以下均未实机验收：UAC 服务安装/卸载、真实 Broker 服务启动、创建子会话、RDP ActiveX 连接、父/子会话助手握手、真实 UIAutomation/SendInput 隔离、锁屏、混合 DPI、Windows 11 x64、Hyper-V socket/DPAPI、来宾助手和双后端隔离。
 
 ## 审查提交模板
 

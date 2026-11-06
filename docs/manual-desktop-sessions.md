@@ -10,6 +10,8 @@
 YueYuOrb.exe
 desktop-sessions/
   agent/YueYuOrb.SessionAgent.exe
+  agent/YueYuOrb.SessionAgent.exe.sha256
+  broker/YueYuOrb.SessionBroker.exe
   client/YueYuOrb.SessionClient.exe
 docs/
   manual-desktop-sessions.md
@@ -18,13 +20,15 @@ docs/
 
 发布脚本另外生成 `YueYuOrb-<版本>-session-agent-win-x64.zip`，用于复制到来宾虚拟机。主包的“桌面分身”诊断区会检查助手、客户端和 broker 是否齐全，但不会探测 Hyper-V 或启动任何会话。
 
-当前仓库尚未提供 `desktop-sessions/broker/YueYuOrb.SessionBroker.exe` 或生产 `IDesktopSessionExecutionHost` 接线。因此当前构建必须保持以下默认结果：
+当前包已包含窄权限 broker 和生产 `IDesktopSessionExecutionHost` 接线，但桌面分身在用户显式安装并启动 broker 服务、启用功能并创建环境之前仍保持不可用。设置页“桌面分身 → 诊断”提供“安装/修复服务”和“卸载服务”按钮，会请求管理员授权：
 
-- 诊断显示“会话运行时未准备”和“窄权限准备组件未提供”。
-- 环境启动、任务运行与控制管道均明确拒绝。
-- 不创建子会话、不启动虚拟机，也不把输入回退到主桌面。
+- 安装时把 broker 与 agent 复制到 `%ProgramFiles%\YueYuOrb\desktop-sessions` 的受保护目录，再从该固定路径注册并启动 `YueYuOrbSessionBroker`。
+- broker 只接受固定的会话引导请求，不接受任意可执行路径或命令行；启动助手前核对 agent 的发布哈希、父/子会话、调用者 SID 和目标用户 SID。
+- 一次性 32 字节秘密通过 broker 到 agent 的标准输入传递，不进入命令行；宿主随后核对助手 PID、创建时间、会话、SID 和 HMAC 挑战。
+- 卸载只停止和删除本产品注册的服务及 `%ProgramFiles%\YueYuOrb\desktop-sessions` 副本，不修改用户预先存在的服务或系统配置。
+- 服务未安装、未启动或文件清单不匹配时，环境启动、任务运行与控制管道仍会明确拒绝，不创建子会话，也不把输入回退到主桌面。
 
-只有加入并通过安全验收的窄权限 broker、固定路径助手引导和哈希清单后，才可以安装服务并开启本机路线。安装器不得在没有 broker 时伪装注册成功；卸载只删除本产品创建的注册项，不修改预先存在的系统配置。
+Hyper-V 的宿主机生命周期、配对协议和来宾助手代码已存在，但仓库仍没有生产来宾身份探测器和 Hyper-V `IDesktopSessionExecutionHost` 接线，因此当前 UI 不应把 Hyper-V 路线视为已可用。真实 WTS/RDP、Hyper-V socket、DPAPI、锁屏、混合 DPI 和 Windows 11 仍需实机验收。
 
 ## 前置条件
 
@@ -48,6 +52,9 @@ docs/
 
 - WTS 使用假后端验证所有权和父会话保护。
 - RDP `IRdpControl` 使用假控件验证“配置后连接”和失败释放。
+- broker 命名管道使用假特权启动器验证请求/响应、一次性秘密和会话序号绑定；agent 哈希不匹配在特权启动前被拒绝。
+- 会话协议分别验证子会话中的助手和父会话中的宿主，避免把合法父会话客户端误判为错误会话。
+- 生产宿主使用假后端验证单一活动环境、启动、自启动闸门、输入租约任务执行、停止和资源释放。
 - 真实 `MsRdpClient9NotSafeForScripting`、命名管道助手、混合 DPI 与 Windows 11 仍需人工验收。
 
 发布验收还必须确认安装包和便携包均含 `desktop-sessions/agent`、`desktop-sessions/client` 与文档；禁用功能启动时没有 Hyper-V/WTS 探测进程，且控制客户端返回不可用而不是主桌面执行。

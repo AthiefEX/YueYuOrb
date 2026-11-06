@@ -5,7 +5,8 @@ namespace FloatDesk.SessionAgent;
 
 public sealed record SessionAgentOptions(
     string PipeName,
-    SessionAgentBinding Binding)
+    SessionAgentBinding Binding,
+    uint HostWindowsSessionId)
 {
     public static SessionAgentOptions Parse(IReadOnlyList<string> arguments)
     {
@@ -44,6 +45,16 @@ public sealed record SessionAgentOptions(
                 "The interactive session ID is invalid.");
         }
 
+        if (!uint.TryParse(
+                GetRequired(values, "--host-session"),
+                out var hostWindowsSessionId) ||
+            hostWindowsSessionId == 0 ||
+            hostWindowsSessionId == windowsSessionId)
+        {
+            throw new ArgumentException(
+                "The host session ID is invalid.");
+        }
+
         var userSid = GetRequired(values, "--user-sid");
         try
         {
@@ -62,7 +73,10 @@ public sealed record SessionAgentOptions(
             loginInstanceId,
             windowsSessionId,
             userSid);
-        return new SessionAgentOptions(pipeName, binding);
+        return new SessionAgentOptions(
+            pipeName,
+            binding,
+            hostWindowsSessionId);
     }
 
     private static Guid ParseGuid(

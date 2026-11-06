@@ -83,6 +83,13 @@ public sealed class DesktopSessionApplicationService :
             var status = await _host.StartEnvironmentAsync(
                 environment,
                 cancellationToken).ConfigureAwait(false);
+            if (status.Success)
+            {
+                _ = await ProcessEnvironmentReadyAsync(
+                    environmentId,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
             AddActivity(
                 status.Success
                     ? $"已启动环境：{environment.Name}"
@@ -260,6 +267,16 @@ public sealed class DesktopSessionApplicationService :
         }
     }
 
+    public async Task ShutdownAsync(CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        if (_host is IDesktopSessionExecutionShutdown shutdown)
+        {
+            await shutdown.ShutdownAsync(cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
     public bool IsEnvironmentReady(Guid environmentId) =>
         _host?.IsEnvironmentReady(environmentId) == true;
 
@@ -431,6 +448,9 @@ public sealed class DesktopSessionApplicationService :
             _disposed = true;
             _activeRuns.Clear();
         }
+
+        if (_host is IDisposable disposable)
+            disposable.Dispose();
     }
 
     private async Task<DesktopTaskRunResult?> RunTaskCoreAsync(

@@ -45,7 +45,7 @@ public sealed class SessionProtocolTests
             SessionHandshake.CreateNonce());
 
         Assert.Throws<InvalidOperationException>(
-            () => SessionConnectionAuthorization.Validate(
+            () => SessionConnectionAuthorization.ValidateAgentServerPeer(
                 binding,
                 peer,
                 spoofed));
@@ -62,10 +62,44 @@ public sealed class SessionProtocolTests
         var hello = ValidHello(binding);
 
         Assert.Throws<InvalidOperationException>(
-            () => SessionConnectionAuthorization.Validate(
+            () => SessionConnectionAuthorization.ValidateHostClientPeer(
                 binding,
+                hostWindowsSessionId: 1,
                 peer,
                 hello));
+    }
+
+    [Fact]
+    public void HostClientInParentSessionIsAccepted()
+    {
+        var binding = CreateBinding(sessionId: 2);
+        var peer = new SessionPeerIdentity(
+            ProcessId: 123,
+            SessionId: 1,
+            UserSid: binding.UserSid);
+
+        SessionConnectionAuthorization.ValidateHostClientPeer(
+            binding,
+            hostWindowsSessionId: 1,
+            peer,
+            ValidHello(binding));
+    }
+
+    [Fact]
+    public void HostClientFromWrongSessionIsRejected()
+    {
+        var binding = CreateBinding(sessionId: 2);
+        var peer = new SessionPeerIdentity(
+            ProcessId: 123,
+            SessionId: 3,
+            UserSid: binding.UserSid);
+
+        Assert.Throws<InvalidOperationException>(
+            () => SessionConnectionAuthorization.ValidateHostClientPeer(
+                binding,
+                hostWindowsSessionId: 1,
+                peer,
+                ValidHello(binding)));
     }
 
     [Fact]
@@ -183,6 +217,7 @@ public sealed class SessionProtocolTests
 
         Assert.Equal(binding, options.Binding);
         Assert.Equal("yueyu-session-test", options.PipeName);
+        Assert.Equal(1u, options.HostWindowsSessionId);
     }
 
     [Fact]
@@ -277,6 +312,7 @@ public sealed class SessionProtocolTests
             "--login", binding.LoginInstanceId.ToString("D"),
             "--session", binding.WindowsSessionId.ToString(
                 CultureInfo.InvariantCulture),
+            "--host-session", "1",
             "--user-sid", binding.UserSid
         ];
 

@@ -1,9 +1,50 @@
 using FloatDesk.App.DesktopSessions;
+using FloatDesk.Core.Models;
+using FloatDesk.Windows.DesktopSessions;
 
 namespace FloatDesk.App;
 
 internal sealed partial class AppRuntime
 {
+    private static readonly string DesktopSessionBrokerPath = Path.Combine(
+        AppContext.BaseDirectory,
+        "desktop-sessions",
+        "broker",
+        "YueYuOrb.SessionBroker.exe");
+    private static readonly string DesktopSessionAgentPath = Path.Combine(
+        AppContext.BaseDirectory,
+        "desktop-sessions",
+        "agent",
+        "YueYuOrb.SessionAgent.exe");
+
+    private static bool HasDesktopSessionBrokerPayload() =>
+        File.Exists(DesktopSessionBrokerPath) &&
+        File.Exists(DesktopSessionAgentPath) &&
+        File.Exists(DesktopSessionAgentPath + ".sha256");
+
+    private DesktopSessionBackendBundle CreateDesktopSessionBackendBundle(
+        EnvironmentProfile environment)
+    {
+        if (environment.Backend != DesktopSessionBackendKind.LocalChild)
+        {
+            throw new NotSupportedException(
+                "HyperVProductionBackendUnavailable");
+        }
+
+        var bootstrapStore = _desktopSessionBootstrapStore ??
+            throw new InvalidOperationException(
+                "DesktopSessionBrokerPayloadUnavailable");
+        var native = new ChildSessionNative();
+        var launcher = new RdpChildSessionLauncher(
+            native,
+            agentBootstrapper: new SessionBrokerClient(),
+            bootstrapStore: bootstrapStore);
+        return new DesktopSessionBackendBundle(
+            new ChildSessionBackend(native, launcher),
+            new NamedPipeSessionTransport(
+                handle => bootstrapStore.Take(handle)));
+    }
+
     private void OnDesktopSessionsRequested()
     {
         _panel?.HideAnimated();

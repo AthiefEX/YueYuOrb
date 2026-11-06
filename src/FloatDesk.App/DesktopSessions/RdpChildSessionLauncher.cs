@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Windows.Threading;
 using FloatDesk.App.Views;
+using FloatDesk.Core.Contracts;
 using FloatDesk.Core.Models;
 using FloatDesk.Windows.DesktopSessions;
 
@@ -15,17 +16,29 @@ public sealed class RdpChildSessionLauncher : IChildSessionLauncher
     private readonly IChildSessionNative _native;
     private readonly IRdpControlFactory _controlFactory;
     private readonly Func<uint> _parentSessionIdProvider;
+    private readonly IChildSessionAgentBootstrapper? _agentBootstrapper;
+    private readonly ChildSessionAgentBootstrapStore? _bootstrapStore;
     private readonly ConcurrentDictionary<uint, RdpSessionView> _views = [];
 
     public RdpChildSessionLauncher(
         IChildSessionNative native,
         IRdpControlFactory? controlFactory = null,
-        Func<uint>? parentSessionIdProvider = null)
+        Func<uint>? parentSessionIdProvider = null,
+        IChildSessionAgentBootstrapper? agentBootstrapper = null,
+        ChildSessionAgentBootstrapStore? bootstrapStore = null)
     {
         _native = native ?? throw new ArgumentNullException(nameof(native));
         _controlFactory = controlFactory ?? new RdpControlFactory();
         _parentSessionIdProvider =
             parentSessionIdProvider ?? GetCurrentProcessSessionId;
+        if ((agentBootstrapper is null) != (bootstrapStore is null))
+        {
+            throw new ArgumentException(
+                "The agent bootstrapper and bootstrap store must be supplied together.");
+        }
+
+        _agentBootstrapper = agentBootstrapper;
+        _bootstrapStore = bootstrapStore;
     }
 
     public async Task<ChildSessionLaunch> LaunchAsync(
@@ -43,6 +56,7 @@ public sealed class RdpChildSessionLauncher : IChildSessionLauncher
 
         var dispatcher = System.Windows.Application.Current?.Dispatcher ??
             Dispatcher.CurrentDispatcher;
+        var generation = Guid.NewGuid();
         RdpSessionView? view = null;
         try
         {
@@ -59,16 +73,45 @@ public sealed class RdpChildSessionLauncher : IChildSessionLauncher
                 parentSessionId,
                 cancellationToken).ConfigureAwait(false);
             view.SessionId = sessionId;
+            var loginInstanceId = Guid.Empty;
+            if (_agentBootstrapper is not null)
+            {
+                var bootstrap = await _agentBootstrapper.LaunchAsync(
+                    profile.Id,
+                    generation,
+                    sessionId,
+                    cancellationToken).ConfigureAwait(false);
+                loginInstanceId = bootstrap.LoginInstanceId;
+                _bootstrapStore!.Set(
+                    new SessionHandle(
+                        profile.Id,
+                        generation,
+                        sessionId,
+                        bootstrap.LoginInstanceId,
+                        PreparationCompleted: true),
+                    bootstrap);
+            }
+
             if (!_views.TryAdd(sessionId, view))
             {
+                if (_bootstrapStore is not null)
+                {
+                    _bootstrapStore.Remove(new SessionHandle(
+                        profile.Id,
+                        generation,
+                        sessionId,
+                        loginInstanceId,
+                        PreparationCompleted: true));
+                }
+
                 throw new InvalidOperationException(
                     "Another child-session view owns the new session.");
             }
 
             return new ChildSessionLaunch(
                 sessionId,
-                Guid.NewGuid(),
-                Guid.Empty,
+                generation,
+                loginInstanceId,
                 view);
         }
         catch

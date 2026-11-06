@@ -17,6 +17,7 @@ $artifactRoot = if ([string]::IsNullOrWhiteSpace($ArtifactRoot)) {
 $publishDirectory = Join-Path $artifactRoot 'publish/win-x64'
 $sessionAgentDirectory = Join-Path $publishDirectory 'desktop-sessions/agent'
 $sessionClientDirectory = Join-Path $publishDirectory 'desktop-sessions/client'
+$sessionBrokerDirectory = Join-Path $publishDirectory 'desktop-sessions/broker'
 $testResults = Join-Path $artifactRoot 'test-results'
 $zipPath = Join-Path $artifactRoot "YueYuOrb-$Version-win-x64-portable.zip"
 $sessionAgentZipPath = Join-Path $artifactRoot "YueYuOrb-$Version-session-agent-win-x64.zip"
@@ -70,6 +71,13 @@ try {
         -o $sessionAgentDirectory @buildArguments
     if ($LASTEXITCODE -ne 0) { throw 'Session agent publish failed.' }
 
+    $sessionAgentHash = Get-FileHash -Algorithm SHA256 `
+        -LiteralPath (Join-Path $sessionAgentDirectory 'YueYuOrb.SessionAgent.exe')
+    "$($sessionAgentHash.Hash.ToLowerInvariant())  YueYuOrb.SessionAgent.exe" |
+        Set-Content `
+            -LiteralPath (Join-Path $sessionAgentDirectory 'YueYuOrb.SessionAgent.exe.sha256') `
+            -Encoding ascii
+
     dotnet publish src/FloatDesk.SessionClient/FloatDesk.SessionClient.csproj `
         -c Release -r win-x64 --self-contained true --no-restore `
         -p:PublishSingleFile=false `
@@ -78,6 +86,15 @@ try {
         "-p:Version=$Version" `
         -o $sessionClientDirectory @buildArguments
     if ($LASTEXITCODE -ne 0) { throw 'Session client publish failed.' }
+
+    dotnet publish src/FloatDesk.SessionBroker/FloatDesk.SessionBroker.csproj `
+        -c Release -r win-x64 --self-contained true --no-restore `
+        -p:PublishSingleFile=true `
+        -p:PublishTrimmed=false `
+        -p:NuGetAudit=false `
+        "-p:Version=$Version" `
+        -o $sessionBrokerDirectory @buildArguments
+    if ($LASTEXITCODE -ne 0) { throw 'Session broker publish failed.' }
 
     Copy-Item -LiteralPath (Join-Path $root 'LICENSE') `
         -Destination (Join-Path $publishDirectory 'LICENSE')

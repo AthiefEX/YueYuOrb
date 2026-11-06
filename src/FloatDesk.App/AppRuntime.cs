@@ -47,6 +47,9 @@ internal sealed partial class AppRuntime : IDisposable
     private readonly TranslationRegionCaptureService _translationRegionCapture;
     private readonly TranslationRuntime _translationRuntime;
     private readonly DesktopTaskExecutionLedger _desktopTaskLedger;
+    private readonly SessionExecutionLedger _desktopStartupLedger;
+    private readonly ChildSessionAgentBootstrapStore?
+        _desktopSessionBootstrapStore;
     private readonly DesktopSessionApplicationService _desktopSessions;
     private readonly DesktopSessionControlServer _desktopSessionControl;
     private readonly DispatcherTimer _desktopSessionTimer = new()
@@ -88,9 +91,23 @@ internal sealed partial class AppRuntime : IDisposable
         _settings = new SettingsCoordinator(new JsonSettingsStore(paths.Root));
         _desktopTaskLedger = new DesktopTaskExecutionLedger(
             Path.Combine(paths.Root, "desktop-sessions"));
+        _desktopStartupLedger = new SessionExecutionLedger(
+            Path.Combine(paths.Root, "desktop-sessions"));
+        _desktopSessionBootstrapStore =
+            HasDesktopSessionBrokerPayload()
+                ? new ChildSessionAgentBootstrapStore()
+                : null;
+        var desktopSessionHost =
+            _desktopSessionBootstrapStore is null
+                ? null
+                : new DesktopSessionProductionHost(
+                    () => _settings.Current,
+                    CreateDesktopSessionBackendBundle,
+                    _desktopStartupLedger);
         _desktopSessions = new DesktopSessionApplicationService(
             () => _settings.Current,
-            _desktopTaskLedger);
+            _desktopTaskLedger,
+            desktopSessionHost);
         _desktopSessionControl =
             new DesktopSessionControlServer(_desktopSessions);
         _notes = new SqliteNoteRepository(paths.NotesDatabase);
@@ -403,6 +420,8 @@ internal sealed partial class AppRuntime : IDisposable
             _desktopSessionControl.DisposeAsync()
                 .AsTask().GetAwaiter().GetResult();
             _desktopSessions.Dispose();
+            _desktopSessionBootstrapStore?.Dispose();
+            _desktopStartupLedger.Dispose();
             _desktopTaskLedger.Dispose();
             _launcherIconExtractor.Dispose();
             _foreground.Dispose();
@@ -1226,6 +1245,7 @@ internal sealed partial class AppRuntime : IDisposable
                 return;
             }
         }
+        await _desktopSessions.ShutdownAsync(_lifetime.Token);
         if (await PreparePopupShutdownAsync())
             System.Windows.Application.Current.Shutdown();
     }

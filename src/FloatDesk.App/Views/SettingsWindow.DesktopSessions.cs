@@ -1,5 +1,6 @@
 using FloatDesk.App.DesktopSessions;
 using FloatDesk.Core.Models;
+using System.Diagnostics;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
@@ -120,13 +121,23 @@ public partial class SettingsWindow
         diagnosticsHeading.Children.Add(Description(
             "只检查随包文件、功能开关与运行时状态；不会探测 Hyper-V、创建会话或启动虚拟机。"));
         diagnosticsHeader.Children.Add(diagnosticsHeading);
-        var refreshDiagnostics = Button(
+        var diagnosticActions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(16, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        diagnosticActions.Children.Add(Button(
+            "安装/修复服务",
+            () => _ = RunSessionBrokerServiceCommandAsync("--install")));
+        diagnosticActions.Children.Add(Button(
+            "卸载服务",
+            () => _ = RunSessionBrokerServiceCommandAsync("--uninstall")));
+        diagnosticActions.Children.Add(Button(
             "刷新诊断",
-            OnRefreshDesktopDiagnostics);
-        refreshDiagnostics.Margin = new Thickness(16, 0, 0, 0);
-        refreshDiagnostics.VerticalAlignment = VerticalAlignment.Center;
-        Grid.SetColumn(refreshDiagnostics, 1);
-        diagnosticsHeader.Children.Add(refreshDiagnostics);
+            OnRefreshDesktopDiagnostics));
+        Grid.SetColumn(diagnosticActions, 1);
+        diagnosticsHeader.Children.Add(diagnosticActions);
         diagnosticsPanel.Children.Add(diagnosticsHeader);
         _desktopDiagnosticsRows = new StackPanel
         {
@@ -433,6 +444,64 @@ public partial class SettingsWindow
         object sender,
         RoutedEventArgs e) =>
         RefreshDesktopDiagnostics();
+
+    private async Task RunSessionBrokerServiceCommandAsync(string argument)
+    {
+        var executable = Path.Combine(
+            AppContext.BaseDirectory,
+            "desktop-sessions",
+            "broker",
+            "YueYuOrb.SessionBroker.exe");
+        if (!File.Exists(executable))
+        {
+            SetDesktopSessionStatus(
+                "当前包未包含桌面会话 Broker，请使用完整发布包。",
+                false);
+            return;
+        }
+
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = executable,
+                UseShellExecute = true,
+                Verb = "runas",
+                WindowStyle = ProcessWindowStyle.Hidden
+            };
+            startInfo.ArgumentList.Add(argument);
+            using var process = Process.Start(startInfo);
+            if (process is null)
+            {
+                SetDesktopSessionStatus(
+                    "无法启动桌面会话服务管理器。",
+                    false);
+                return;
+            }
+
+            await process.WaitForExitAsync().ConfigureAwait(true);
+            var success = process.ExitCode == 0;
+            SetDesktopSessionStatus(
+                success
+                    ? argument == "--install"
+                        ? "桌面会话服务已安装并启动。"
+                        : "桌面会话服务已卸载。"
+                    : $"桌面会话服务操作失败，退出码 {process.ExitCode}。",
+                success);
+            RefreshDesktopSessionsPage();
+        }
+        catch (System.ComponentModel.Win32Exception exception)
+            when (exception.NativeErrorCode == 1223)
+        {
+            SetDesktopSessionStatus("已取消管理员授权。", false);
+        }
+        catch (Exception exception)
+        {
+            SetDesktopSessionStatus(
+                $"桌面会话服务操作失败：{exception.Message}",
+                false);
+        }
+    }
 
     private void RefreshDesktopDiagnostics()
     {
