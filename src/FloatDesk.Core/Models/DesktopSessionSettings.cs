@@ -241,6 +241,7 @@ public static class DesktopSessionSettingsValidator
             foreach (var entry in environment.StartupEntries)
             {
                 if (entry is null ||
+                    entry.Revision < 1 ||
                     entry.DelaySeconds is < 0 or > 300 ||
                     entry.Arguments is null)
                 {
@@ -248,6 +249,22 @@ public static class DesktopSessionSettingsValidator
                         "Desktop session startup entry is invalid.");
                 }
             }
+
+            if (environment.StartupEntries
+                .GroupBy(entry => entry.Id)
+                .Any(group => group.Count() > 1))
+            {
+                throw new InvalidOperationException(
+                    "Desktop session startup entry IDs must be unique within an environment.");
+            }
+        }
+
+        if (settings.Tasks
+            .GroupBy(task => task.Id)
+            .Any(group => group.Count() > 1))
+        {
+            throw new InvalidOperationException(
+                "Desktop session task IDs must be unique.");
         }
 
         var environments = settings.Environments.ToDictionary(
@@ -255,6 +272,7 @@ public static class DesktopSessionSettingsValidator
         foreach (var task in settings.Tasks)
         {
             if (task.Trigger is null ||
+                task.Revision < 1 ||
                 !Enum.IsDefined(task.Trigger.Kind) ||
                 task.Steps is null ||
                 task.FormatVersion !=

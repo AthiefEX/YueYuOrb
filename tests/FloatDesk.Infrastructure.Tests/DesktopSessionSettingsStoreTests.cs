@@ -230,6 +230,138 @@ public sealed class DesktopSessionSettingsStoreTests : IDisposable
     }
 
     [Theory]
+    [InlineData("startup")]
+    [InlineData("task")]
+    public async Task DuplicateExecutionIdentitiesRejectSave(string duplicateKind)
+    {
+        using var store = new JsonSettingsStore(_root);
+        var defaults = AppSettings.CreateDefault();
+        var environmentId = Guid.NewGuid();
+        var startupId = Guid.NewGuid();
+        var startup = new SessionStartupEntry(
+            startupId,
+            "应用",
+            "app.exe",
+            [],
+            null,
+            0,
+            0,
+            true,
+            false);
+        var task = new DesktopSessionTask(
+            DesktopSessionFormat.CurrentTaskFormatVersion,
+            Guid.NewGuid(),
+            "任务",
+            environmentId,
+            [],
+            new SessionTaskTrigger(TaskTriggerKind.Manual, null, null),
+            1,
+            true);
+        var environments = new[]
+        {
+            new EnvironmentProfile(
+                environmentId,
+                "本机",
+                DesktopSessionBackendKind.LocalChild,
+                "local",
+                SessionStartupPolicy.EnvironmentDefault,
+                new SessionLimits(),
+                duplicateKind == "startup"
+                    ? [startup, startup with { DisplayName = "重复应用" }]
+                    : [startup])
+        };
+        var tasks = duplicateKind == "task"
+            ? new[] { task, task with { Name = "重复任务", Revision = 2 } }
+            : new[] { task };
+        var invalid = defaults with
+        {
+            DesktopSessions = new DesktopSessionSettings(
+                true,
+                environments,
+                tasks)
+        };
+
+        await Assert.ThrowsAsync<InvalidDataException>(
+            () => store.SaveAsync(invalid, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task DuplicateExecutionIdentityInPrimaryUsesValidBackup()
+    {
+        using var store = new JsonSettingsStore(_root);
+        var original = AppSettings.CreateDefault() with
+        {
+            General = AppSettings.CreateDefault().General with
+            {
+                Theme = AppTheme.Dark
+            }
+        };
+        await store.SaveAsync(original, CancellationToken.None);
+        await store.SaveAsync(
+            original with
+            {
+                General = original.General with { Theme = AppTheme.Light }
+            },
+            CancellationToken.None);
+        var path = Path.Combine(_root, "settings.json");
+        var root = System.Text.Json.Nodes.JsonNode
+            .Parse(await File.ReadAllTextAsync(path))!.AsObject();
+        root["desktopSessions"] = System.Text.Json.Nodes.JsonNode.Parse(
+            """
+            {
+              "enabled": true,
+              "environments": [
+                {
+                  "id": "11111111-1111-1111-1111-111111111111",
+                  "name": "本机",
+                  "backend": "LocalChild",
+                  "backendProfileId": "local",
+                  "startupPolicy": "EnvironmentDefault",
+                  "limits": {
+                    "maxSteps": 200,
+                    "maxQueue": 20,
+                    "defaultTimeoutSeconds": 30
+                  },
+                  "startupEntries": [
+                    {
+                      "id": "22222222-2222-2222-2222-222222222222",
+                      "displayName": "应用",
+                      "executablePath": "app.exe",
+                      "arguments": [],
+                      "workingDirectory": null,
+                      "order": 0,
+                      "delaySeconds": 0,
+                      "enabled": true,
+                      "waitForExit": false,
+                      "revision": 1
+                    },
+                    {
+                      "id": "22222222-2222-2222-2222-222222222222",
+                      "displayName": "重复应用",
+                      "executablePath": "other.exe",
+                      "arguments": [],
+                      "workingDirectory": null,
+                      "order": 1,
+                      "delaySeconds": 0,
+                      "enabled": true,
+                      "waitForExit": false,
+                      "revision": 1
+                    }
+                  ]
+                }
+              ],
+              "tasks": []
+            }
+            """);
+        await File.WriteAllTextAsync(path, root.ToJsonString());
+
+        var loaded = await store.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(AppTheme.Dark, loaded.General.Theme);
+        Assert.False(loaded.DesktopSessions.Enabled);
+    }
+
+    [Theory]
     [InlineData("schedule")]
     [InlineData("environment")]
     [InlineData("steps")]

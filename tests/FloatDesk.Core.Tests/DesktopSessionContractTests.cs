@@ -95,7 +95,8 @@ public sealed class DesktopSessionContractTests
         var profile = EnvironmentProfile.CreateDefault();
 
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => backend.StartAsync(
+            () => DesktopSessionStartCoordinator.StartAsync(
+                backend,
                 profile,
                 new PreparationResult(
                     false,
@@ -212,7 +213,7 @@ public sealed class DesktopSessionContractTests
     }
 
     [Fact]
-    public void RevisionAdvancesOnEveryConfigurationEdit()
+    public void ConfigurationEditorAdvancesRevisionsForEveryEdit()
     {
         var entry = new SessionStartupEntry(
             Guid.NewGuid(),
@@ -225,40 +226,205 @@ public sealed class DesktopSessionContractTests
             true,
             false,
             1);
-        var edited = entry with
-        {
-            Arguments = ["--changed"],
-            Revision = DesktopSessionRevision.Next(entry.Revision)
-        };
+        var environment = new EnvironmentProfile(
+            Guid.NewGuid(),
+            "本机",
+            DesktopSessionBackendKind.LocalChild,
+            "profile",
+            SessionStartupPolicy.EnvironmentDefault,
+            new SessionLimits(),
+            [entry]);
+        var editedEnvironment = DesktopSessionConfigurationEditor.UpdateStartupEntry(
+            environment,
+            entry.Id,
+            current => current with { Arguments = ["--changed"] });
         var task = new DesktopSessionTask(
             DesktopSessionFormat.CurrentTaskFormatVersion,
             Guid.NewGuid(),
             "任务",
-            Guid.NewGuid(),
+            environment.Id,
             [],
             new SessionTaskTrigger(TaskTriggerKind.Manual, null, null),
             1,
             true);
-        var editedTask = task with
-        {
-            Steps =
-            [
-                new SessionTaskStep(
-                    Guid.NewGuid(),
-                    SessionCommandKind.Delay,
-                    new Dictionary<string, string>
-                    {
-                        ["milliseconds"] = "100"
-                    },
-                    30,
-                    0)
-            ],
-            Revision = DesktopSessionRevision.Next(task.Revision)
-        };
+        var settings = new DesktopSessionSettings(false, [environment], [task]);
+        var editedSettings = DesktopSessionConfigurationEditor.UpdateTask(
+            settings,
+            task.Id,
+            current => current with
+            {
+                Steps =
+                [
+                    new SessionTaskStep(
+                        Guid.NewGuid(),
+                        SessionCommandKind.Delay,
+                        new Dictionary<string, string>
+                        {
+                            ["milliseconds"] = "100"
+                        },
+                        30,
+                        0)
+                ]
+            });
 
-        Assert.Equal(2, edited.Revision);
-        Assert.Equal(2, editedTask.Revision);
+        Assert.Equal(1, entry.Revision);
+        Assert.Equal(2, editedEnvironment.StartupEntries[0].Revision);
+        Assert.Equal(["--changed"], editedEnvironment.StartupEntries[0].Arguments);
+        Assert.Equal(1, task.Revision);
+        Assert.Equal(2, editedSettings.Tasks[0].Revision);
+        Assert.Single(editedSettings.Tasks[0].Steps);
         Assert.Equal(1, DesktopSessionRevision.Next(int.MaxValue));
+    }
+
+    [Fact]
+    public void DuplicateStartupEntryIdsRejected()
+    {
+        var entry = new SessionStartupEntry(
+            Guid.NewGuid(),
+            "应用",
+            "app.exe",
+            [],
+            null,
+            0,
+            0,
+            true,
+            false);
+        var environment = new EnvironmentProfile(
+            Guid.NewGuid(),
+            "本机",
+            DesktopSessionBackendKind.LocalChild,
+            "profile",
+            SessionStartupPolicy.EnvironmentDefault,
+            new SessionLimits(),
+            [entry, entry with { DisplayName = "重复应用" }]);
+        var settings = new DesktopSessionSettings(false, [environment], []);
+
+        Assert.Throws<InvalidOperationException>(
+            () => DesktopSessionSettingsValidator.Validate(settings));
+    }
+
+    [Fact]
+    public void DuplicateTaskIdsRejected()
+    {
+        var environment = new EnvironmentProfile(
+            Guid.NewGuid(),
+            "本机",
+            DesktopSessionBackendKind.LocalChild,
+            "profile",
+            SessionStartupPolicy.EnvironmentDefault,
+            new SessionLimits(),
+            []);
+        var task = new DesktopSessionTask(
+            DesktopSessionFormat.CurrentTaskFormatVersion,
+            Guid.NewGuid(),
+            "任务",
+            environment.Id,
+            [],
+            new SessionTaskTrigger(TaskTriggerKind.Manual, null, null),
+            1,
+            true);
+        var settings = new DesktopSessionSettings(
+            false,
+            [environment],
+            [task, task with { Name = "重复任务", Revision = 2 }]);
+
+        Assert.Throws<InvalidOperationException>(
+            () => DesktopSessionSettingsValidator.Validate(settings));
+    }
+
+    [Fact]
+    public void NegativeRevisionsRejected()
+    {
+        var entry = new SessionStartupEntry(
+            Guid.NewGuid(),
+            "应用",
+            "app.exe",
+            [],
+            null,
+            0,
+            0,
+            true,
+            false,
+            0);
+        var environment = new EnvironmentProfile(
+            Guid.NewGuid(),
+            "本机",
+            DesktopSessionBackendKind.LocalChild,
+            "profile",
+            SessionStartupPolicy.EnvironmentDefault,
+            new SessionLimits(),
+            [entry]);
+        var task = new DesktopSessionTask(
+            DesktopSessionFormat.CurrentTaskFormatVersion,
+            Guid.NewGuid(),
+            "任务",
+            environment.Id,
+            [],
+            new SessionTaskTrigger(TaskTriggerKind.Manual, null, null),
+            0,
+            true);
+
+        Assert.Throws<InvalidOperationException>(
+            () => DesktopSessionSettingsValidator.Validate(
+                new DesktopSessionSettings(false, [environment], [])));
+        Assert.Throws<InvalidOperationException>(
+            () => DesktopSessionSettingsValidator.Validate(
+                new DesktopSessionSettings(false, [environment with
+                {
+                    StartupEntries = [entry with { Revision = 1 }]
+                }], [task])));
+    }
+
+    [Fact]
+    public void ConfigurationEditorRejectsIdentityChangesAndDuplicates()
+    {
+        var entry = new SessionStartupEntry(
+            Guid.NewGuid(),
+            "应用",
+            "app.exe",
+            [],
+            null,
+            0,
+            0,
+            true,
+            false);
+        var environment = new EnvironmentProfile(
+            Guid.NewGuid(),
+            "本机",
+            DesktopSessionBackendKind.LocalChild,
+            "profile",
+            SessionStartupPolicy.EnvironmentDefault,
+            new SessionLimits(),
+            [entry]);
+        var task = new DesktopSessionTask(
+            DesktopSessionFormat.CurrentTaskFormatVersion,
+            Guid.NewGuid(),
+            "任务",
+            environment.Id,
+            [],
+            new SessionTaskTrigger(TaskTriggerKind.Manual, null, null),
+            1,
+            true);
+        var settings = new DesktopSessionSettings(false, [environment], [task]);
+
+        Assert.Throws<InvalidOperationException>(
+            () => DesktopSessionConfigurationEditor.UpdateStartupEntry(
+                environment,
+                entry.Id,
+                current => current with { Id = Guid.NewGuid() }));
+        Assert.Throws<InvalidOperationException>(
+            () => DesktopSessionConfigurationEditor.UpdateTask(
+                settings,
+                task.Id,
+                current => current with { Id = Guid.NewGuid() }));
+        Assert.Throws<InvalidOperationException>(
+            () => DesktopSessionConfigurationEditor.AddStartupEntry(
+                environment,
+                entry with { DisplayName = "重复应用" }));
+        Assert.Throws<InvalidOperationException>(
+            () => DesktopSessionConfigurationEditor.AddTask(
+                settings,
+                task with { Name = "重复任务", Revision = 2 }));
     }
 
     [Fact]
@@ -271,7 +437,8 @@ public sealed class DesktopSessionContractTests
             backend.Capabilities,
             null);
 
-        await backend.StartAsync(
+        await DesktopSessionStartCoordinator.StartAsync(
+            backend,
             EnvironmentProfile.CreateDefault(),
             preparation,
             CancellationToken.None);
@@ -308,8 +475,6 @@ public sealed class DesktopSessionContractTests
             PreparationResult preparation,
             CancellationToken cancellationToken)
         {
-            DesktopSessionPreparationGuard.RequireSuccessful(preparation);
-
             StartCalls++;
             return Task.FromResult(new SessionHandle(
                 profile.Id,
