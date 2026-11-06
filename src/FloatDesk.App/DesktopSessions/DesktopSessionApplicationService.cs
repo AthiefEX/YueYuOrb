@@ -62,7 +62,7 @@ public sealed class DesktopSessionApplicationService :
         _scheduler = new DesktopTaskScheduler(ledger, this);
     }
 
-    public bool IsAvailable => _host is not null;
+    public bool IsRuntimeAvailable => _host is not null;
 
     public async Task<DesktopSessionActionStatus> StartEnvironmentAsync(
         Guid environmentId,

@@ -91,6 +91,39 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task UpgradeRoundTripKeepsDesktopSessionSettings()
+    {
+        using var store = new JsonSettingsStore(_root);
+        var environment = new EnvironmentProfile(
+            Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            "隔离桌面",
+            DesktopSessionBackendKind.LocalChild,
+            "local-child",
+            SessionStartupPolicy.EnvironmentDefault,
+            new SessionLimits(),
+            []);
+        var expected = AppSettings.CreateDefault() with
+        {
+            DesktopSessions = new DesktopSessionSettings(
+                Enabled: true,
+                Environments: [environment],
+                Tasks: [])
+        };
+
+        await store.SaveAsync(expected, CancellationToken.None);
+        var actual = await store.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(1, actual.SchemaVersion);
+        Assert.True(actual.DesktopSessions.Enabled);
+        var restored = Assert.Single(
+            actual.DesktopSessions.Environments);
+        Assert.Equal(environment.Id, restored.Id);
+        Assert.Equal(environment.Name, restored.Name);
+        Assert.Equal(environment.Backend, restored.Backend);
+        Assert.Empty(restored.StartupEntries);
+    }
+
+    [Fact]
     public void ValidatorRejectsUndefinedOrbDisplayMode()
     {
         var defaults = AppSettings.CreateDefault();

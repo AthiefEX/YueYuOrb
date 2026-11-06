@@ -63,6 +63,54 @@ public sealed class ReleaseConfigurationTests
     }
 
     [Fact]
+    public void PublishScriptIncludesDesktopSessionToolsAndManual()
+    {
+        var script = File.ReadAllText(FindRepoFile(
+            "scripts/publish.ps1"));
+
+        Assert.Contains(
+            "src/FloatDesk.SessionAgent/FloatDesk.SessionAgent.csproj",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "src/FloatDesk.SessionClient/FloatDesk.SessionClient.csproj",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "'desktop-sessions/agent'",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "'desktop-sessions/client'",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "YueYuOrb-$Version-session-agent-win-x64.zip",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "docs/manual-desktop-sessions.md",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "docs/user-guide.md",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "[string]$ArtifactRoot = ''",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "\"/DPublishDir=$publishDirectory\"",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "\"/DOutputDir=$artifactRoot\"",
+            script,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void InstallerPreservesUpgradeAppIdAndCompatibilityDataPath()
     {
         var installer = File.ReadAllText(FindRepoFile(

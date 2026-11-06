@@ -4,6 +4,9 @@
 #ifndef PublishDir
   #define PublishDir "..\artifacts\publish\win-x64"
 #endif
+#ifndef OutputDir
+  #define OutputDir "..\artifacts"
+#endif
 
 #define AppName "月语悬浮球"
 #define AppPublisher "七月风语"
@@ -21,7 +24,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.19044
 PrivilegesRequired=lowest
-OutputDir=..\artifacts
+OutputDir={#OutputDir}
 OutputBaseFilename=YueYuOrb-{#AppVersion}-win-x64-setup
 Compression=lzma2
 SolidCompression=yes

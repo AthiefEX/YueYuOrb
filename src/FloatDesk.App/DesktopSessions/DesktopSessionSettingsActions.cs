@@ -6,6 +6,8 @@ public sealed record DesktopSessionActionStatus(
 
 public interface IDesktopSessionSettingsActions
 {
+    bool IsRuntimeAvailable { get; }
+
     Task<DesktopSessionActionStatus> StartEnvironmentAsync(
         Guid environmentId,
         CancellationToken cancellationToken);

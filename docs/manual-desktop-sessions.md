@@ -2,6 +2,30 @@
 
 本文件记录 Windows 10 22H2 x64 与 Windows 11 x64 上需要人工确认的能力。自动测试不会启用系统子会话，也不会创建 RDP 连接。
 
+## 发布包布局
+
+主安装包和便携包包含以下工具：
+
+```text
+YueYuOrb.exe
+desktop-sessions/
+  agent/YueYuOrb.SessionAgent.exe
+  client/YueYuOrb.SessionClient.exe
+docs/
+  manual-desktop-sessions.md
+  user-guide.md
+```
+
+发布脚本另外生成 `YueYuOrb-<版本>-session-agent-win-x64.zip`，用于复制到来宾虚拟机。主包的“桌面分身”诊断区会检查助手、客户端和 broker 是否齐全，但不会探测 Hyper-V 或启动任何会话。
+
+当前仓库尚未提供 `desktop-sessions/broker/YueYuOrb.SessionBroker.exe` 或生产 `IDesktopSessionExecutionHost` 接线。因此当前构建必须保持以下默认结果：
+
+- 诊断显示“会话运行时未准备”和“窄权限准备组件未提供”。
+- 环境启动、任务运行与控制管道均明确拒绝。
+- 不创建子会话、不启动虚拟机，也不把输入回退到主桌面。
+
+只有加入并通过安全验收的窄权限 broker、固定路径助手引导和哈希清单后，才可以安装服务并开启本机路线。安装器不得在没有 broker 时伪装注册成功；卸载只删除本产品创建的注册项，不修改预先存在的系统配置。
+
 ## 前置条件
 
 - 仅在已获得用户明确同意后启用 Windows 子会话功能。
@@ -25,6 +49,8 @@
 - WTS 使用假后端验证所有权和父会话保护。
 - RDP `IRdpControl` 使用假控件验证“配置后连接”和失败释放。
 - 真实 `MsRdpClient9NotSafeForScripting`、命名管道助手、混合 DPI 与 Windows 11 仍需人工验收。
+
+发布验收还必须确认安装包和便携包均含 `desktop-sessions/agent`、`desktop-sessions/client` 与文档；禁用功能启动时没有 Hyper-V/WTS 探测进程，且控制客户端返回不可用而不是主桌面执行。
 
 ## Hyper-V 路线
 

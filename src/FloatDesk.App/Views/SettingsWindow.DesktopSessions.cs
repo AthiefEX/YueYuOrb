@@ -37,6 +37,9 @@ public partial class SettingsWindow
     private CheckBox _startupEnabled = null!;
     private TextBlock _desktopSessionStatus = null!;
     private ListBox _desktopActivityList = null!;
+    private StackPanel _desktopDiagnosticsRows = null!;
+    private readonly DesktopSessionDiagnostics _desktopDiagnostics =
+        new(AppContext.BaseDirectory);
     private bool _desktopSessionsUiReady;
     private Guid? _selectedDesktopEnvironmentId;
     private Guid? _selectedDesktopTaskId;
@@ -99,6 +102,39 @@ public partial class SettingsWindow
         Grid.SetColumn(taskCard, 2);
         columns.Children.Add(taskCard);
         root.Children.Add(columns);
+
+        var diagnosticsCard = Card();
+        diagnosticsCard.Margin = new Thickness(0, 14, 0, 0);
+        var diagnosticsPanel = new StackPanel();
+        var diagnosticsHeader = new Grid();
+        diagnosticsHeader.ColumnDefinitions.Add(new ColumnDefinition
+        {
+            Width = new GridLength(1, GridUnitType.Star)
+        });
+        diagnosticsHeader.ColumnDefinitions.Add(new ColumnDefinition
+        {
+            Width = GridLength.Auto
+        });
+        var diagnosticsHeading = new StackPanel();
+        diagnosticsHeading.Children.Add(SectionTitle("诊断"));
+        diagnosticsHeading.Children.Add(Description(
+            "只检查随包文件、功能开关与运行时状态；不会探测 Hyper-V、创建会话或启动虚拟机。"));
+        diagnosticsHeader.Children.Add(diagnosticsHeading);
+        var refreshDiagnostics = Button(
+            "刷新诊断",
+            OnRefreshDesktopDiagnostics);
+        refreshDiagnostics.Margin = new Thickness(16, 0, 0, 0);
+        refreshDiagnostics.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(refreshDiagnostics, 1);
+        diagnosticsHeader.Children.Add(refreshDiagnostics);
+        diagnosticsPanel.Children.Add(diagnosticsHeader);
+        _desktopDiagnosticsRows = new StackPanel
+        {
+            Margin = new Thickness(0, 10, 0, 0)
+        };
+        diagnosticsPanel.Children.Add(_desktopDiagnosticsRows);
+        diagnosticsCard.Child = diagnosticsPanel;
+        root.Children.Add(diagnosticsCard);
 
         var activityCard = Card();
         activityCard.Margin = new Thickness(0, 14, 0, 0);
@@ -382,7 +418,51 @@ public partial class SettingsWindow
 
         RefreshStartupEntries();
         RefreshDesktopSteps();
+        RefreshDesktopDiagnostics();
         RefreshDesktopActivity();
+    }
+
+    private void OnRefreshDesktopDiagnostics(
+        object sender,
+        RoutedEventArgs e) =>
+        RefreshDesktopDiagnostics();
+
+    private void RefreshDesktopDiagnostics()
+    {
+        if (_desktopDiagnosticsRows is null)
+            return;
+        _desktopDiagnosticsRows.Children.Clear();
+        var diagnostics = _desktopDiagnostics.Inspect(
+            _viewModel.BuildDesktopSessionDraft(),
+            _desktopSessionActions?.IsRuntimeAvailable == true);
+        foreach (var item in diagnostics)
+        {
+            var row = new StackPanel
+            {
+                Margin = new Thickness(0, 3, 0, 3)
+            };
+            row.Children.Add(new TextBlock
+            {
+                Text = $"{item.Name} · {item.State}",
+                FontWeight = FontWeights.SemiBold,
+                Foreground = item.State is
+                    "未准备" or "不完整" or
+                    "未提供" or "不可用" or "未开放"
+                    ? System.Windows.Media.Brushes.IndianRed
+                    : (System.Windows.Media.Brush)
+                        FindResource("SettingsInkBrush")
+            });
+            row.Children.Add(new TextBlock
+            {
+                Text = item.Detail,
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 12,
+                Opacity = 0.72,
+                Foreground = (System.Windows.Media.Brush)
+                    FindResource("SettingsMutedBrush")
+            });
+            _desktopDiagnosticsRows.Children.Add(row);
+        }
     }
 
     private void OnDesktopEnvironmentSelectionChanged(
