@@ -29,6 +29,16 @@ public static class SettingsMigrator
                 if (!Enum.TryParse<HotkeyAction>(key, ignoreCase: true, out var action) || !Enum.IsDefined(action))
                     savedHotkeys.Remove(key);
         }
+        if (compatible is JsonObject settingsRoot &&
+            !settingsRoot.Any(property => string.Equals(
+                property.Key,
+                "desktopSessions",
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            settingsRoot["desktopSessions"] = JsonSerializer.SerializeToNode(
+                DesktopSessionSettings.CreateDefault(),
+                options);
+        }
         var result = compatible.Deserialize<AppSettings>(options)
             ?? throw new InvalidDataException("Settings JSON was empty.");
         var hotkeys = new Dictionary<HotkeyAction, HotkeyChord>(result.Hotkeys);

@@ -59,6 +59,7 @@ public static partial class SettingsValidator
         var translation = value.Translation;
         ValidateAudio(value, errors);
         ValidateBrightness(value, errors);
+        ValidateDesktopSessions(value, errors);
         if (translation is null)
         {
             errors.Add("Translation settings are required.");

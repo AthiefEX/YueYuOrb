@@ -83,6 +83,8 @@ public sealed record AppSettings(
 
     public bool ShowLauncherDock { get; init; } = true;
     public ResourceUsageSettings ResourceUsage { get; init; } = new();
+    public DesktopSessionSettings DesktopSessions { get; init; } =
+        DesktopSessionSettings.CreateDefault();
 
     public IReadOnlyList<AudioCycleGroup> AudioGroups { get; init; } = [];
     public bool ShowAudioInWheel { get; init; } = true;
