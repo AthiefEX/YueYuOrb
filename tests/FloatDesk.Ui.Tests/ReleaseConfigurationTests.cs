@@ -124,6 +124,20 @@ public sealed class ReleaseConfigurationTests
             "\"/DOutputDir=$artifactRoot\"",
             script,
             StringComparison.Ordinal);
+        var verifier = File.ReadAllText(FindRepoFile(
+            "scripts/verify-session-payload.ps1"));
+        Assert.Contains(
+            "YueYuOrb.SessionAgent.exe.sha256",
+            verifier,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "YueYuOrb.SessionClient.exe",
+            verifier,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "YueYuOrb.SessionBroker.exe",
+            verifier,
+            StringComparison.Ordinal);
     }
 
     [Fact]

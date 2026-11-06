@@ -109,6 +109,10 @@ try {
     Copy-Item -LiteralPath (Join-Path $root 'docs/manual-desktop-sessions.md') `
         -Destination (Join-Path $sessionAgentDirectory 'SESSION-AGENT.md')
 
+    & (Join-Path $root 'scripts/verify-session-payload.ps1') `
+        -PublishDirectory $publishDirectory
+    if ($LASTEXITCODE -ne 0) { throw 'Session payload verification failed.' }
+
     Compress-Archive -Path (Join-Path $publishDirectory '*') `
         -DestinationPath $zipPath -CompressionLevel Optimal
     Compress-Archive -Path (Join-Path $sessionAgentDirectory '*') `
