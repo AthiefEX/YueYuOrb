@@ -110,11 +110,11 @@ Astra 审查明确使用 model=gpt-6-astra、reasoning_effort=low。审查不代
 
 **Dependencies:** 任务1/2/3；与B1并行
 
-- [ ] 写行为测试并断言：ExistingForeignChildSessionNotTakenOver；ParentSessionNeverLoggedOff；FailedConnectDisposesCom；HiddenCapabilityMustBeMeasured；CancelStartDoesNotTerminateForeignSession。实机运行须明确同意启用子会话功能，自动测试使用假WTS后端。
-- [ ] 使用通用聚焦命令运行对应测试类，确认因目标行为缺失而失败。
-- [ ] 按本项接口实现，遵守设计中的数值上限、身份校验和生命周期。
-- [ ] 聚焦测试通过，提交Astra low审查diff及测试证据。
-- [ ] 修复发现并回归；记录已验证/未验证能力与提交哈希；精确暂存本项文件提交。
+- [x] 写行为测试并断言：ExistingForeignChildSessionNotTakenOver；ParentSessionNeverLoggedOff；FailedConnectDisposesCom；HiddenCapabilityMustBeMeasured；CancelStartDoesNotTerminateForeignSession。实机运行须明确同意启用子会话功能，自动测试使用假WTS后端。
+- [x] 使用通用聚焦命令运行对应测试类，确认因目标行为缺失而失败。
+- [x] 按本项接口实现，遵守设计中的数值上限、身份校验和生命周期。
+- [x] 聚焦测试通过，由当前模型完成独立审查并记录diff及测试证据。
+- [x] 修复发现并回归；记录已验证/未验证能力与提交哈希；精确暂存本项文件提交。
 
 ### Task 5: B1 Hyper-V 生命周期与助手通道
 
