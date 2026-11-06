@@ -792,6 +792,32 @@
                                                 </Grid>
                                             </StackPanel>
                                         </Border>
+                                        <Border Style="{StaticResource SettingsSubtleCardStyle}" Margin="0,12,0,0" Padding="18,14">
+                                            <StackPanel>
+                                                <TextBlock Text="桌面分身"
+                                                           Style="{StaticResource SettingsSectionTitleStyle}"
+                                                           FontSize="13"
+                                                           Margin="0,0,0,4" />
+                                                <TextBlock Text="仅在桌面分身功能启用时显示；运行任务会列出已启用的任务供选择。"
+                                                           Style="{StaticResource SettingsDescriptionStyle}"
+                                                           Margin="0,0,0,8" />
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <CheckBox Content="桌面分身"
+                                                              IsChecked="{Binding ShowDesktopSessionsInWheel}"
+                                                              Style="{StaticResource SettingsCheckBoxStyle}"
+                                                              VerticalAlignment="Center" />
+                                                    <CheckBox Grid.Column="1"
+                                                              Content="运行桌面任务"
+                                                              IsChecked="{Binding ShowRunDesktopTaskInWheel}"
+                                                              Style="{StaticResource SettingsCheckBoxStyle}"
+                                                              VerticalAlignment="Center" />
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
                                     </StackPanel>
                                 </Border>
                                 <Border Style="{StaticResource SettingsCardStyle}" Margin="0,14,0,0">
@@ -1446,6 +1472,23 @@
                                     </StackPanel>
                                 </Border>
                             </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
+                    <TabItem x:Name="DesktopSessionsSettingsTab"
+                             Style="{StaticResource NavigationTabItemStyle}"
+                             AutomationProperties.Name="桌面分身">
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock FontFamily="{StaticResource SettingsIconFont}" FontSize="15" Text="&#xE7F8;" Margin="0,0,7,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                                <TextBlock Text="桌面分身" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                            </StackPanel>
+                        </TabItem.Header>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <Grid x:Name="DesktopSessionsPage"
+                                  Margin="28,16,28,24"
+                                  MaxWidth="1080"
+                                  HorizontalAlignment="Stretch" />
                         </ScrollViewer>
                     </TabItem>
                     <TabItem Style="{StaticResource NavigationTabItemStyle}" AutomationProperties.Name="关于">

@@ -695,6 +695,88 @@
                 </Grid>
             </Button>
 
+            <Button x:Name="DesktopSessionsButton"
+                    Width="196"
+                    Height="48"
+                    Style="{StaticResource RadialActionButtonStyle}"
+                    AutomationProperties.Name="桌面分身"
+                    Click="OnDesktopSessionsClick">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="50" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Width="42"
+                            Height="42"
+                            CornerRadius="21"
+                            Background="{StaticResource MenuBlueBrush}"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
+                            Effect="{StaticResource ActionShadow}">
+                        <TextBlock Text="&#xE7F8;"
+                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                   Foreground="White"
+                                   FontSize="20"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                    <Border Grid.Column="1"
+                            Margin="6,3,0,3"
+                            Background="{DynamicResource MenuLabelBrush}"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
+                            CornerRadius="17"
+                            Padding="14,0">
+                        <TextBlock Text="桌面分身"
+                                   Foreground="{DynamicResource MenuStrongBrush}"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                </Grid>
+            </Button>
+
+            <Button x:Name="RunDesktopTaskButton"
+                    Width="196"
+                    Height="48"
+                    Style="{StaticResource RadialActionButtonStyle}"
+                    AutomationProperties.Name="运行桌面任务"
+                    Click="OnRunDesktopTaskClick">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="50" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Width="42"
+                            Height="42"
+                            CornerRadius="21"
+                            Background="{StaticResource MenuSlateBrush}"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
+                            Effect="{StaticResource ActionShadow}">
+                        <TextBlock Text="&#xE768;"
+                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                   Foreground="White"
+                                   FontSize="19"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                    <Border Grid.Column="1"
+                            Margin="6,3,0,3"
+                            Background="{DynamicResource MenuLabelBrush}"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
+                            CornerRadius="17"
+                            Padding="14,0">
+                        <TextBlock Text="运行任务"
+                                   Foreground="{DynamicResource MenuStrongBrush}"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                </Grid>
+            </Button>
+
             </Canvas>
             </ScrollViewer>
                     <Canvas x:Name="WheelEntranceLayer" Width="660" Height="560"

@@ -66,6 +66,8 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _showTranslateRegionInWheel = true;
     [ObservableProperty] private bool _showTranslateSubtitlesInWheel = true;
     [ObservableProperty] private bool _showExtractRegionTextInWheel = true;
+    [ObservableProperty] private bool _showDesktopSessionsInWheel;
+    [ObservableProperty] private bool _showRunDesktopTaskInWheel;
     [ObservableProperty] private bool _showLauncherDock = true;
     [ObservableProperty] private bool _alwaysOnTop;
     [ObservableProperty] private int _fullscreenPolicyIndex;
@@ -159,6 +161,10 @@ public partial class SettingsViewModel : ObservableObject
                 wheelActions.Contains(WheelActionKind.TranslateSubtitles),
             ShowExtractRegionTextInWheel =
                 wheelActions.Contains(WheelActionKind.ExtractRegionText),
+            ShowDesktopSessionsInWheel =
+                wheelActions.Contains(WheelActionKind.DesktopSessions),
+            ShowRunDesktopTaskInWheel =
+                wheelActions.Contains(WheelActionKind.RunDesktopTask),
             ShowLauncherDock = settings.ShowLauncherDock,
             AlwaysOnTop = settings.Overlay.AlwaysOnTop,
             FullscreenPolicyIndex = (int)settings.Overlay.FullscreenPolicy,
@@ -223,6 +229,7 @@ public partial class SettingsViewModel : ObservableObject
         vm.LoadAudio(settings);
         vm.LoadBrightness(settings);
         vm.LoadResourceUsage(settings.ResourceUsage);
+        vm.LoadDesktopSessions(settings.DesktopSessions);
         return vm;
     }
 
@@ -382,7 +389,9 @@ public partial class SettingsViewModel : ObservableObject
             ShowLauncherDock = showLauncherDock,
             AudioGroups = MergeAudioGroups(latest.AudioGroups),
             ShowAudioInWheel = ShowAudioInWheel != _baseline.ShowAudioInWheel
-                ? ShowAudioInWheel : latest.ShowAudioInWheel
+                ? ShowAudioInWheel : latest.ShowAudioInWheel,
+            DesktopSessions = MergeDesktopSessions(
+                latest.DesktopSessions)
         };
 
         void MergeHotkey(HotkeyAction action, string value)
@@ -527,6 +536,8 @@ public partial class SettingsViewModel : ObservableObject
         Add(ShowTranslateRegionInWheel, WheelActionKind.TranslateRegion);
         Add(ShowTranslateSubtitlesInWheel, WheelActionKind.TranslateSubtitles);
         Add(ShowExtractRegionTextInWheel, WheelActionKind.ExtractRegionText);
+        Add(ShowDesktopSessionsInWheel, WheelActionKind.DesktopSessions);
+        Add(ShowRunDesktopTaskInWheel, WheelActionKind.RunDesktopTask);
         return actions.ToArray();
 
         void Add(bool enabled, WheelActionKind kind)
@@ -608,6 +619,20 @@ public partial class SettingsViewModel : ObservableObject
             candidate = latest;
             error = "时间字体颜色无效，请使用 #RRGGBB 或 #AARRGGBB。";
             return false;
+        }
+        if (DesktopSessionsEdited)
+        {
+            try
+            {
+                DesktopSessionSettingsValidator.Validate(
+                    BuildDesktopSessionDraft());
+            }
+            catch (InvalidOperationException exception)
+            {
+                candidate = latest;
+                error = $"桌面分身设置无效：{exception.Message}";
+                return false;
+            }
         }
         candidate = BuildCandidate(latest);
         error = "";

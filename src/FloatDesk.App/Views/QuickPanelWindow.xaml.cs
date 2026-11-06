@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -48,6 +49,8 @@ public partial class QuickPanelWindow : Window
     private double _smoothWheelTargetOffset;
     private int _smoothWheelAnimationVersion;
     private bool _smoothWheelAnimationActive;
+    private bool _taskMenuOpen;
+    private DesktopSessionTask[] _desktopSessionTasks = [];
     private readonly ILauncherIconProvider? _launcherIconProvider;
 
     public event Action<LauncherItem>? LaunchRequested;
@@ -60,6 +63,8 @@ public partial class QuickPanelWindow : Window
     public event Action? TranslateRegionRequested;
     public event Action? TranslateSubtitlesRequested;
     public event Action? ExtractRegionTextRequested;
+    public event Action? DesktopSessionsRequested;
+    public event Action<Guid>? DesktopTaskRequested;
 
     public bool IsPanelOpen => _panelOpen;
 
@@ -86,12 +91,22 @@ public partial class QuickPanelWindow : Window
         UpdateInputStatus(manualLockEnabled, inputStatus);
 
         var enabledWheelActions = settings.WheelActions.ToHashSet();
+        if (!settings.DesktopSessions.Enabled)
+        {
+            enabledWheelActions.Remove(WheelActionKind.DesktopSessions);
+            enabledWheelActions.Remove(WheelActionKind.RunDesktopTask);
+        }
         foreach (var (button, kind) in GetFixedWheelActions())
         {
             button.Visibility = enabledWheelActions.Contains(kind)
                 ? Visibility.Visible
                 : Visibility.Collapsed;
         }
+        _desktopSessionTasks = settings.DesktopSessions.Tasks
+            .Where(task => task.Enabled)
+            .OrderBy(task => task.Name, StringComparer.CurrentCulture)
+            .ThenBy(task => task.Id)
+            .ToArray();
 
         var launchers = settings.Launchers.OrderBy(item => item.Order).ToArray();
         var wheelLaunchers = launchers.Where(item => item.ShowInWheel).ToArray();
@@ -399,7 +414,9 @@ public partial class QuickPanelWindow : Window
         (TranslateSelectionButton, WheelActionKind.TranslateSelection),
         (TranslateRegionButton, WheelActionKind.TranslateRegion),
         (TranslateSubtitlesButton, WheelActionKind.TranslateSubtitles),
-        (ExtractRegionTextButton, WheelActionKind.ExtractRegionText)
+        (ExtractRegionTextButton, WheelActionKind.ExtractRegionText),
+        (DesktopSessionsButton, WheelActionKind.DesktopSessions),
+        (RunDesktopTaskButton, WheelActionKind.RunDesktopTask)
     ];
 
     private Button[] GetVisibleWheelButtons()
@@ -1146,6 +1163,8 @@ public partial class QuickPanelWindow : Window
 
     private void OnDeactivated(object? sender, EventArgs e)
     {
+        if (_taskMenuOpen)
+            return;
         CancelQueuedEntranceAnimation();
         HideAnimated();
     }
@@ -1198,6 +1217,64 @@ public partial class QuickPanelWindow : Window
 
     private void OnExtractRegionTextClick(object sender, RoutedEventArgs e) =>
         ExtractRegionTextRequested?.Invoke();
+
+    private void OnDesktopSessionsClick(
+        object sender,
+        RoutedEventArgs e) =>
+        DesktopSessionsRequested?.Invoke();
+
+    private void OnRunDesktopTaskClick(
+        object sender,
+        RoutedEventArgs e)
+    {
+        if (_desktopSessionTasks.Length == 0)
+        {
+            DesktopSessionsRequested?.Invoke();
+            return;
+        }
+
+        if (_desktopSessionTasks.Length == 1)
+        {
+            DesktopTaskRequested?.Invoke(
+                _desktopSessionTasks[0].Id);
+            return;
+        }
+
+        var menu = new ContextMenu
+        {
+            Placement = PlacementMode.Bottom,
+            PlacementTarget = RunDesktopTaskButton,
+            Background = (Brush)FindResource("MenuDockGlassBrush"),
+            BorderBrush = (Brush)FindResource("MenuStrongBrush"),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(5)
+        };
+        foreach (var task in _desktopSessionTasks)
+        {
+            var item = new MenuItem
+            {
+                Header = task.Name,
+                Tag = task.Id,
+                Foreground = (Brush)FindResource("MenuStrongBrush"),
+                Padding = new Thickness(12, 7, 12, 7)
+            };
+            item.Click += (_, _) =>
+            {
+                menu.IsOpen = false;
+                DesktopTaskRequested?.Invoke(task.Id);
+            };
+            menu.Items.Add(item);
+        }
+
+        menu.Opened += (_, _) => _taskMenuOpen = true;
+        menu.Closed += (_, _) =>
+        {
+            _taskMenuOpen = false;
+            if (_panelOpen)
+                Activate();
+        };
+        menu.IsOpen = true;
+    }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern int GetSystemMetrics(int index);

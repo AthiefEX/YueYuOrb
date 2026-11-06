@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Threading;
 using FloatDesk.App.Coordination;
+using FloatDesk.App.DesktopSessions;
 using FloatDesk.App.Launcher;
 using FloatDesk.App.Translation;
 using FloatDesk.App.ViewModels;
@@ -11,10 +12,12 @@ using FloatDesk.Core.Geometry;
 using FloatDesk.Core.Input;
 using FloatDesk.Core.Models;
 using FloatDesk.Infrastructure.Diagnostics;
+using FloatDesk.Infrastructure.DesktopSessions;
 using FloatDesk.Infrastructure.Notes;
 using FloatDesk.Infrastructure.Settings;
 using FloatDesk.Infrastructure.Translation;
 using FloatDesk.Windows.Foreground;
+using FloatDesk.Windows.DesktopSessions;
 using FloatDesk.Windows.Input;
 using FloatDesk.Windows.Launcher;
 using FloatDesk.Windows.Translation;
@@ -43,6 +46,13 @@ internal sealed partial class AppRuntime : IDisposable
     private readonly SelectedTextReader _selectedTextReader;
     private readonly TranslationRegionCaptureService _translationRegionCapture;
     private readonly TranslationRuntime _translationRuntime;
+    private readonly DesktopTaskExecutionLedger _desktopTaskLedger;
+    private readonly DesktopSessionApplicationService _desktopSessions;
+    private readonly DesktopSessionControlServer _desktopSessionControl;
+    private readonly DispatcherTimer _desktopSessionTimer = new()
+    {
+        Interval = TimeSpan.FromSeconds(30)
+    };
     private readonly CaptureSessionGate _captureSessionGate = new();
     private readonly RegionSelectionCoordinator _regionSelection = new();
     private readonly DispatcherTimer _inputTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
@@ -76,6 +86,13 @@ internal sealed partial class AppRuntime : IDisposable
             LauncherEntryResolver.GetIconSources);
         _logger = new FileLogger(paths.Logs);
         _settings = new SettingsCoordinator(new JsonSettingsStore(paths.Root));
+        _desktopTaskLedger = new DesktopTaskExecutionLedger(
+            Path.Combine(paths.Root, "desktop-sessions"));
+        _desktopSessions = new DesktopSessionApplicationService(
+            () => _settings.Current,
+            _desktopTaskLedger);
+        _desktopSessionControl =
+            new DesktopSessionControlServer(_desktopSessions);
         _notes = new SqliteNoteRepository(paths.NotesDatabase);
         _translationCredentials = new DpapiTranslationCredentialStore(
             Path.Combine(paths.Root, "translation-secrets.dat"));
@@ -110,6 +127,7 @@ internal sealed partial class AppRuntime : IDisposable
     {
         await _logger.WriteAsync("startup.begin");
         await _settings.InitializeAsync(_lifetime.Token);
+        _desktopSessionControl.Start();
         if (_settings.Current.General.StartWithWindows)
         {
             try { StartupService.SetEnabled(true); }
@@ -157,6 +175,8 @@ internal sealed partial class AppRuntime : IDisposable
         _panel.TranslateSubtitlesRequested +=
             OnTranslateSubtitlesRequested;
         _panel.ExtractRegionTextRequested += OnExtractRegionTextRequested;
+        _panel.DesktopSessionsRequested += OnDesktopSessionsRequested;
+        _panel.DesktopTaskRequested += OnDesktopTaskRequested;
         _panel.AudioRequested += OpenAudioControls;
         _panel.BrightnessRequested += OpenBrightnessControls;
         _panel.NightModeRequested += ToggleNightMode;
@@ -279,6 +299,8 @@ internal sealed partial class AppRuntime : IDisposable
         _overlayTimer.Tick += (_, _) => ApplyOverlay(_foreground.Current);
         _inputTimer.Start();
         _overlayTimer.Start();
+        _desktopSessionTimer.Tick += OnDesktopSessionTimerTick;
+        _desktopSessionTimer.Start();
 
         Microsoft.Win32.SystemEvents.SessionSwitch += OnSessionSwitch;
         Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged;
@@ -312,6 +334,7 @@ internal sealed partial class AppRuntime : IDisposable
             _lifetime.Cancel();
             _inputTimer.Stop();
             _overlayTimer.Stop();
+            _desktopSessionTimer.Stop();
             Microsoft.Win32.SystemEvents.SessionSwitch -= OnSessionSwitch;
             Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
             Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
@@ -377,6 +400,10 @@ internal sealed partial class AppRuntime : IDisposable
             }
             _captureSessionGate.Dispose();
             _ocr.Dispose();
+            _desktopSessionControl.DisposeAsync()
+                .AsTask().GetAwaiter().GetResult();
+            _desktopSessions.Dispose();
+            _desktopTaskLedger.Dispose();
             _launcherIconExtractor.Dispose();
             _foreground.Dispose();
             _hotkeys?.Dispose();
@@ -421,7 +448,8 @@ internal sealed partial class AppRuntime : IDisposable
             _translationProviders,
             () => _ocr.AvailableLanguages,
             _launcherIconCache,
-            audioService: _audio);
+            audioService: _audio,
+            desktopSessionActions: _desktopSessions);
 
     private AiBrowserWindow CreateAiWindow()
     {

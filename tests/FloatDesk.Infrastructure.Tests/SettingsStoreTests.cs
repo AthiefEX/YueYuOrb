@@ -122,7 +122,13 @@ public sealed class SettingsStoreTests : IDisposable
         Assert.True(settings.Capture.OpenEditor);
         Assert.True(settings.Overlay.AlwaysOnTop);
         Assert.Equal(
-            Enum.GetValues<WheelActionKind>(),
+            AppSettings.DefaultWheelActions,
+            settings.WheelActions);
+        Assert.DoesNotContain(
+            WheelActionKind.DesktopSessions,
+            settings.WheelActions);
+        Assert.DoesNotContain(
+            WheelActionKind.RunDesktopTask,
             settings.WheelActions);
     }
 
@@ -241,7 +247,7 @@ public sealed class SettingsStoreTests : IDisposable
         var migrated = SettingsMigrator.Deserialize(json.ToJsonString(), options);
 
         Assert.Equal(
-            Enum.GetValues<WheelActionKind>(),
+            AppSettings.DefaultWheelActions,
             migrated.WheelActions);
     }
 

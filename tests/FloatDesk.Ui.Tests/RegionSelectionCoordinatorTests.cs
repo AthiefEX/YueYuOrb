@@ -15,7 +15,11 @@ public sealed class RegionSelectionCoordinatorTests
     {
         var surface = new FakeRegionSelectionSurface();
         var diagnostics = new List<(string Name, IReadOnlyDictionary<string, object?>? Properties)>();
-        var coordinator = CreateCoordinator(surface);
+        using var dispatcher = new SingleThreadDispatcher();
+        using var coordinator = CreateCoordinator(
+            [Monitor()],
+            new Queue<FakeRegionSelectionSurface>([surface]),
+            dispatcher.Dispatch);
         using var desktop = DesktopFrame();
 
         var selectionTask = coordinator.SelectAsync(
@@ -55,7 +59,11 @@ public sealed class RegionSelectionCoordinatorTests
     {
         var surface = new FakeRegionSelectionSurface();
         var diagnostics = new List<(string Name, IReadOnlyDictionary<string, object?>? Properties)>();
-        var coordinator = CreateCoordinator(surface);
+        using var dispatcher = new SingleThreadDispatcher();
+        using var coordinator = CreateCoordinator(
+            [Monitor()],
+            new Queue<FakeRegionSelectionSurface>([surface]),
+            dispatcher.Dispatch);
         using var desktop = DesktopFrame();
 
         var selectionTask = coordinator.SelectAsync(
@@ -86,7 +94,11 @@ public sealed class RegionSelectionCoordinatorTests
     public async Task CancellationClosesSelectionAndReturnsNull()
     {
         var surface = new FakeRegionSelectionSurface();
-        var coordinator = CreateCoordinator(surface);
+        using var dispatcher = new SingleThreadDispatcher();
+        using var coordinator = CreateCoordinator(
+            [Monitor()],
+            new Queue<FakeRegionSelectionSurface>([surface]),
+            dispatcher.Dispatch);
         using var desktop = DesktopFrame();
         using var cancellation = new CancellationTokenSource();
 
@@ -106,6 +118,7 @@ public sealed class RegionSelectionCoordinatorTests
     [Fact(Timeout = 10_000)]
     public async Task CancellationDuringSurfaceCreationNeverShowsClosedSurface()
     {
+        using var dispatcher = new SingleThreadDispatcher();
         var surface = new FakeRegionSelectionSurface();
         using var desktop = DesktopFrame();
         using var cancellation = new CancellationTokenSource();
@@ -117,7 +130,8 @@ public sealed class RegionSelectionCoordinatorTests
             {
                 cancellation.Cancel();
                 return surface;
-            });
+            },
+            dispatcher.Dispatch);
 
         var selection = await coordinator.SelectAsync(
             desktop,
@@ -167,6 +181,7 @@ public sealed class RegionSelectionCoordinatorTests
     [Fact(Timeout = 10_000)]
     public async Task MidShowFailureClosesEveryCreatedSurfaceAndPropagates()
     {
+        using var dispatcher = new SingleThreadDispatcher();
         var first = new FakeRegionSelectionSurface();
         var second = new FakeRegionSelectionSurface
         {
@@ -177,7 +192,8 @@ public sealed class RegionSelectionCoordinatorTests
         using var desktop = DesktopFrame();
         var coordinator = CreateCoordinator(
             [Monitor(@"\\.\DISPLAY1"), Monitor(@"\\.\DISPLAY2", 100)],
-            surfaces);
+            surfaces,
+            dispatcher.Dispatch);
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             coordinator.SelectAsync(
@@ -811,16 +827,6 @@ public sealed class RegionSelectionCoordinatorTests
         Assert.True(surface.Hidden);
         Assert.Equal(1, surface.CloseCount);
         await coordinator.DisposeBarrier.WaitAsync(TimeSpan.FromSeconds(2));
-    }
-
-    private static RegionSelectionCoordinator CreateCoordinator(
-        FakeRegionSelectionSurface surface)
-    {
-        var monitor = Monitor();
-        return new RegionSelectionCoordinator(
-            () => [monitor],
-            _ => null!,
-            (_, _, _) => surface);
     }
 
     private static RegionSelectionCoordinator CreateCoordinator(

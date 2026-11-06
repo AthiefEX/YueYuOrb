@@ -46,10 +46,15 @@ public partial class SettingsWindow : Window
     private readonly LauncherEntryResolver _launcherEntryResolver = new();
     private readonly LauncherDropOperationGate _launcherDropGate = new();
     private readonly ILauncherIconProvider? _launcherIconProvider;
+    private readonly DesktopSessions.IDesktopSessionSettingsActions?
+        _desktopSessionActions;
     private SettingsViewModel _viewModel;
     private bool _applyInProgress;
 
     public event Action<AppSettings>? Applied;
+
+    public void SelectDesktopSessionsPage() =>
+        SettingsTabControl.SelectedItem = DesktopSessionsSettingsTab;
 
     public SettingsWindow(
         ISettingsCoordinator settings,
@@ -59,7 +64,9 @@ public partial class SettingsWindow : Window
         ITranslationProviderFactory translationProviders,
         Func<IReadOnlyList<OcrLanguageOption>> getOcrLanguages,
         ILauncherIconProvider? launcherIconProvider = null,
-        IAudioService? audioService = null)
+        IAudioService? audioService = null,
+        DesktopSessions.IDesktopSessionSettingsActions?
+            desktopSessionActions = null)
     {
         InitializeComponent();
         _settings = settings;
@@ -71,6 +78,7 @@ public partial class SettingsWindow : Window
         _getOcrLanguages = getOcrLanguages ??
             throw new ArgumentNullException(nameof(getOcrLanguages));
         _launcherIconProvider = launcherIconProvider;
+        _desktopSessionActions = desktopSessionActions;
         _translationApplier = new TranslationSettingsApplier(
             settings,
             translationCredentials);
@@ -99,6 +107,7 @@ public partial class SettingsWindow : Window
         Loaded += OnSettingsWindowLoaded;
         DataContextChanged += OnAudioDataContextChanged;
         InitializeResourceUsageSettings();
+        InitializeDesktopSessionsSettings();
         Closing += (_, args) =>
         {
             CancelLauncherDrop();
@@ -323,6 +332,7 @@ public partial class SettingsWindow : Window
         _viewModel.LauncherIconProvider = _launcherIconProvider;
         DataContext = _viewModel;
         ApplyTranslationProviderLayout();
+        RefreshDesktopSessionsPage();
         Hide();
         _ = RefreshTranslationKeyStatusAsync();
     }
@@ -485,6 +495,7 @@ public partial class SettingsWindow : Window
         _viewModel.LauncherIconProvider = _launcherIconProvider;
         DataContext = _viewModel;
         ApplyTranslationProviderLayout();
+        RefreshDesktopSessionsPage();
     }
 
     private async Task RefreshTranslationKeyStatusAsync()
