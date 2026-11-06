@@ -53,6 +53,49 @@ Astra 审查明确使用 model=gpt-6-astra、reasoning_effort=low。审查不代
 通过标准：所有用例通过，0警告0错误；UI自动化实机验证不由mock结果替代。
 提交格式：git add -- <本任务明确文件列表>，git commit -m "feat: <本任务交付>"；提交前git diff --check。
 
+## 设置闪退修复回归（2026-11-06）
+
+**范围：** 先交付可独立测试的设置窗口稳定性修复包，再继续桌面分身后端补齐。此包不代表桌面分身已经可用。
+
+**已定位的真实故障：**
+
+1. `SettingsWindow.DesktopSessions.cs` 将步骤类型 ComboBox 先加入临时 Grid，随后又将同一 ComboBox 加入页面，触发 WPF `InvalidOperationException: 指定的元素已经是另一个元素的逻辑子元素`。真实设置窗口在存在桌面任务编辑器时立即退出。
+2. 第二个真实窗口探针发现 `SettingsWindow.ResourceUsage.cs` 在线程池枚举 GPU 后直接修改 `ObservableCollection`，触发非 Dispatcher 线程更新 CollectionView 的异常。修复改为按窗口、按可见代际取消和 Dispatcher 应用结果；快速隐藏再显示时旧请求不能覆盖新请求。
+
+**真实证据：**
+
+- `SettingsWindowProbe` 创建真实 WPF `App` 和完整 `SettingsWindow`，分别打开默认设置与含环境/任务设置，并额外执行 4 次快速隐藏/显示；修复前可复现重复父元素异常，修复后通过。
+- `SettingsWindowLifecycleTests` 与 `ReleaseConfigurationTests` 聚焦 6/6 通过。
+- 完整串行 Release 测试 1156/1156 通过：Core 179、Infrastructure 141、Windows 141、UI 695。
+- Release 构建通过，0 警告、0 错误。
+- 对发布目录真实运行 `scripts/smoke.ps1`，观察到 `startup.complete`、设置窗口标题出现、首实例持续存活、第二实例退出码 0。
+- 便携包 1110 个条目，包含 `YueYuOrb.exe`、README、LICENSE、SessionAgent 与 SessionClient；便携包、安装包和 SHA256 清单均已生成。
+
+**修复包：**
+
+- 可执行目录：`artifacts/settings-hotfix/publish/win-x64`
+- 便携包：`artifacts/settings-hotfix/YueYuOrb-1.4.1-win-x64-portable.zip`，SHA256 `565f3dec39d81688a5be74d1b9289287d5939a7a6bcf99a4b8016fc47f29d98b`
+- 安装包：`artifacts/settings-hotfix/YueYuOrb-1.4.1-win-x64-setup.exe`，SHA256 `71a72cc4c16ad0d2ae21315a6b0c0aae5d3906e42791c25b1b57cdd9de821c99`
+- 哈希清单：`artifacts/settings-hotfix/SHA256SUMS.txt`
+
+**未验证：** Windows 11 x64、真实混合 DPI 多显示器、干净虚拟机安装/卸载，以及用户原有配置升级路径未手工执行。安装包未签名；Windows 可能显示 SmartScreen 提示。
+
+### 完成度证据矩阵
+
+| 能力 | 代码已实现 | 生产接线 | 自动验证 | 实机验证 | 剩余阻断 |
+|---|---|---|---|---|---|
+| 设置窗口打开/关闭 | 是 | 是 | 是，真实窗口探针 | 是，本机 Windows | Windows 11/混合 DPI 未测 |
+| GPU 列表异步刷新 | 是 | 是 | 是 | 是，真实窗口探针 | 快速切换压力与多 GPU 热插拔未测 |
+| 单实例唤起设置 | 是 | 是 | 是 | 是，发布包冒烟 | 无 |
+| 便携包/安装包构建 | 是 | 是 | 是 | 文件与 ZIP 结构已核验 | 干净机安装未测 |
+| 本机 RDP 子会话 | 部分 | **否，执行宿主为 `null`** | 模拟 WTS 测试 | **否** | 缺生产执行宿主与真实隔离验收 |
+| 窄权限 SessionBroker | **否** | **否** | 否 | **否** | 目录与服务均未实现 |
+| Hyper-V 桌面分身 | 部分 | **否** | 模拟协议/生命周期测试 | **否** | 缺真实 Hyper-V socket、DPAPI 与来宾端到端验收 |
+| 桌面任务自动执行 | 部分 | **否** | 执行器/调度器测试 | **否** | 无可用生产会话宿主 |
+| 双后端隔离 | 否 | 否 | 否 | **否** | 必须在两条真实后端接通后验收 |
+
+**结论：** 设置闪退修复包可以交付人工测试；桌面分身仍处于“界面、契约和模拟测试存在，但生产后端未接通”的状态，不得标记完成。
+
 
 ### Task 1: 共享契约与配置
 

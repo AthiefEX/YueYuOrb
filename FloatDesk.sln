@@ -31,6 +31,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FloatDesk.SessionAgent", "s
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FloatDesk.SessionClient", "src\FloatDesk.SessionClient\FloatDesk.SessionClient.csproj", "{4D60F461-2D4A-47A0-8293-EB575CF159DC}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SettingsWindowProbe", "tools\SettingsWindowProbe\SettingsWindowProbe.csproj", "{BD2343E7-BFC7-44DD-885B-7C4CBB25E90F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -173,6 +175,18 @@ Global
 		{4D60F461-2D4A-47A0-8293-EB575CF159DC}.Release|x64.Build.0 = Release|Any CPU
 		{4D60F461-2D4A-47A0-8293-EB575CF159DC}.Release|x86.ActiveCfg = Release|Any CPU
 		{4D60F461-2D4A-47A0-8293-EB575CF159DC}.Release|x86.Build.0 = Release|Any CPU
+		{BD2343E7-BFC7-44DD-885B-7C4CBB25E90F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BD2343E7-BFC7-44DD-885B-7C4CBB25E90F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BD2343E7-BFC7-44DD-885B-7C4CBB25E90F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{BD2343E7-BFC7-44DD-885B-7C4CBB25E90F}.Debug|x64.Build.0 = Debug|Any CPU
+		{BD2343E7-BFC7-44DD-885B-7C4CBB25E90F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{BD2343E7-BFC7-44DD-885B-7C4CBB25E90F}.Debug|x86.Build.0 = Debug|Any CPU
+		{BD2343E7-BFC7-44DD-885B-7C4CBB25E90F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BD2343E7-BFC7-44DD-885B-7C4CBB25E90F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BD2343E7-BFC7-44DD-885B-7C4CBB25E90F}.Release|x64.ActiveCfg = Release|Any CPU
+		{BD2343E7-BFC7-44DD-885B-7C4CBB25E90F}.Release|x64.Build.0 = Release|Any CPU
+		{BD2343E7-BFC7-44DD-885B-7C4CBB25E90F}.Release|x86.ActiveCfg = Release|Any CPU
+		{BD2343E7-BFC7-44DD-885B-7C4CBB25E90F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -189,5 +203,6 @@ Global
 		{DF26B283-9A3C-4134-B729-2DCFDA904529} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 		{929D7261-A9BD-4CA3-8994-D5E88E1A5EBB} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{4D60F461-2D4A-47A0-8293-EB575CF159DC} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{BD2343E7-BFC7-44DD-885B-7C4CBB25E90F} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 	EndGlobalSection
 EndGlobal

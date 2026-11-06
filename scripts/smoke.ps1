@@ -14,6 +14,9 @@ if (-not (Test-Path -LiteralPath $Executable)) {
 if (Get-Process YueYuOrb -ErrorAction SilentlyContinue) {
     throw 'Stop any running YueYuOrb instance before running this smoke test.'
 }
+$settingsWindowTitle = [string]::Concat(
+    [char]0x6708, [char]0x8BED, [char]0x60AC,
+    [char]0x6D6E, [char]0x7403, [char]0x8BBE, [char]0x7F6E)
 
 $logPath = Join-Path $env:LOCALAPPDATA (
     'FloatDesk/logs/app-' + [DateTime]::UtcNow.ToString('yyyyMMdd') + '.log')
@@ -52,7 +55,25 @@ try {
         throw "Second instance exited with code $($second.ExitCode)."
     }
 
-    Write-Host 'Smoke PASS: startup.complete observed; primary alive; second instance exited with code 0.'
+    $settingsDeadline = (Get-Date).AddSeconds(8)
+    $settingsOpened = $false
+    while ((Get-Date) -lt $settingsDeadline) {
+        $current = Get-Process -Id $first.Id -ErrorAction SilentlyContinue
+        if ($null -eq $current) {
+            throw 'Primary process exited after the second instance requested settings.'
+        }
+        $current.Refresh()
+        if ($current.MainWindowTitle -eq $settingsWindowTitle) {
+            $settingsOpened = $true
+            break
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    if (-not $settingsOpened) {
+        throw 'The second instance exited, but the settings window did not open.'
+    }
+
+    Write-Host 'Smoke PASS: startup.complete observed; settings opened; primary stayed alive; second instance exited with code 0.'
 }
 finally {
     foreach ($process in @($second, $first)) {

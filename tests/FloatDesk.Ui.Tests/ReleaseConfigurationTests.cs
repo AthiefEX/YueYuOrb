@@ -176,6 +176,18 @@ public sealed class ReleaseConfigurationTests
             "Get-Process YueYuOrb",
             smokeScript,
             StringComparison.Ordinal);
+        foreach (var codePoint in new[] { "6708", "8BED", "60AC", "6D6E",
+                     "7403", "8BBE", "7F6E" })
+        {
+            Assert.Contains(
+                $"[char]0x{codePoint}",
+                smokeScript,
+                StringComparison.Ordinal);
+        }
+        Assert.Contains(
+            "settings window did not open",
+            smokeScript,
+            StringComparison.Ordinal);
         Assert.DoesNotContain(
             "Get-Process FloatDesk",
             smokeScript,

@@ -350,14 +350,21 @@ public partial class SettingsWindow
             Button("下移", () => MoveDesktopStep(1)),
             Button("删除步骤", OnRemoveDesktopStep)));
 
+        var stepKindField = new Grid();
+        stepKindField.ColumnDefinitions.Add(new ColumnDefinition
+        {
+            Width = new GridLength(110)
+        });
+        stepKindField.ColumnDefinitions.Add(
+            new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         _desktopStepKind = AddComboField(
-            new Grid(),
+            stepKindField,
             0,
-            "",
+            "步骤类型",
             Enum.GetValues<SessionCommandKind>());
         _desktopStepKind.SelectionChanged +=
             (_, _) => RebuildStepParameterInputs();
-        panel.Children.Add(_desktopStepKind);
+        panel.Children.Add(stepKindField);
         _desktopStepParameters = new StackPanel
         {
             Margin = new Thickness(0, 8, 0, 0)
