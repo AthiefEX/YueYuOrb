@@ -94,11 +94,13 @@ Astra 审查明确使用 model=gpt-6-astra、reasoning_effort=low。审查不代
 
 **Dependencies:** 任务1/2；助手基础先合并
 
-- [ ] 写行为测试并断言：WrongSessionCannotReceiveInput；SpoofedIdentityRejected；OversizedFrameRejected；ExpiredCommandRejected；DuplicateCommandNotExecutedTwice；CancelReleasesHeldKeys。
-- [ ] 使用通用聚焦命令运行对应测试类，确认因目标行为缺失而失败。
-- [ ] 按本项接口实现，遵守设计中的数值上限、身份校验和生命周期。
-- [ ] 聚焦测试通过，提交Astra low审查diff及测试证据。
-- [ ] 修复发现并回归；记录已验证/未验证能力与提交哈希；精确暂存本项文件提交。
+- [x] 写行为测试并断言：WrongSessionCannotReceiveInput；SpoofedIdentityRejected；OversizedFrameRejected；ExpiredCommandRejected；DuplicateCommandNotExecutedTwice；CancelReleasesHeldKeys。
+- [x] 使用通用聚焦命令运行对应测试类，确认因目标行为缺失而失败。
+- [x] 按本项接口实现，遵守设计中的数值上限、身份校验和生命周期。
+- [x] 聚焦测试通过，由当前模型完成验证审查（Astra low 额度不足）。
+- [x] 修复发现并回归；记录已验证/未验证能力与提交哈希；精确暂存本项文件提交。
+
+完成记录：`SessionProtocolTests` 13/13；完整 Release 测试 1095/1095，构建 0 警告/0 错误。已覆盖错误会话/账户、身份伪造、超大帧、过期命令、重复命令、取消幂等释放、执行器异常、启动秘密不进参数、16字节nonce及租约到期。命名管道传输、SessionAgent x64项目与安全ACL已编译。尚未实机端到端验证真实命名管道握手、真实助手进程会话发现和UI输入执行；实际自动化执行器按计划留到 Task 7，Task 4/5 接入后端时补实机验证。
 
 ### Task 4: A1 本机能力实测与 RDP 控件
 

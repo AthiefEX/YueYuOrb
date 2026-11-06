@@ -110,9 +110,16 @@
       "floatdesk.windows": {
         "type": "Project",
         "dependencies": {
-          "FloatDesk.Core": "[1.0.0, )",
+          "FloatDesk.Core": "[1.4.0, )",
           "System.Drawing.Common": "[10.0.0, )",
           "System.Security.Cryptography.ProtectedData": "[10.0.0, )"
+        }
+      },
+      "YueYuOrb.SessionAgent": {
+        "type": "Project",
+        "dependencies": {
+          "FloatDesk.Core": "[1.4.0, )",
+          "FloatDesk.Windows": "[1.4.0, )"
         }
       },
       "System.Drawing.Common": {

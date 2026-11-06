@@ -33,6 +33,7 @@ YueYuOrb.SessionAgent：在目标用户交互会话执行 UI Automation、SendIn
 每个命令绑定 EnvironmentId(Guid)、Generation(Guid)、WindowsSessionId(uint)、CommandId(Guid)、DeadlineUtc；重连产生新 Generation，旧命令直接拒绝。
 IDesktopSessionTransport：ConnectAsync返回并与SessionHandle核对Generation与LoginInstanceId；Acquire/Renew/ReleaseInputLease管理自动化输入租约；CancelAsync使用独立控制通道；SendAsync是唯一命令输入入口。SessionRuntime按环境串行派发，运行中最多一个命令，队列上限20，并为每条命令续约。
 本机通过限定用户 SID 的命名管道，校验对端 PID、会话身份和一次性握手；不能仅信任客户端提交的 SessionId。虚拟机采用 Hyper-V socket 通道，限定 VM ID、服务 GUID并使用本次配对的秘密完成握手；秘密使用 DPAPI 保存，不写日志、命令行或普通设置 JSON。若 Hyper-V socket 不可用，报告不支持，不静默开放 TCP 监听。
+本机协议Version=1使用4字节长度前缀和UTF-8 JSON，单帧上限1MiB。助手从标准输入的一次性引导通道读取32字节秘密，禁止通过命令行参数传递；宿主与助手各自生成16字节随机nonce，并以HMACSHA256双向证明环境、Generation、LoginInstanceId、会话和账户绑定。握手5秒超时，建立前同时核对管道对端PID、用户SID和Windows会话。已定义命令按CommandId去重，截止时间、Generation、会话不匹配均拒绝；取消走独立控制消息，输入租约到期或连接结束必须释放已按键。
 助手默认标准用户运行。需提升的系统准备使用窄权限辅助进程；任务自身提权需用户显式允许，不把任意外部请求传给管理员 shell。
 
 ## 状态、窗口与生命周期

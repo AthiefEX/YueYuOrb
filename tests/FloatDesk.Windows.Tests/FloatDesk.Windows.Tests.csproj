@@ -10,6 +10,7 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <ProjectReference Include="../../src/FloatDesk.Core/FloatDesk.Core.csproj" />
+    <ProjectReference Include="../../src/FloatDesk.SessionAgent/FloatDesk.SessionAgent.csproj" />
     <ProjectReference Include="../../src/FloatDesk.Windows/FloatDesk.Windows.csproj" />
   </ItemGroup>
   <ItemGroup>

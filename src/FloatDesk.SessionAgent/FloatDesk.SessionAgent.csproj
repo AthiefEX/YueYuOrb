@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <RootNamespace>FloatDesk.SessionAgent</RootNamespace>
+    <AssemblyName>YueYuOrb.SessionAgent</AssemblyName>
+    <AssemblyTitle>月语桌面会话助手</AssemblyTitle>
+    <Product>月语悬浮球</Product>
+    <Authors>七月风语</Authors>
+    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../FloatDesk.Core/FloatDesk.Core.csproj" />
+    <ProjectReference Include="../FloatDesk.Windows/FloatDesk.Windows.csproj" />
+  </ItemGroup>
+</Project>
