@@ -101,4 +101,10 @@ T14/T16（任务编辑基础与持久运行前置）：已完成任务草稿目�
 - 聚焦验证：`DesktopAutomationTaskCatalogTests`，1/1 通过；累计 Release 构建此前 0 警告 0 错误。
 - 真实验收：尚未接入设置 UI、实际任务运行账本或来宾执行；这些仍需后续 T14-T18 完成。
 
+T19（MCP stdio 入口）：已完成最小协议入口。
+- 新增独立 `YueYuOrb.McpServer` 项目，stdio 输入输出，不监听网络、不读取凭据、不启动进程。
+- 提供 `environments_list`、`tasks_schema`、`tasks_validate`、`tasks_create_draft` 四个工具；创建草稿明确不执行，后续 submit 必须接入统一 TaskGrant。
+- 聚焦验证：`McpTaskSchemaTests` 1/1 通过；MCP Release 构建 0 警告 0 错误。
+- 真实验收：尚未使用外部 MCP 客户端完成协议协商与任务链路；当前环境列表仍为最小占位，不能标记完整 MCP 交付。
+
 下一未完成主线：T08/T10-T12、T14-T24。T08 的本机窗口已有历史实现但 Hyper-V 显示/配对未实机验收；T10-T12 仍需要真实 Windows ISO、来宾凭据和专用 VM，缺失时只完成可验证代码与阻塞诊断，不宣称端到端完成。
