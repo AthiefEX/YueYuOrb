@@ -10,7 +10,7 @@ public sealed class DesktopAutomationTaskGrantTests
         var task = TaskDocumentV2.Create(Guid.NewGuid(), [GuestOperation.StartApplication("C:\\Approved\\demo.exe")]) with
         { AllowedPaths = ["C:\\Approved\\"] };
         var grant = new TaskGrant(Guid.NewGuid(), task.Id, task.Revision, Guid.NewGuid(),
-            new HashSet<GuestOperationKind> { GuestOperationKind.StartApplication }, ["C:\\Approved\\"], DateTimeOffset.UtcNow.AddMinutes(5), false, "manual");
+            [GuestOperationKind.StartApplication], ["C:\\Approved\\"], DateTimeOffset.UtcNow.AddMinutes(5), false, "manual");
 
         var decision = TaskPolicyEvaluator.Evaluate(task, grant, DateTimeOffset.UtcNow);
 

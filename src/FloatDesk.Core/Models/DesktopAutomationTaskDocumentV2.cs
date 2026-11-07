@@ -11,11 +11,11 @@ public sealed record GuestOperation(GuestOperationKind Kind, IReadOnlyDictionary
 
 public sealed record TaskDocumentV2(
     Guid Id, int Revision, Guid EnvironmentId, TaskExecutionMode Mode,
-    IReadOnlyList<GuestOperation> Operations, IReadOnlySet<string> AllowedCapabilities,
+    IReadOnlyList<GuestOperation> Operations, IReadOnlyList<string> AllowedCapabilities,
     IReadOnlyList<string> AllowedPaths, string? CredentialRef, bool ShutdownAfterSuccess,
     int MaxDurationSeconds)
 {
-    public static TaskDocumentV2 Create(Guid environmentId, IReadOnlyList<GuestOperation> operations) => new(Guid.NewGuid(), 1, environmentId, TaskExecutionMode.Fixed, operations, new HashSet<string>(StringComparer.OrdinalIgnoreCase), [], null, false, 1800);
+    public static TaskDocumentV2 Create(Guid environmentId, IReadOnlyList<GuestOperation> operations) => new(Guid.NewGuid(), 1, environmentId, TaskExecutionMode.Fixed, operations, [], [], null, false, 1800);
 }
 
 public sealed record TaskValidationError(string Code, string Message);

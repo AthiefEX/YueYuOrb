@@ -5,7 +5,7 @@ public sealed record TaskGrant(
     Guid TaskId,
     int TaskRevision,
     Guid EnvironmentId,
-    IReadOnlySet<GuestOperationKind> Operations,
+    IReadOnlyList<GuestOperationKind> Operations,
     IReadOnlyList<string> AllowedPaths,
     DateTimeOffset ExpiresAtUtc,
     bool AllowShutdown,
