@@ -27,6 +27,43 @@ public sealed record HyperVVmDeleteRequest(Guid VmId, bool DeleteConfiguration, 
 
 public sealed class HyperVVirtualMachineManager
 {
+    private readonly PowerShellHyperVHost _host;
+
+    public HyperVVirtualMachineManager(PowerShellHyperVHost? host = null) => _host = host ?? new PowerShellHyperVHost();
+
+    public async Task<IReadOnlyList<HyperVVirtualMachine>> ListAsync(CancellationToken cancellationToken)
+    {
+        var script = "Import-Module Hyper-V -ErrorAction Stop; Get-VM | ForEach-Object { [pscustomobject]@{ id=$_.Id; name=$_.Name; state=[string]$_.State; generation=$_.Generation; memoryStartupMiB=[int64]($_.MemoryStartup/1MB); processorCount=$_.ProcessorCount } } | ConvertTo-Json -Compress";
+        var json = await _host.RunScriptForManagementAsyncCore(script, cancellationToken).ConfigureAwait(false);
+        return ParseVmList(json);
+    }
+
+    public async Task<HyperVVirtualMachine> CreateAsync(HyperVVmCreateRequest request, CancellationToken cancellationToken)
+    {
+        ValidateCreate(request);
+        var json = await _host.RunScriptForManagementAsyncCore(BuildCreateScript(request), cancellationToken).ConfigureAwait(false);
+        var created = JsonDocument.Parse(json).RootElement;
+        return (await ListAsync(cancellationToken).ConfigureAwait(false)).First(vm => vm.Id == created.GetProperty("id").GetGuid());
+    }
+
+    public async Task StartAsync(Guid vmId, CancellationToken cancellationToken) => await _host.StartVmAsync(vmId, cancellationToken).ConfigureAwait(false);
+    public async Task StopAsync(Guid vmId, CancellationToken cancellationToken) => await _host.StopVmAsync(vmId, cancellationToken).ConfigureAwait(false);
+
+    public Task DeleteAsync(Guid vmId, bool deleteDisk, bool ownedByProduct, CancellationToken cancellationToken)
+    {
+        ValidateDelete(new HyperVVmDeleteRequest(vmId, true, deleteDisk), ownedByProduct);
+        var script = $$"""
+            $ErrorActionPreference = 'Stop'
+            Import-Module Hyper-V -ErrorAction Stop
+            $vm = Get-VM -Id ([guid]'{{vmId:D}}') -ErrorAction Stop
+            if ($vm.State -ne 'Off') { throw 'HyperVVmMustBeOff' }
+            $paths = @($vm.HardDrives | ForEach-Object { $_.Path })
+            Remove-VM -VM $vm -Force -ErrorAction Stop
+            if ({{(deleteDisk ? "$true" : "$false")}}) { $paths | Where-Object { $_ -and (Test-Path $_) } | Remove-Item -Force }
+            """;
+        return _host.RunScriptForManagementAsyncCore(script, cancellationToken);
+    }
+
     public static void ValidateCreate(HyperVVmCreateRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);

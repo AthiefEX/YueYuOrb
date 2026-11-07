@@ -77,7 +77,7 @@ public sealed class PowerShellHyperVHost : IHyperVHost
         return RunScriptAsync(script, cancellationToken);
     }
 
-    internal Task<string> RunScriptForManagementAsyncCore(
+    public Task<string> RunScriptForManagementAsyncCore(
         string script,
         CancellationToken cancellationToken) => RunScriptAsync(script, cancellationToken);
 
