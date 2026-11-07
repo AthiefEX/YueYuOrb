@@ -61,16 +61,20 @@ public sealed class HyperVVirtualMachineManager
     public Task DeleteAsync(Guid vmId, bool deleteDisk, bool ownedByProduct, CancellationToken cancellationToken)
     {
         ValidateDelete(new HyperVVmDeleteRequest(vmId, true, deleteDisk), ownedByProduct);
-        var script = $$"""
+        return _host.RunScriptForManagementAsyncCore(BuildDeleteScript(vmId, deleteDisk), cancellationToken);
+    }
+
+    public static string BuildDeleteScript(Guid vmId, bool deleteDisk)
+    {
+        return $$"""
             $ErrorActionPreference = 'Stop'
             Import-Module Hyper-V -ErrorAction Stop
             $vm = Get-VM -Id ([guid]'{{vmId:D}}') -ErrorAction Stop
             if ($vm.State -ne 'Off') { throw 'HyperVVmMustBeOff' }
             $paths = @($vm.HardDrives | ForEach-Object { $_.Path })
-            Remove-VM -VM $vm -Force -ErrorAction Stop
+            Remove-VM -VM $vm -Force -Confirm:$false -ErrorAction Stop
             if ({{(deleteDisk ? "$true" : "$false")}}) { $paths | Where-Object { $_ -and (Test-Path $_) } | Remove-Item -Force }
             """;
-        return _host.RunScriptForManagementAsyncCore(script, cancellationToken);
     }
 
     public static void ValidateCreate(HyperVVmCreateRequest request)

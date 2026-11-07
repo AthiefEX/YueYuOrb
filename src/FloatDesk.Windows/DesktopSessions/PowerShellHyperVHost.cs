@@ -39,14 +39,20 @@ public sealed class PowerShellHyperVHost : IHyperVHost
         Guid vmId,
         CancellationToken cancellationToken)
     {
+        var script = BuildStartVmScript(vmId);
+        return RunScriptAsync(script, cancellationToken);
+    }
+
+    public static string BuildStartVmScript(Guid vmId)
+    {
         var id = vmId.ToString("D", CultureInfo.InvariantCulture);
-        var script = $$"""
+        return $$"""
             $ErrorActionPreference = 'Stop'
             Import-Module Hyper-V -ErrorAction Stop
             $id = [guid]'{{id}}'
             $vm = Get-VM -Id $id -ErrorAction Stop
             if ($vm.State -ne 'Running') {
-                Start-VM -VM $vm -ErrorAction Stop
+                Start-VM -VM $vm -Confirm:$false -ErrorAction Stop
             }
             $deadline = (Get-Date).AddSeconds(120)
             do {
@@ -58,23 +64,27 @@ public sealed class PowerShellHyperVHost : IHyperVHost
                 throw "VM did not reach Running state: $($vm.State)"
             }
             """;
-        return RunScriptAsync(script, cancellationToken);
     }
 
     public Task StopVmAsync(
         Guid vmId,
         CancellationToken cancellationToken)
     {
+        var script = BuildStopVmScript(vmId);
+        return RunScriptAsync(script, cancellationToken);
+    }
+
+    public static string BuildStopVmScript(Guid vmId)
+    {
         var id = vmId.ToString("D", CultureInfo.InvariantCulture);
-        var script = $$"""
+        return $$"""
             $ErrorActionPreference = 'Stop'
             Import-Module Hyper-V -ErrorAction Stop
             $vm = Get-VM -Id ([guid]'{{id}}') -ErrorAction Stop
             if ($vm.State -ne 'Off') {
-                Stop-VM -VM $vm -ErrorAction Stop
+                Stop-VM -VM $vm -Confirm:$false -ErrorAction Stop
             }
             """;
-        return RunScriptAsync(script, cancellationToken);
     }
 
     public Task<string> RunScriptForManagementAsyncCore(

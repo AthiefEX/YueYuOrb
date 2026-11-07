@@ -110,4 +110,16 @@ public sealed class HyperVVirtualMachineManagerTests
 
         Assert.Equal(expected, values[0].State);
     }
+
+    [Fact]
+    public void LifecycleScriptsDisableInteractivePowerShellConfirmation()
+    {
+        var start = PowerShellHyperVHost.BuildStartVmScript(Guid.NewGuid());
+        var stop = PowerShellHyperVHost.BuildStopVmScript(Guid.NewGuid());
+        var delete = HyperVVirtualMachineManager.BuildDeleteScript(Guid.NewGuid(), deleteDisk: true);
+
+        Assert.Contains("-Confirm:$false", start, StringComparison.Ordinal);
+        Assert.Contains("-Confirm:$false", stop, StringComparison.Ordinal);
+        Assert.Contains("-Confirm:$false", delete, StringComparison.Ordinal);
+    }
 }
