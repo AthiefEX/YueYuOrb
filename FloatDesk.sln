@@ -35,6 +35,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SettingsWindowProbe", "tool
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FloatDesk.SessionBroker", "src\FloatDesk.SessionBroker\FloatDesk.SessionBroker.csproj", "{6718B423-FB56-4E57-86BC-49CDF53FAAB5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FloatDesk.McpServer", "src\FloatDesk.McpServer\FloatDesk.McpServer.csproj", "{C8CE7E81-3A08-40A0-A618-D4FE9F12BECF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -201,6 +203,18 @@ Global
 		{6718B423-FB56-4E57-86BC-49CDF53FAAB5}.Release|x64.Build.0 = Release|Any CPU
 		{6718B423-FB56-4E57-86BC-49CDF53FAAB5}.Release|x86.ActiveCfg = Release|Any CPU
 		{6718B423-FB56-4E57-86BC-49CDF53FAAB5}.Release|x86.Build.0 = Release|Any CPU
+		{C8CE7E81-3A08-40A0-A618-D4FE9F12BECF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C8CE7E81-3A08-40A0-A618-D4FE9F12BECF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C8CE7E81-3A08-40A0-A618-D4FE9F12BECF}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C8CE7E81-3A08-40A0-A618-D4FE9F12BECF}.Debug|x64.Build.0 = Debug|Any CPU
+		{C8CE7E81-3A08-40A0-A618-D4FE9F12BECF}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C8CE7E81-3A08-40A0-A618-D4FE9F12BECF}.Debug|x86.Build.0 = Debug|Any CPU
+		{C8CE7E81-3A08-40A0-A618-D4FE9F12BECF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C8CE7E81-3A08-40A0-A618-D4FE9F12BECF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C8CE7E81-3A08-40A0-A618-D4FE9F12BECF}.Release|x64.ActiveCfg = Release|Any CPU
+		{C8CE7E81-3A08-40A0-A618-D4FE9F12BECF}.Release|x64.Build.0 = Release|Any CPU
+		{C8CE7E81-3A08-40A0-A618-D4FE9F12BECF}.Release|x86.ActiveCfg = Release|Any CPU
+		{C8CE7E81-3A08-40A0-A618-D4FE9F12BECF}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -219,5 +233,6 @@ Global
 		{4D60F461-2D4A-47A0-8293-EB575CF159DC} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{BD2343E7-BFC7-44DD-885B-7C4CBB25E90F} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 		{6718B423-FB56-4E57-86BC-49CDF53FAAB5} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{C8CE7E81-3A08-40A0-A618-D4FE9F12BECF} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

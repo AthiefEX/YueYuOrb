@@ -84,3 +84,21 @@ T07（生产工厂和现有 VM）：已完成生产入口接线的安全降级�
 - 真实验收：尚未取得真实 VM/来宾 Agent，因此 Hyper-V 仍是“已接入生产入口、外部依赖未满足”，不标记端到端完成。
 
 验证备注：完整串行套件目前为 Core 187/187、Infrastructure 93/93、Windows 181/181 通过；UI 706/707 通过，唯一失败是现有 `SettingsWindowLifecycleTests` 依赖的探针路径未找到（当前探针输出在 `tools/SettingsWindowProbe/bin/Release/net10.0-windows10.0.19041.0`，测试查找 `tests/.../bin/SettingsWindowProbe/release`）。这不是本轮产品断言失败，后续 T23 统一修复构建/探针产物路径后再复测。
+
+T09（CPU/内存/磁盘/网络/GPU 设置）：完成受控资源管理边界。
+- 新增 `IHyperVEnvironmentManager` 和 PowerShell 管理实现，资源读取使用结构化 JSON；资源应用要求环境匹配、VM 关机和固定 `Set-VM` 脚本，不开放任意脚本。
+- 聚焦验证：`HyperVEnvironmentManagerTests`，1/1 通过；Release 构建 0 警告 0 错误。
+- 真实验收：没有对真实 VM 执行资源变更，磁盘扩容、来宾分区扩展和 GPU 能力仍未验收。
+
+T13（统一授权和任务验证）：已完成基础策略层。
+- 新增 `TaskGrant` 和 `TaskPolicyEvaluator`，提交前校验任务修订、环境、操作集合、路径范围、过期时间及任务结束关闭权限；缺授权或扩大范围返回 `NeedsAuthorization`。
+- 聚焦验证：`DesktopAutomationTaskGrantTests`，2/2 通过；Release 构建 0 警告 0 错误。
+- 真实验收：尚未接入手动编辑器、AI 或 MCP 提交入口；这些入口必须继续复用该策略，不能各自绕过。
+
+T14/T16（任务编辑基础与持久运行前置）：已完成任务草稿目录。
+- 新增 `DesktopAutomationTaskCatalog`，支持任务草稿创建、读取和 expectedRevision 更新；采用临时文件替换，避免半写入。
+- 修复任务 DSL 的接口集合无法由 `System.Text.Json` 反序列化问题，改用可序列化列表类型。
+- 聚焦验证：`DesktopAutomationTaskCatalogTests`，1/1 通过；累计 Release 构建此前 0 警告 0 错误。
+- 真实验收：尚未接入设置 UI、实际任务运行账本或来宾执行；这些仍需后续 T14-T18 完成。
+
+下一未完成主线：T08/T10-T12、T14-T24。T08 的本机窗口已有历史实现但 Hyper-V 显示/配对未实机验收；T10-T12 仍需要真实 Windows ISO、来宾凭据和专用 VM，缺失时只完成可验证代码与阻塞诊断，不宣称端到端完成。
