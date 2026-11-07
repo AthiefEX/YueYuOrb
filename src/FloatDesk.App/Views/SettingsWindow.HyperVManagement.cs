@@ -162,7 +162,7 @@ public partial class SettingsWindow
 
         try
         {
-            Process.Start(HyperVVirtualMachineManager.BuildVmConnectCommand(vm.Id));
+            Process.Start(HyperVVirtualMachineManager.BuildVmConnectCommand(vm.Name));
             _hyperVVmStatus.Text = "已打开 Hyper-V 控制台；请在来宾 Windows 中安装并启动月语 Agent，完成配对后再打开桌面视图。";
         }
         catch (Exception exception)

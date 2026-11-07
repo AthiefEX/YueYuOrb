@@ -127,15 +127,15 @@ public sealed class HyperVVirtualMachineManagerTests
     }
 
     [Fact]
-    public void VmConnectCommandTargetsTheSelectedVmOnLocalHost()
+    public void VmConnectCommandTargetsTheSelectedVmNameOnLocalHost()
     {
-        var vmId = Guid.NewGuid();
+        const string vmName = "月语分身-20261107-1323";
 
-        var command = HyperVVirtualMachineManager.BuildVmConnectCommand(vmId);
+        var command = HyperVVirtualMachineManager.BuildVmConnectCommand(vmName);
 
         Assert.Equal("vmconnect.exe", Path.GetFileName(command.FileName));
         Assert.Equal("localhost", command.ArgumentList[0]);
-        Assert.Equal(vmId.ToString("D"), command.ArgumentList[1]);
+        Assert.Equal(vmName, command.ArgumentList[1]);
         Assert.True(command.UseShellExecute);
     }
 }

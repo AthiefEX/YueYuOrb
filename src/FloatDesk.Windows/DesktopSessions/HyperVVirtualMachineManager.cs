@@ -48,10 +48,10 @@ public sealed class HyperVVirtualMachineManager
         if ($vms.Count -eq 0) { '[]' } else { $vms | ConvertTo-Json -Compress }
         """;
 
-    public static ProcessStartInfo BuildVmConnectCommand(Guid vmId)
+    public static ProcessStartInfo BuildVmConnectCommand(string vmName)
     {
-        if (vmId == Guid.Empty)
-            throw new ArgumentException("A VM identity is required.", nameof(vmId));
+        if (string.IsNullOrWhiteSpace(vmName))
+            throw new ArgumentException("A VM name is required.", nameof(vmName));
 
         var command = new ProcessStartInfo
         {
@@ -61,7 +61,7 @@ public sealed class HyperVVirtualMachineManager
             UseShellExecute = true
         };
         command.ArgumentList.Add("localhost");
-        command.ArgumentList.Add(vmId.ToString("D"));
+        command.ArgumentList.Add(vmName);
         return command;
     }
 
