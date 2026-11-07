@@ -6,6 +6,7 @@ namespace FloatDesk.App;
 
 internal sealed partial class AppRuntime
 {
+    private System.Windows.Controls.Primitives.Popup? _desktopSessionPicker;
     private static readonly string DesktopSessionBrokerPath = Path.Combine(
         AppContext.BaseDirectory,
         "desktop-sessions",
@@ -25,10 +26,19 @@ internal sealed partial class AppRuntime
     private DesktopSessionBackendBundle CreateDesktopSessionBackendBundle(
         EnvironmentProfile environment)
     {
-        if (environment.Backend != DesktopSessionBackendKind.LocalChild)
+        if (environment.Backend == DesktopSessionBackendKind.HyperV)
         {
-            throw new NotSupportedException(
-                "HyperVProductionBackendUnavailable");
+            var endpoints = new HyperVAgentEndpointRegistry();
+            var secrets = new DpapiHyperVPairingSecretStore();
+            var backend = new HyperVSessionBackend(
+                new PowerShellHyperVHost(),
+                new UnavailableHyperVGuestAgentProbe(),
+                endpoints);
+            var transport = new HyperVSocketTransport(
+                new WindowsHyperVSocketConnector(),
+                endpoints,
+                secrets);
+            return new DesktopSessionBackendBundle(backend, transport);
         }
 
         var bootstrapStore = _desktopSessionBootstrapStore ??
@@ -37,8 +47,22 @@ internal sealed partial class AppRuntime
         var native = new ChildSessionNative();
         var launcher = new RdpChildSessionLauncher(
             native,
-            agentBootstrapper: new SessionBrokerClient(),
-            bootstrapStore: bootstrapStore);
+            agentBootstrapper: new ServiceStartingSessionBroker(),
+            bootstrapStore: bootstrapStore,
+            stopEnvironment: async id =>
+            {
+                await LocalSessionBrokerLifecycle.SetRunningAsync(false);
+                return await _desktopSessions.StopEnvironmentAsync(id, CancellationToken.None);
+            },
+            saveResolution: async (id, width, height) =>
+            {
+                var result = await _settings.UpdateAsync(current => current with
+                {
+                    DesktopSessions = DesktopSessionResolutionPreferences.Update(current.DesktopSessions, id, width, height)
+                }, _lifetime.Token);
+                if (!result.Success)
+                    throw new InvalidOperationException("分辨率已切换，但保存失败，请在设置中重试。");
+            });
         return new DesktopSessionBackendBundle(
             new ChildSessionBackend(native, launcher),
             new NamedPipeSessionTransport(
@@ -48,9 +72,82 @@ internal sealed partial class AppRuntime
     private void OnDesktopSessionsRequested()
     {
         _panel?.HideAnimated();
+        var candidates = DesktopSessionLaunchSelection.GetCandidates(_settings.Current.DesktopSessions);
+        if (candidates.Count == 1)
+        {
+            _ = StartDesktopSessionFromWheelAsync(candidates[0].Id);
+            return;
+        }
+        if (candidates.Count > 1)
+        {
+            ShowDesktopSessionPicker(candidates);
+            return;
+        }
         ShowSettings();
         GetTool<FloatDesk.App.Views.SettingsWindow>()
             ?.SelectDesktopSessionsPage();
+    }
+
+    private void ShowDesktopSessionPicker(IReadOnlyList<EnvironmentProfile> candidates)
+    {
+        if (_desktopSessionPicker is not null)
+            _desktopSessionPicker.IsOpen = false;
+        var options = new System.Windows.Controls.StackPanel();
+        var border = new System.Windows.Controls.Border
+        {
+            Child = options, Padding = new System.Windows.Thickness(10), CornerRadius = new System.Windows.CornerRadius(14),
+            BorderThickness = new System.Windows.Thickness(1), MaxHeight = 420, MinWidth = 230
+        };
+        border.Resources.MergedDictionaries.Add(new System.Windows.ResourceDictionary
+        {
+            Source = new Uri("/YueYuOrb;component/Resources/SettingsWindowResources.xaml", UriKind.Relative)
+        });
+        border.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "SettingsCardBrush");
+        border.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, "SettingsLineBrush");
+        border.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, "SettingsInkBrush");
+        var popup = new System.Windows.Controls.Primitives.Popup
+        {
+            Child = border, PlacementTarget = _orb, Placement = System.Windows.Controls.Primitives.PlacementMode.Right,
+            StaysOpen = false, AllowsTransparency = true
+        };
+        options.Children.Add(new System.Windows.Controls.TextBlock
+        {
+            Text = "选择桌面分身", Margin = new System.Windows.Thickness(10, 5, 10, 10),
+            FontWeight = System.Windows.FontWeights.SemiBold
+        });
+        var rows = new System.Windows.Controls.StackPanel();
+        options.Children.Add(new System.Windows.Controls.ScrollViewer
+        {
+            Content = rows, MaxHeight = 350, VerticalScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility.Disabled
+        });
+        foreach (var environment in candidates)
+        {
+            var button = new System.Windows.Controls.Button
+            {
+                Content = environment.Name,
+                ToolTip = environment.Backend == DesktopSessionBackendKind.LocalChild ? "本机分身" : "Hyper-V 分身",
+                Style = (System.Windows.Style)border.FindResource("ActionButtonStyle"),
+                Margin = new System.Windows.Thickness(0, 3, 0, 3),
+                HorizontalContentAlignment = System.Windows.HorizontalAlignment.Left
+            };
+            button.Click += (_, _) => { popup.IsOpen = false; _ = StartDesktopSessionFromWheelAsync(environment.Id); };
+            rows.Children.Add(button);
+        }
+        _desktopSessionPicker = popup;
+        popup.IsOpen = true;
+    }
+
+    private async Task StartDesktopSessionFromWheelAsync(Guid environmentId)
+    {
+        try
+        {
+            var result = await _desktopSessions.StartEnvironmentAsync(environmentId, _lifetime.Token);
+            if (!result.Success)
+                _tray?.ShowWarning("桌面分身", result.Message);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception exception) { _tray?.ShowWarning("桌面分身", $"启动失败：{exception.Message}"); }
     }
 
     private void OnDesktopTaskRequested(Guid taskId) =>

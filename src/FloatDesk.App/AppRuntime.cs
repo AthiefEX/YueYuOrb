@@ -97,13 +97,10 @@ internal sealed partial class AppRuntime : IDisposable
             HasDesktopSessionBrokerPayload()
                 ? new ChildSessionAgentBootstrapStore()
                 : null;
-        var desktopSessionHost =
-            _desktopSessionBootstrapStore is null
-                ? null
-                : new DesktopSessionProductionHost(
-                    () => _settings.Current,
-                    CreateDesktopSessionBackendBundle,
-                    _desktopStartupLedger);
+        var desktopSessionHost = new DesktopSessionProductionHost(
+            () => _settings.Current,
+            CreateDesktopSessionBackendBundle,
+            _desktopStartupLedger);
         _desktopSessions = new DesktopSessionApplicationService(
             () => _settings.Current,
             _desktopTaskLedger,
