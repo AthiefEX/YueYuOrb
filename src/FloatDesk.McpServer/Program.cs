@@ -6,6 +6,8 @@ namespace FloatDesk.McpServer;
 internal static class Program
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+    private static readonly FloatDesk.Infrastructure.DesktopSessions.DesktopAutomationTaskCatalog Catalog =
+        new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FloatDesk", "desktop-sessions"));
 
     private static async Task Main()
     {
@@ -43,7 +45,7 @@ internal static class Program
         };
     }
 
-    private static object Tools(JsonElement request) => new { jsonrpc = "2.0", id = Id(request), result = new { tools = new[] { Tool("environments_list", "List configured desktop environments."), Tool("tasks_schema", "Describe the safe task DSL."), Tool("tasks_validate", "Validate a task draft without executing it."), Tool("tasks_create_draft", "Create a task draft; this never executes it.") } } };
+    private static object Tools(JsonElement request) => new { jsonrpc = "2.0", id = Id(request), result = new { tools = new[] { Tool("environments_list", "List configured desktop environments."), Tool("tasks_schema", "Describe the safe task DSL."), Tool("tasks_validate", "Validate a task draft without executing it."), Tool("tasks_create_draft", "Create a task draft; this never executes it."), Tool("tasks_list", "List persisted task drafts."), Tool("tasks_get", "Read one persisted task draft."), Tool("tasks_submit", "Submit a task only with an existing scoped grant.") } } };
 
     private static object Call(JsonElement request)
     {
@@ -54,10 +56,38 @@ internal static class Program
             "environments_list" => new { environments = Array.Empty<object>() },
             "tasks_schema" => new { format = "TaskDocumentV2", execution = "draft-only-until-submit", operations = Enum.GetNames<GuestOperationKind>() },
             "tasks_validate" => Validate(arguments),
-            "tasks_create_draft" => new { status = "draft", executionStarted = false, message = "Draft accepted for review; submit requires a scoped grant." },
+            "tasks_create_draft" => CreateDraft(arguments),
+            "tasks_list" => ListTasks().GetAwaiter().GetResult(),
+            "tasks_get" => GetTask(arguments).GetAwaiter().GetResult(),
+            "tasks_submit" => new { status = "needs_authorization", executionStarted = false, errorCode = "NeedsAuthorization", message = "A locally approved TaskGrant and idempotency key are required." },
             _ => new { error = "ToolNotFound" }
         };
         return new { jsonrpc = "2.0", id = Id(request), result = new { content = new[] { new { type = "text", text = JsonSerializer.Serialize(result, JsonOptions) } } } };
+    }
+
+    private static object CreateDraft(JsonElement arguments)
+    {
+        try
+        {
+            var task = arguments.Deserialize<TaskDocumentV2>(JsonOptions);
+            if (task is null) return new { status = "invalid", errorCode = "TaskMissing" };
+            var validation = TaskDocumentV2Validator.Validate(task);
+            if (!validation.IsValid) return new { status = "invalid", errors = validation.Errors };
+            var saved = Catalog.CreateAsync(task, CancellationToken.None).GetAwaiter().GetResult();
+            return new { status = "draft", taskId = saved.Id, revision = saved.Revision, executionStarted = false };
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException)
+        { return new { status = "invalid", errorCode = exception.Message }; }
+    }
+
+    private static async Task<object> ListTasks() => new { tasks = await Catalog.ListAsync(CancellationToken.None).ConfigureAwait(false) };
+
+    private static async Task<object> GetTask(JsonElement arguments)
+    {
+        if (!arguments.TryGetProperty("taskId", out var id) || !Guid.TryParse(id.GetString(), out var taskId))
+            return new { errorCode = "TaskIdInvalid" };
+        var task = (await Catalog.ListAsync(CancellationToken.None).ConfigureAwait(false)).FirstOrDefault(item => item.Id == taskId);
+        return task is null ? new { errorCode = "TaskNotFound" } : new { task };
     }
 
     private static object Validate(JsonElement arguments)
