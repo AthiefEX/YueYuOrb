@@ -33,10 +33,17 @@ public sealed class HyperVVirtualMachineManager
 
     public async Task<IReadOnlyList<HyperVVirtualMachine>> ListAsync(CancellationToken cancellationToken)
     {
-        var script = "Import-Module Hyper-V -ErrorAction Stop; Get-VM | ForEach-Object { [pscustomobject]@{ id=$_.Id; name=$_.Name; state=[string]$_.State; generation=$_.Generation; memoryStartupMiB=[int64]($_.MemoryStartup/1MB); processorCount=$_.ProcessorCount } } | ConvertTo-Json -Compress";
+        var script = BuildListScript();
         var json = await _host.RunScriptForManagementAsyncCore(script, cancellationToken).ConfigureAwait(false);
         return ParseVmList(json);
     }
+
+    public static string BuildListScript() => """
+        $ErrorActionPreference = 'Stop'
+        Import-Module Hyper-V -ErrorAction Stop
+        $vms = @(Get-VM | ForEach-Object { [pscustomobject]@{ id=$_.Id; name=$_.Name; state=[string]$_.State; generation=$_.Generation; memoryStartupMiB=[int64]($_.MemoryStartup/1MB); processorCount=$_.ProcessorCount } })
+        if ($vms.Count -eq 0) { '[]' } else { $vms | ConvertTo-Json -Compress }
+        """;
 
     public async Task<HyperVVirtualMachine> CreateAsync(HyperVVmCreateRequest request, CancellationToken cancellationToken)
     {

@@ -51,7 +51,8 @@ public partial class SettingsWindow
             Button("刷新虚拟机", () => _ = RefreshHyperVVmsAsync()),
             Button("从 ISO 创建", () => _ = CreateHyperVVmAsync()),
             Button("启动", () => _ = ChangeSelectedHyperVVmAsync(true)),
-            Button("关机", () => _ = ChangeSelectedHyperVVmAsync(false))));
+            Button("关机", () => _ = ChangeSelectedHyperVVmAsync(false)),
+            Button("删除", () => _ = DeleteSelectedHyperVVmAsync())));
         _ = RefreshHyperVVmsAsync();
         return panel;
     }
@@ -97,6 +98,57 @@ public partial class SettingsWindow
             await RefreshHyperVVmsAsync();
         }
         catch (Exception exception) { _hyperVVmStatus.Text = $"操作失败：{exception.Message}"; }
+    }
+
+    private async Task DeleteSelectedHyperVVmAsync()
+    {
+        if (_hyperVVmList.SelectedItem is not HyperVVirtualMachine vm)
+        {
+            _hyperVVmStatus.Text = "请先选择虚拟机。";
+            return;
+        }
+
+        var owned = _viewModel.DesktopSessionEnvironments.Any(environment =>
+            environment.Backend == DesktopSessionBackendKind.HyperV &&
+            Guid.TryParse(environment.BackendProfileId, out var id) && id == vm.Id);
+        if (!owned)
+        {
+            _hyperVVmStatus.Text = "为避免误删外部虚拟机，只能删除由月语创建并登记的虚拟机。";
+            return;
+        }
+
+        if (vm.State != HyperVVirtualMachineState.Off)
+        {
+            _hyperVVmStatus.Text = "请先关机，再删除虚拟机。";
+            return;
+        }
+
+        var confirmation = MessageBox.Show(
+            this,
+            $"确定删除虚拟机“{vm.Name}”及其虚拟磁盘吗？此操作不可撤销。",
+            "删除 Hyper-V 虚拟机",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (confirmation != MessageBoxResult.Yes)
+            return;
+
+        try
+        {
+            _hyperVVmStatus.Text = "正在删除虚拟机及虚拟磁盘，请稍候…";
+            await _hyperVVmManager.DeleteAsync(vm.Id, deleteDisk: true, ownedByProduct: true, CancellationToken.None);
+            var environment = _viewModel.DesktopSessionEnvironments.FirstOrDefault(item =>
+                item.Backend == DesktopSessionBackendKind.HyperV &&
+                item.BackendProfileId.Equals(vm.Id.ToString(), StringComparison.OrdinalIgnoreCase));
+            if (environment is not null)
+                _viewModel.RemoveDesktopSessionEnvironment(environment.Id);
+            RefreshDesktopSessionsPage();
+            _hyperVVmStatus.Text = "虚拟机及虚拟磁盘已删除。";
+            await RefreshHyperVVmsAsync();
+        }
+        catch (Exception exception)
+        {
+            _hyperVVmStatus.Text = $"删除失败：{exception.Message}";
+        }
     }
 
     private void OpenWindowsFeatures()

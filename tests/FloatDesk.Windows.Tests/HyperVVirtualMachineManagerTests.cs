@@ -52,4 +52,13 @@ public sealed class HyperVVirtualMachineManagerTests
         Assert.Equal("Single", values[0].Name);
         Assert.Equal(HyperVVirtualMachineState.Off, values[0].State);
     }
+
+    [Fact]
+    public void ListScriptEmitsAnEmptyJsonArrayWhenNoVirtualMachinesExist()
+    {
+        var script = HyperVVirtualMachineManager.BuildListScript();
+
+        Assert.Contains("$vms = @(Get-VM", script, StringComparison.Ordinal);
+        Assert.Contains("'[]'", script, StringComparison.Ordinal);
+    }
 }
