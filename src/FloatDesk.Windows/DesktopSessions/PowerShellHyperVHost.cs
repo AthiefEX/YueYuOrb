@@ -42,6 +42,7 @@ public sealed class PowerShellHyperVHost : IHyperVHost
         var id = vmId.ToString("D", CultureInfo.InvariantCulture);
         var script = $$"""
             $ErrorActionPreference = 'Stop'
+            Import-Module Hyper-V -ErrorAction Stop
             $id = [guid]'{{id}}'
             $vm = Get-VM -Id $id -ErrorAction Stop
             if ($vm.State -ne 'Running') {
@@ -67,6 +68,7 @@ public sealed class PowerShellHyperVHost : IHyperVHost
         var id = vmId.ToString("D", CultureInfo.InvariantCulture);
         var script = $$"""
             $ErrorActionPreference = 'Stop'
+            Import-Module Hyper-V -ErrorAction Stop
             $vm = Get-VM -Id ([guid]'{{id}}') -ErrorAction Stop
             if ($vm.State -ne 'Off') {
                 Stop-VM -VM $vm -ErrorAction Stop
@@ -75,6 +77,10 @@ public sealed class PowerShellHyperVHost : IHyperVHost
         return RunScriptAsync(script, cancellationToken);
     }
 
+    internal Task<string> RunScriptForManagementAsyncCore(
+        string script,
+        CancellationToken cancellationToken) => RunScriptAsync(script, cancellationToken);
+
     private async Task<VmQuery> QueryAsync(
         Guid vmId,
         CancellationToken cancellationToken)
@@ -82,6 +88,7 @@ public sealed class PowerShellHyperVHost : IHyperVHost
         var id = vmId.ToString("D", CultureInfo.InvariantCulture);
         var script = $$"""
             $ErrorActionPreference = 'Stop'
+            Import-Module Hyper-V -ErrorAction SilentlyContinue
             if ($null -eq (Get-Command Get-VM -ErrorAction SilentlyContinue)) {
                 [pscustomobject]@{
                     available = $false
