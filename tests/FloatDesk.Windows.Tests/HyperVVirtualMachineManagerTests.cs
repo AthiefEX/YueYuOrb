@@ -125,4 +125,17 @@ public sealed class HyperVVirtualMachineManagerTests
         Assert.Contains("'ok'", stop, StringComparison.Ordinal);
         Assert.Contains("'ok'", delete, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void VmConnectCommandTargetsTheSelectedVmOnLocalHost()
+    {
+        var vmId = Guid.NewGuid();
+
+        var command = HyperVVirtualMachineManager.BuildVmConnectCommand(vmId);
+
+        Assert.Equal("vmconnect.exe", Path.GetFileName(command.FileName));
+        Assert.Equal("localhost", command.ArgumentList[0]);
+        Assert.Equal(vmId.ToString("D"), command.ArgumentList[1]);
+        Assert.True(command.UseShellExecute);
+    }
 }

@@ -52,6 +52,7 @@ public partial class SettingsWindow
             Button("从 ISO 创建", () => _ = CreateHyperVVmAsync()),
             Button("启动", () => _ = ChangeSelectedHyperVVmAsync(true)),
             Button("关机", () => _ = ChangeSelectedHyperVVmAsync(false)),
+            Button("打开控制台", OpenSelectedHyperVConsole),
             Button("删除", () => _ = DeleteSelectedHyperVVmAsync())));
         _ = RefreshHyperVVmsAsync();
         return panel;
@@ -148,6 +149,25 @@ public partial class SettingsWindow
         catch (Exception exception)
         {
             _hyperVVmStatus.Text = $"删除失败：{exception.Message}";
+        }
+    }
+
+    private void OpenSelectedHyperVConsole()
+    {
+        if (_hyperVVmList.SelectedItem is not HyperVVirtualMachine vm)
+        {
+            _hyperVVmStatus.Text = "请先选择虚拟机。";
+            return;
+        }
+
+        try
+        {
+            Process.Start(HyperVVirtualMachineManager.BuildVmConnectCommand(vm.Id));
+            _hyperVVmStatus.Text = "已打开 Hyper-V 控制台；请在来宾 Windows 中安装并启动月语 Agent，完成配对后再打开桌面视图。";
+        }
+        catch (Exception exception)
+        {
+            _hyperVVmStatus.Text = $"打开 Hyper-V 控制台失败：{exception.Message}";
         }
     }
 

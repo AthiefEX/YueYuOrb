@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace FloatDesk.Windows.DesktopSessions;
@@ -46,6 +47,23 @@ public sealed class HyperVVirtualMachineManager
         $vms = @(Get-VM | ForEach-Object { [pscustomobject]@{ id=$_.Id; name=$_.Name; state=[string]$_.State; generation=$_.Generation; memoryStartupMiB=[int64]($_.MemoryStartup/1MB); processorCount=$_.ProcessorCount; ownedByProduct=(([string]$_.Notes -like '*YueYuOrb:managed*') -or (([string]$_.Name -like '月语分身-*') -and ([string]$_.Path -like ($managedRoot + '*')))) } })
         if ($vms.Count -eq 0) { '[]' } else { $vms | ConvertTo-Json -Compress }
         """;
+
+    public static ProcessStartInfo BuildVmConnectCommand(Guid vmId)
+    {
+        if (vmId == Guid.Empty)
+            throw new ArgumentException("A VM identity is required.", nameof(vmId));
+
+        var command = new ProcessStartInfo
+        {
+            FileName = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.System),
+                "vmconnect.exe"),
+            UseShellExecute = true
+        };
+        command.ArgumentList.Add("localhost");
+        command.ArgumentList.Add(vmId.ToString("D"));
+        return command;
+    }
 
     public async Task<HyperVVirtualMachine> CreateAsync(HyperVVmCreateRequest request, CancellationToken cancellationToken)
     {
