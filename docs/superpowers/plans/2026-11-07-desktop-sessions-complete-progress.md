@@ -112,3 +112,10 @@ T23（发布集成前置）：MCP 已纳入发布脚本和完整性校验。
 - 真实本地 stdio 烟测：initialize、tools/list、tasks_submit（无授权）均返回 JSON-RPC；提交明确返回 `NeedsAuthorization`，未执行任何任务。
 
 下一未完成主线：T08/T10-T12、T14-T24。T08 的本机窗口已有历史实现但 Hyper-V 显示/配对未实机验收；T10-T12 仍需要真实 Windows ISO、来宾凭据和专用 VM，缺失时只完成可验证代码与阻塞诊断，不宣称端到端完成。
+
+A+B+C Hyper-V VM 管理阶段：已完成第一批可手动验证闭环。
+- 新增 `HyperVVirtualMachineManager`：结构化列举 VM、创建第二代 VM、启动、正常关机、删除保护；ISO、路径、CPU、内存、磁盘、交换机和安全启动参数均在执行前校验。
+- 设置页 Hyper-V 卡片新增“刷新虚拟机”“从 ISO 创建”“启动”“关机”，创建成功会自动生成 Hyper-V 环境配置；删除脚本保留在管理核心中，要求产品所有权后才允许删除磁盘。
+- 聚焦验证：`HyperVVirtualMachineManagerTests` 3/3 通过；Release 构建 0 警告 0 错误。
+- 完整串行套件：Core 190/190、Infrastructure 143/143、Windows 185/185、UI 707/707，共 1225/1225 通过。
+- 当前真实前提：创建按钮需要 Hyper-V 宿主已运行、管理 PowerShell 可用、Windows ISO 和足够磁盘；创建后尚未自动安装 Windows 或 Agent，真实 RDP/Socket 配对仍是下一阶段。
