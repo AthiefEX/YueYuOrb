@@ -82,7 +82,7 @@ public sealed class PowerShellHyperVHost : IHyperVHost
             Import-Module Hyper-V -ErrorAction Stop
             $vm = Get-VM -Id ([guid]'{{id}}') -ErrorAction Stop
             if ($vm.State -ne 'Off') {
-                Stop-VM -VM $vm -Confirm:$false -ErrorAction Stop
+                Stop-VM -VM $vm -Force -Confirm:$false -ErrorAction Stop
             }
             """;
     }

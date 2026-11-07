@@ -119,7 +119,7 @@ public sealed class HyperVVirtualMachineManagerTests
         var delete = HyperVVirtualMachineManager.BuildDeleteScript(Guid.NewGuid(), deleteDisk: true);
 
         Assert.Contains("-Confirm:$false", start, StringComparison.Ordinal);
-        Assert.Contains("-Confirm:$false", stop, StringComparison.Ordinal);
+        Assert.Contains("Stop-VM -VM $vm -Force -Confirm:$false", stop, StringComparison.Ordinal);
         Assert.Contains("-Confirm:$false", delete, StringComparison.Ordinal);
     }
 }
