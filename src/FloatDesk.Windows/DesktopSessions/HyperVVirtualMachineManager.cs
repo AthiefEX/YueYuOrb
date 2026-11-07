@@ -112,7 +112,11 @@ public sealed class HyperVVirtualMachineManager
     {
         using var document = JsonDocument.Parse(json);
         var list = new List<HyperVVirtualMachine>();
-        foreach (var item in document.RootElement.EnumerateArray())
+        var root = document.RootElement;
+        var items = root.ValueKind == JsonValueKind.Array
+            ? root.EnumerateArray().ToArray()
+            : new[] { root };
+        foreach (var item in items)
         {
             if (!Guid.TryParse(item.GetProperty("id").GetString(), out var id)) continue;
             list.Add(new(id, item.GetProperty("name").GetString() ?? string.Empty, ParseState(item.GetProperty("state").GetString()), item.GetProperty("generation").GetInt32(), item.GetProperty("memoryStartupMiB").GetInt64(), item.GetProperty("processorCount").GetInt32()));

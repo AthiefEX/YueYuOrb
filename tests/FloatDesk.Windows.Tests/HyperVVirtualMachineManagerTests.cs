@@ -40,4 +40,16 @@ public sealed class HyperVVirtualMachineManagerTests
         Assert.Equal("Test", values[0].Name);
         Assert.Equal(HyperVVirtualMachineState.Running, values[0].State);
     }
+
+    [Fact]
+    public void ParsesSingleVmObjectReturnedByPowerShellJsonConversion()
+    {
+        var json = "{\"id\":\"" + Guid.NewGuid() + "\",\"name\":\"Single\",\"state\":\"Off\",\"generation\":2,\"memoryStartupMiB\":2048,\"processorCount\":2}";
+
+        var values = HyperVVirtualMachineManager.ParseVmList(json);
+
+        Assert.Single(values);
+        Assert.Equal("Single", values[0].Name);
+        Assert.Equal(HyperVVirtualMachineState.Off, values[0].State);
+    }
 }
