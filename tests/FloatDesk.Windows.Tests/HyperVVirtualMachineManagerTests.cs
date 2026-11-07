@@ -121,5 +121,8 @@ public sealed class HyperVVirtualMachineManagerTests
         Assert.Contains("-Confirm:$false", start, StringComparison.Ordinal);
         Assert.Contains("Stop-VM -VM $vm -Force -Confirm:$false", stop, StringComparison.Ordinal);
         Assert.Contains("-Confirm:$false", delete, StringComparison.Ordinal);
+        Assert.Contains("'ok'", start, StringComparison.Ordinal);
+        Assert.Contains("'ok'", stop, StringComparison.Ordinal);
+        Assert.Contains("'ok'", delete, StringComparison.Ordinal);
     }
 }

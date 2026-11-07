@@ -63,6 +63,7 @@ public sealed class PowerShellHyperVHost : IHyperVHost
             if ($vm.State -ne 'Running') {
                 throw "VM did not reach Running state: $($vm.State)"
             }
+            'ok'
             """;
     }
 
@@ -84,6 +85,7 @@ public sealed class PowerShellHyperVHost : IHyperVHost
             if ($vm.State -ne 'Off') {
                 Stop-VM -VM $vm -Force -Confirm:$false -ErrorAction Stop
             }
+            'ok'
             """;
     }
 

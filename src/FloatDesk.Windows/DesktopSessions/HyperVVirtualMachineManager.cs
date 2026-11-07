@@ -74,6 +74,7 @@ public sealed class HyperVVirtualMachineManager
             $paths = @($vm.HardDrives | ForEach-Object { $_.Path })
             Remove-VM -VM $vm -Force -Confirm:$false -ErrorAction Stop
             if ({{(deleteDisk ? "$true" : "$false")}}) { $paths | Where-Object { $_ -and (Test-Path $_) } | Remove-Item -Force }
+            'ok'
             """;
     }
 
