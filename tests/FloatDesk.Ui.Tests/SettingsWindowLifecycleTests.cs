@@ -40,16 +40,32 @@ public sealed class SettingsWindowLifecycleTests
 
     private static string FindProbe()
     {
-        var candidate = Path.GetFullPath(Path.Combine(
+        var candidates = new[]
+        {
+            Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory,
             "..",
             "..",
             "SettingsWindowProbe",
             "release",
-            "SettingsWindowProbe.exe"));
-        Assert.True(
-            File.Exists(candidate),
-            $"Settings-window probe was not built: {candidate}");
-        return candidate;
+            "SettingsWindowProbe.exe")),
+            Path.GetFullPath(Path.Combine(
+                AppContext.BaseDirectory,
+                "..",
+                "..",
+                "..",
+                "..",
+                "..",
+                "tools",
+                "SettingsWindowProbe",
+                "bin",
+                "Release",
+                "net10.0-windows10.0.19041.0",
+                "SettingsWindowProbe.exe"))
+        };
+        var candidate = candidates.FirstOrDefault(File.Exists);
+        Assert.True(candidate is not null,
+            $"Settings-window probe was not built: {string.Join("; ", candidates)}");
+        return candidate!;
     }
 }

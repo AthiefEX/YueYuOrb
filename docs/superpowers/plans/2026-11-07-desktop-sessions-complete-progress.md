@@ -71,3 +71,16 @@ T05（来宾交互 Agent 与管理操作）：已完成最小安全分发层。
 - 真实验收：尚未在隔离来宾桌面执行；服务安装、权限边界、UIAutomation/SendInput 及更多系统操作仍待 T06/T12。
 
 当前连续执行位置：T06。后续生产 VM 端到端验收仍受“未提供现有 Windows VM/ISO 和来宾凭据”外部条件限制，不会用模拟协议测试替代真实验收。
+
+T06（Hyper-V Socket 注册与生命周期）：已完成监听生命周期部分。
+- 新增 `WindowsHyperVSocketListener`，固定 Service GUID，要求显式 Start 后才能 Accept，连接由独立 NetworkStream 管理并支持取消/清理。
+- 聚焦验证：`HyperVSocketListenerTests`，2/2 通过；完整 Release 构建 0 警告 0 错误。
+- 真实验收：当前主机没有可用已登录 Hyper-V 来宾，因此尚未执行真实 bind/listen、来宾 Agent 配对或重连验收；现有认证协议仍要求真实 BootId、用户 SID 和登录实例绑定。
+
+T07（生产工厂和现有 VM）：已完成生产入口接线的安全降级部分。
+- 移除 `HyperVProductionBackendUnavailable` 硬编码；AppRuntime 现在为 Hyper-V 组装 PowerShell 宿主、Socket 传输、DPAPI 配对存储和明确的未配对探针。
+- 未配对时返回 `HyperVGuestAgentNotPaired`，不会把模拟身份或主桌面当作来宾；本机分身与 Hyper-V 后端保持分离。
+- 聚焦验证：`HyperVProductionFactoryTests`，1/1 通过；T07 产物编译通过。
+- 真实验收：尚未取得真实 VM/来宾 Agent，因此 Hyper-V 仍是“已接入生产入口、外部依赖未满足”，不标记端到端完成。
+
+验证备注：完整串行套件目前为 Core 187/187、Infrastructure 93/93、Windows 181/181 通过；UI 706/707 通过，唯一失败是现有 `SettingsWindowLifecycleTests` 依赖的探针路径未找到（当前探针输出在 `tools/SettingsWindowProbe/bin/Release/net10.0-windows10.0.19041.0`，测试查找 `tests/.../bin/SettingsWindowProbe/release`）。这不是本轮产品断言失败，后续 T23 统一修复构建/探针产物路径后再复测。
