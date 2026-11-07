@@ -53,3 +53,21 @@ T02（宿主能力检测）：已完成本轮可执行部分。
 - 改动：使用系统原生 64 位 Windows PowerShell 的 `Get-Command Get-VM` 能力探测，并以 JSON 结构化结果读取；保留 DISM、BCD、systeminfo 的独立状态，不把“需重启”误报为已运行。
 - 聚焦验证：`dotnet test tests/FloatDesk.Windows.Tests/FloatDesk.Windows.Tests.csproj -c Release --no-restore -p:NuGetAudit=false --filter FullyQualifiedName~HyperVFeatureManagementTests`，23/23 通过；`git diff --check` 通过。
 - 真实验收：当前会话没有执行 Hyper-V 安装或重启；尚未取得可用 VM，也未将 Hyper-V 标记为端到端可用。
+
+T03（资源模型、配置迁移和预检）：已完成自动化契约部分。
+- 新增 `VmResourceProfile`、宿主容量、资源校验、任务 DSL v2、来宾操作类型和生命周期计划类型。
+- 资源校验包含 CPU、内存宿主保留、磁盘容量、绝对存储路径、网络交换机、GPU 模式和修订号；任务校验拒绝未授权路径与未知操作；凭据仅保存 `CredentialRef`。
+- 聚焦验证：`DesktopAutomationContractTests`，3/3 通过；修复一个可空引用警告后再验证，Release 构建 0 警告 0 错误。
+- 真实验收：尚未对真实 VM 修改资源；旧配置往返迁移和 UI 资源表单仍待后续任务。
+
+T04（窄权限宿主 VM 管理代理）：已完成协议边界部分。
+- 新增结构化 `HyperVManagementRequest`，只接受登记 VM GUID、固定操作枚举和同环境资源配置；资源变更脚本要求 VM 关机并拒绝任意 PowerShell 注入入口。
+- 聚焦验证：`HyperVManagementProtocolTests`，2/2 通过；Release 构建通过。
+- 真实验收：未在真实 Hyper-V VM 上执行变更；权限代理尚未接入服务端，不能标记生产 VM 管理完成。
+
+T05（来宾交互 Agent 与管理操作）：已完成最小安全分发层。
+- 新增 `GuestOperationDispatcher` 和来宾侧执行器，支持受控的启动/关闭应用与用户环境变量；相对路径、引号和换行路径会在执行前拒绝；不调用宿主执行入口。
+- 聚焦验证：`GuestOperationDispatcherTests`，2/2 通过；Release 构建通过。
+- 真实验收：尚未在隔离来宾桌面执行；服务安装、权限边界、UIAutomation/SendInput 及更多系统操作仍待 T06/T12。
+
+当前连续执行位置：T06。后续生产 VM 端到端验收仍受“未提供现有 Windows VM/ISO 和来宾凭据”外部条件限制，不会用模拟协议测试替代真实验收。
