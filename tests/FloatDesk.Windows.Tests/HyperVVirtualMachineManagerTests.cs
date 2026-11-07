@@ -61,4 +61,53 @@ public sealed class HyperVVirtualMachineManagerTests
         Assert.Contains("$vms = @(Get-VM", script, StringComparison.Ordinal);
         Assert.Contains("'[]'", script, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void CreateScriptRollsBackPartialVmAndDiskWhenAConfigurationStepFails()
+    {
+        var request = new HyperVVmCreateRequest(
+            Guid.NewGuid(), "YueYu-Test", "D:\\YueYu\\VMs", "D:\\Install\\Windows.iso",
+            4, 8192, 80, "Default Switch", true);
+
+        var script = HyperVVirtualMachineManager.BuildCreateScriptForTest(request);
+
+        Assert.Contains("try", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("catch", script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Remove-VM", script, StringComparison.Ordinal);
+        Assert.Contains("Remove-Item", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ListScriptMarksYueYuManagedVirtualMachines()
+    {
+        var script = HyperVVirtualMachineManager.BuildListScript();
+
+        Assert.Contains("ownedByProduct", script, StringComparison.Ordinal);
+        Assert.Contains("YueYuOrb:managed", script, StringComparison.Ordinal);
+        Assert.Contains("月语分身-*", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ParsesManagedVmOwnershipMarker()
+    {
+        var json = "[{\"id\":\"" + Guid.NewGuid() + "\",\"name\":\"orphan\",\"state\":\"Off\",\"generation\":2,\"memoryStartupMiB\":2048,\"processorCount\":2,\"ownedByProduct\":true}]";
+
+        var values = HyperVVirtualMachineManager.ParseVmList(json);
+
+        Assert.True(values[0].OwnedByProduct);
+    }
+
+    [Theory]
+    [InlineData("2", HyperVVirtualMachineState.Running)]
+    [InlineData("3", HyperVVirtualMachineState.Off)]
+    [InlineData("6", HyperVVirtualMachineState.Saved)]
+    [InlineData("9", HyperVVirtualMachineState.Paused)]
+    public void ParsesNumericHyperVStateValues(string state, HyperVVirtualMachineState expected)
+    {
+        var json = "[{\"id\":\"" + Guid.NewGuid() + "\",\"name\":\"numeric\",\"state\":\"" + state + "\",\"generation\":2,\"memoryStartupMiB\":2048,\"processorCount\":2}]";
+
+        var values = HyperVVirtualMachineManager.ParseVmList(json);
+
+        Assert.Equal(expected, values[0].State);
+    }
 }

@@ -10,7 +10,8 @@ public sealed record HyperVVirtualMachine(
     HyperVVirtualMachineState State,
     int Generation,
     long MemoryStartupMiB,
-    int ProcessorCount);
+    int ProcessorCount,
+    bool OwnedByProduct = false);
 
 public sealed record HyperVVmCreateRequest(
     Guid EnvironmentId,
@@ -41,7 +42,8 @@ public sealed class HyperVVirtualMachineManager
     public static string BuildListScript() => """
         $ErrorActionPreference = 'Stop'
         Import-Module Hyper-V -ErrorAction Stop
-        $vms = @(Get-VM | ForEach-Object { [pscustomobject]@{ id=$_.Id; name=$_.Name; state=[string]$_.State; generation=$_.Generation; memoryStartupMiB=[int64]($_.MemoryStartup/1MB); processorCount=$_.ProcessorCount } })
+        $managedRoot = Join-Path $env:LOCALAPPDATA 'YueYuOrb\HyperV'
+        $vms = @(Get-VM | ForEach-Object { [pscustomobject]@{ id=$_.Id; name=$_.Name; state=[string]$_.State; generation=$_.Generation; memoryStartupMiB=[int64]($_.MemoryStartup/1MB); processorCount=$_.ProcessorCount; ownedByProduct=(([string]$_.Notes -like '*YueYuOrb:managed*') -or (([string]$_.Name -like '月语分身-*') -and ([string]$_.Path -like ($managedRoot + '*')))) } })
         if ($vms.Count -eq 0) { '[]' } else { $vms | ConvertTo-Json -Compress }
         """;
 
@@ -97,16 +99,27 @@ public sealed class HyperVVirtualMachineManager
             $root = '{{storage}}'
             $vhd = Join-Path $root ($name + '.vhdx')
             $iso = '{{iso}}'
-            New-Item -ItemType Directory -Force -Path $root | Out-Null
-            if (Get-VM -Name $name -ErrorAction SilentlyContinue) { throw 'HyperVVmAlreadyExists' }
-            New-VHD -Path $vhd -SizeBytes {{request.DiskSizeGiB}}GB -Dynamic -ErrorAction Stop | Out-Null
-            $vm = New-VM -Name $name -Generation 2 -MemoryStartupBytes {{request.MemoryStartupMiB}}MB -VHDPath $vhd -Path $root -SwitchName '{{switchName}}' -ErrorAction Stop
-            Set-VM -VM $vm -ProcessorCount {{request.ProcessorCount}} -AutomaticStopAction ShutDown -ErrorAction Stop
-            Add-VMDvdDrive -VMName $name -Path $iso -ErrorAction Stop
-            if ({{secureBoot}}) { Set-VMFirmware -VMName $name -EnableSecureBoot On -ErrorAction Stop }
-            [pscustomobject]@{ id = $vm.Id; name = $vm.Name; vhd = $vhd } | ConvertTo-Json -Compress
+            $vm = $null
+            try {
+                New-Item -ItemType Directory -Force -Path $root | Out-Null
+                if (Get-VM -Name $name -ErrorAction SilentlyContinue) { throw 'HyperVVmAlreadyExists' }
+                New-VHD -Path $vhd -SizeBytes {{request.DiskSizeGiB}}GB -Dynamic -ErrorAction Stop | Out-Null
+                $vm = New-VM -Name $name -Generation 2 -MemoryStartupBytes {{request.MemoryStartupMiB}}MB -VHDPath $vhd -Path $root -SwitchName '{{switchName}}' -ErrorAction Stop
+                Set-VM -VM $vm -ProcessorCount {{request.ProcessorCount}} -AutomaticStopAction ShutDown -Notes 'YueYuOrb:managed' -ErrorAction Stop
+                Add-VMDvdDrive -VMName $name -Path $iso -ErrorAction Stop
+                if ({{secureBoot}}) { Set-VMFirmware -VMName $name -EnableSecureBoot On -ErrorAction Stop }
+                [pscustomobject]@{ id = $vm.Id; name = $vm.Name; vhd = $vhd } | ConvertTo-Json -Compress
+            }
+            catch {
+                if ($null -ne $vm) { Remove-VM -VM $vm -Force -ErrorAction SilentlyContinue }
+                if (Test-Path -LiteralPath $vhd) { Remove-Item -LiteralPath $vhd -Force -ErrorAction SilentlyContinue }
+                throw
+            }
             """;
     }
+
+    public static string BuildCreateScriptForTest(HyperVVmCreateRequest request) =>
+        BuildCreateScript(request);
 
     public static void ValidateDelete(HyperVVmDeleteRequest request, bool ownedByProduct)
     {
@@ -126,17 +139,18 @@ public sealed class HyperVVirtualMachineManager
         foreach (var item in items)
         {
             if (!Guid.TryParse(item.GetProperty("id").GetString(), out var id)) continue;
-            list.Add(new(id, item.GetProperty("name").GetString() ?? string.Empty, ParseState(item.GetProperty("state").GetString()), item.GetProperty("generation").GetInt32(), item.GetProperty("memoryStartupMiB").GetInt64(), item.GetProperty("processorCount").GetInt32()));
+            var owned = item.TryGetProperty("ownedByProduct", out var ownedProperty) && ownedProperty.ValueKind == JsonValueKind.True;
+            list.Add(new(id, item.GetProperty("name").GetString() ?? string.Empty, ParseState(item.GetProperty("state").GetString()), item.GetProperty("generation").GetInt32(), item.GetProperty("memoryStartupMiB").GetInt64(), item.GetProperty("processorCount").GetInt32(), owned));
         }
         return list;
     }
 
     private static HyperVVirtualMachineState ParseState(string? value) => value?.ToUpperInvariant() switch
     {
-        "OFF" => HyperVVirtualMachineState.Off,
-        "RUNNING" => HyperVVirtualMachineState.Running,
-        "PAUSED" => HyperVVirtualMachineState.Paused,
-        "SAVED" => HyperVVirtualMachineState.Saved,
+        "OFF" or "3" => HyperVVirtualMachineState.Off,
+        "RUNNING" or "2" => HyperVVirtualMachineState.Running,
+        "PAUSED" or "9" => HyperVVirtualMachineState.Paused,
+        "SAVED" or "6" => HyperVVirtualMachineState.Saved,
         _ => HyperVVirtualMachineState.Unknown
     };
 

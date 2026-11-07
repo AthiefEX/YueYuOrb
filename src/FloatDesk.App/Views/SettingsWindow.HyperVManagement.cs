@@ -110,7 +110,7 @@ public partial class SettingsWindow
 
         var owned = _viewModel.DesktopSessionEnvironments.Any(environment =>
             environment.Backend == DesktopSessionBackendKind.HyperV &&
-            Guid.TryParse(environment.BackendProfileId, out var id) && id == vm.Id);
+            Guid.TryParse(environment.BackendProfileId, out var id) && id == vm.Id) || vm.OwnedByProduct;
         if (!owned)
         {
             _hyperVVmStatus.Text = "为避免误删外部虚拟机，只能删除由月语创建并登记的虚拟机。";
