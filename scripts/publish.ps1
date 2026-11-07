@@ -18,6 +18,7 @@ $publishDirectory = Join-Path $artifactRoot 'publish/win-x64'
 $sessionAgentDirectory = Join-Path $publishDirectory 'desktop-sessions/agent'
 $sessionClientDirectory = Join-Path $publishDirectory 'desktop-sessions/client'
 $sessionBrokerDirectory = Join-Path $publishDirectory 'desktop-sessions/broker'
+$mcpDirectory = Join-Path $publishDirectory 'desktop-sessions/mcp'
 $testResults = Join-Path $artifactRoot 'test-results'
 $zipPath = Join-Path $artifactRoot "YueYuOrb-$Version-win-x64-portable.zip"
 $sessionAgentZipPath = Join-Path $artifactRoot "YueYuOrb-$Version-session-agent-win-x64.zip"
@@ -95,6 +96,15 @@ try {
         "-p:Version=$Version" `
         -o $sessionBrokerDirectory @buildArguments
     if ($LASTEXITCODE -ne 0) { throw 'Session broker publish failed.' }
+
+    dotnet publish src/FloatDesk.McpServer/FloatDesk.McpServer.csproj `
+        -c Release -r win-x64 --self-contained true --no-restore `
+        -p:PublishSingleFile=false `
+        -p:PublishTrimmed=false `
+        -p:NuGetAudit=false `
+        "-p:Version=$Version" `
+        -o $mcpDirectory @buildArguments
+    if ($LASTEXITCODE -ne 0) { throw 'MCP server publish failed.' }
 
     Copy-Item -LiteralPath (Join-Path $root 'LICENSE') `
         -Destination (Join-Path $publishDirectory 'LICENSE')

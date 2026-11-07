@@ -107,4 +107,8 @@ T19（MCP stdio 入口）：已完成最小协议入口。
 - 聚焦验证：`McpTaskSchemaTests` 1/1 通过；MCP Release 构建 0 警告 0 错误。
 - 真实验收：尚未使用外部 MCP 客户端完成协议协商与任务链路；当前环境列表仍为最小占位，不能标记完整 MCP 交付。
 
+T23（发布集成前置）：MCP 已纳入发布脚本和完整性校验。
+- 便携发布现在包含 `desktop-sessions/mcp/YueYuOrb.McpServer.dll`，完整性校验会拒绝缺少 MCP 组件的发布目录。
+- 真实本地 stdio 烟测：initialize、tools/list、tasks_submit（无授权）均返回 JSON-RPC；提交明确返回 `NeedsAuthorization`，未执行任何任务。
+
 下一未完成主线：T08/T10-T12、T14-T24。T08 的本机窗口已有历史实现但 Hyper-V 显示/配对未实机验收；T10-T12 仍需要真实 Windows ISO、来宾凭据和专用 VM，缺失时只完成可验证代码与阻塞诊断，不宣称端到端完成。

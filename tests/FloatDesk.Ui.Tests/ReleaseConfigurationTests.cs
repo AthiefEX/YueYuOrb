@@ -81,6 +81,10 @@ public sealed class ReleaseConfigurationTests
             script,
             StringComparison.Ordinal);
         Assert.Contains(
+            "src/FloatDesk.McpServer/FloatDesk.McpServer.csproj",
+            script,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "'desktop-sessions/agent'",
             script,
             StringComparison.Ordinal);

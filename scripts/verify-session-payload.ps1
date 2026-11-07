@@ -15,6 +15,7 @@ $required = @(
     'desktop-sessions/agent/YueYuOrb.SessionAgent.exe.sha256',
     'desktop-sessions/client/YueYuOrb.SessionClient.exe',
     'desktop-sessions/broker/YueYuOrb.SessionBroker.exe',
+    'desktop-sessions/mcp/YueYuOrb.McpServer.dll',
     'LICENSE',
     'README.md',
     'docs/manual-desktop-sessions.md',
