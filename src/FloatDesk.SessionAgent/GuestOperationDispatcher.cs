@@ -91,6 +91,7 @@ public sealed class WindowsGuestOperationExecutor : IGuestOperationExecutor
         {
             try
             {
+                if (process.SessionId != Process.GetCurrentProcess().SessionId) continue;
                 if (string.Equals(process.MainModule?.FileName, fullPath, StringComparison.OrdinalIgnoreCase))
                     process.CloseMainWindow();
             }

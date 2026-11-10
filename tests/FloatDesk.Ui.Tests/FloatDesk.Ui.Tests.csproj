@@ -10,6 +10,8 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <ProjectReference Include="../../src/FloatDesk.App/FloatDesk.App.csproj" />
+    <ProjectReference Include="../../tools/SettingsWindowProbe/SettingsWindowProbe.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="../../src/FloatDesk.McpServer/FloatDesk.McpServer.csproj" ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

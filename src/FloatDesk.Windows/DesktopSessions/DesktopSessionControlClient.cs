@@ -8,7 +8,7 @@ public static class DesktopSessionControlClient
 {
     public static async Task<DesktopSessionControlResponse> SendAsync(
         DesktopSessionControlRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, string? pipeName = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         var current = WindowsIdentity.GetCurrent();
@@ -19,7 +19,7 @@ public static class DesktopSessionControlClient
             (uint)System.Diagnostics.Process.GetCurrentProcess().SessionId);
         await using var pipe = new NamedPipeClientStream(
             ".",
-            DesktopSessionControlProtocol.GetPipeName(sessionId),
+            pipeName ?? DesktopSessionControlProtocol.GetPipeName(sessionId),
             PipeDirection.InOut,
             PipeOptions.Asynchronous);
         await pipe.ConnectAsync(cancellationToken).ConfigureAwait(false);

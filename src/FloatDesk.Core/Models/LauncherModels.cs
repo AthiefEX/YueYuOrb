@@ -15,7 +15,8 @@ public enum WheelActionKind
     TranslateSubtitles,
     ExtractRegionText,
     DesktopSessions,
-    RunDesktopTask
+    RunDesktopTask,
+    Assistant
 }
 
 public sealed record LauncherItem(

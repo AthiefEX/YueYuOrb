@@ -20,6 +20,7 @@ public partial class OrbImageCropWindow : Window
     public OrbImageCropWindow(string sourcePath)
     {
         InitializeComponent();
+        GlassWindowFrame.WrapStandardWindow(this);
         _frame = OrbImageImporter.LoadFrame(sourcePath);
         _selection = OrbCropSelection.CreateCentered(
             _frame.PixelWidth,

@@ -1,5 +1,6 @@
 using FloatDesk.App.DesktopSessions;
 using FloatDesk.Core.Models;
+using FloatDesk.Windows.DesktopSessions;
 
 namespace FloatDesk.Ui.Tests;
 
@@ -104,8 +105,22 @@ public sealed class DesktopSessionDiagnosticsTests : IDisposable
             item => item.Name == "Hyper-V" &&
                     item.State == "不可用" &&
                     item.Detail.Contains(
-                        "尚未接入",
+                        "尚未读取",
                         StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ReportsConfiguredHyperVHostAndKeepsGuestPreparationExplicit()
+    {
+        var diagnostics = new DesktopSessionDiagnostics(_root);
+        var items = diagnostics.Inspect(
+            AppSettings.CreateDefault().DesktopSessions,
+            runtimeAvailable: true,
+            new HyperVFeatureStatus(true, true, true, true, false, null));
+
+        var hyperV = Assert.Single(items, item => item.Name == "Hyper-V");
+        Assert.Equal("宿主已就绪", hyperV.State);
+        Assert.Contains("来宾 Agent", hyperV.Detail, StringComparison.Ordinal);
     }
 
     private void CreateTool(string folder, string file)

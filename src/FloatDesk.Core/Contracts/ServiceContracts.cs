@@ -43,7 +43,7 @@ public interface INoteRepository
     Task<OperationResult> PurgeDeletedAsync(DateTimeOffset cutoffUtc, CancellationToken cancellationToken);
 }
 
-public enum ToolWindow { QuickPanel, Settings, AiBrowser, Notes }
+public enum ToolWindow { QuickPanel, Settings, AiBrowser, Notes, Assistant }
 
 public interface IWindowCoordinator
 {

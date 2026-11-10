@@ -63,6 +63,8 @@ public sealed class AutomationStepExecutor : ISessionInputExecutor
         ArgumentNullException.ThrowIfNull(command);
         return command.Kind switch
         {
+            SessionCommandKind.CloseApplication => SessionDesktopCommands.CloseAsync(command, cancellationToken),
+            SessionCommandKind.ObserveDesktop => SessionDesktopCommands.ObserveAsync(command, cancellationToken),
             SessionCommandKind.LaunchApplication =>
                 StartupApplicationRunner.RunAsync(
                     command,

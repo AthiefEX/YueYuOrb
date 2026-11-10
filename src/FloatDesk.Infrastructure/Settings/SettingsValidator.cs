@@ -9,6 +9,19 @@ public static partial class SettingsValidator
     public static IReadOnlyList<string> Validate(AppSettings value)
     {
         var errors = new List<string>();
+        errors.AddRange(FloatDesk.Core.Assistant.AssistantSettingsValidator.Validate(value.Assistant));
+        if (value.FloatingBrowser is null || !double.IsFinite(value.FloatingBrowser.Opacity) || value.FloatingBrowser.Opacity is < 0.2 or > 1)
+            errors.Add("FloatingBrowser.Opacity must be between 0.2 and 1.");
+        if (value.FloatingBrowser is { StartupUrl.Length: > 0 } floating &&
+            (!Uri.TryCreate(floating.StartupUrl, UriKind.Absolute, out var startup) || startup.Scheme != Uri.UriSchemeHttps || startup.UserInfo.Length != 0))
+            errors.Add("FloatingBrowser.StartupUrl must be an HTTPS URL without credentials.");
+        if (value.FloatingBrowser?.Bounds is { } bounds &&
+            (!double.IsFinite(bounds.Left) || !double.IsFinite(bounds.Top) || !double.IsFinite(bounds.Width) || !double.IsFinite(bounds.Height) || bounds.Width is < 360 or > 16000 || bounds.Height is < 300 or > 16000))
+            errors.Add("FloatingBrowser.Bounds are invalid.");
+        if (value.CustomBackground is null || !double.IsFinite(value.CustomBackground.Opacity) || value.CustomBackground.Opacity is < 0 or > 1)
+            errors.Add("CustomBackground.Opacity must be between 0 and 1.");
+        if (value.SteamNetwork is null)
+            errors.Add("SteamNetwork settings are required.");
         if (value.SchemaVersion != AppSettings.CurrentSchemaVersion)
             errors.Add("SchemaVersion must be 1.");
         if (value.Orb.SizeDip is < 32 or > 128)
@@ -24,8 +37,8 @@ public static partial class SettingsValidator
                 item.Name.Length > 80 ||
                 string.IsNullOrWhiteSpace(item.Path)))
             errors.Add("Launcher names must contain 1-80 characters and paths cannot be empty.");
-        if (value.BrowserSites.Count is < 1 or > 10)
-            errors.Add("BrowserSites must contain between 1 and 10 HTTPS sites.");
+        if (value.BrowserSites.Count is < 1 or > 200)
+            errors.Add("BrowserSites must contain between 1 and 200 HTTPS sites.");
         if (value.BrowserSites.Any(site => site.Url.Scheme != Uri.UriSchemeHttps))
             errors.Add("Every BrowserSites URL must use HTTPS.");
         if (value.BrowserSites.Any(site =>

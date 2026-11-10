@@ -14,6 +14,7 @@ internal static class Program
 
     public static async Task<int> Main(string[] arguments)
     {
+        if (arguments.Length > 0 && arguments[0] == "--rdp-view") return RdpViewProgram.Run(arguments);
         try
         {
             var command = ClientCommand.Parse(arguments);

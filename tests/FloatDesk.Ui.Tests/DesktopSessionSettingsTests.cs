@@ -11,6 +11,52 @@ namespace FloatDesk.Ui.Tests;
 public sealed class DesktopSessionSettingsTests
 {
     [Fact]
+    public void DisplayModeAndPerEnvironmentGpuPreferenceSurviveDraftRoundTrip()
+    {
+        var local = EnvironmentProfile.CreateDefault() with { Id = Guid.NewGuid(), Name = "Local" };
+        var vm = local with { Id = Guid.NewGuid(), Name = "VM", Backend = DesktopSessionBackendKind.HyperV, GpuSharingEnabled = true };
+        var initial = AppSettings.CreateDefault() with { DesktopSessions = new(true, [local, vm], []) { ShowAdvancedSettings = true } };
+        var viewModel = SettingsViewModel.From(initial);
+        Assert.True(viewModel.DesktopSessionAdvancedSettings);
+        viewModel.DesktopSessionAdvancedSettings = false;
+        var candidate = viewModel.BuildCandidate(initial);
+        Assert.False(candidate.DesktopSessions.ShowAdvancedSettings);
+        Assert.True(candidate.DesktopSessions.Environments.Single(item => item.Id == vm.Id).GpuSharingEnabled);
+        Assert.False(candidate.DesktopSessions.Environments.Single(item => item.Id == local.Id).GpuSharingEnabled);
+        Assert.False(SettingsViewModel.From(candidate).DesktopSessionAdvancedSettings);
+    }
+    [Fact]
+    public void UnrelatedDraftChangesKeepResolutionRememberedByRunningSession()
+    {
+        var environment = EnvironmentProfile.CreateDefault() with { Id = Guid.NewGuid(), Name = "Test" };
+        var initial = AppSettings.CreateDefault() with { DesktopSessions = new(true, [environment], []) };
+        var viewModel = SettingsViewModel.From(initial);
+        viewModel.UpdateDesktopSessionEnvironment(environment.Id, profile => profile with { Name = "Renamed" });
+        var latest = DesktopSessionResolutionPreferences.Update(initial.DesktopSessions, environment.Id, 1920, 1080);
+        var merged = viewModel.MergeDesktopSessions(latest);
+        Assert.Equal("Renamed", merged.Environments[0].Name);
+        Assert.Equal(1920, merged.Environments[0].DesktopWidth);
+        viewModel.UpdateDesktopSessionEnvironment(environment.Id, profile => profile with { DesktopWidth = 1600, DesktopHeight = 900 });
+        Assert.Equal(1600, viewModel.MergeDesktopSessions(latest).Environments[0].DesktopWidth);
+    }
+
+    [Fact]
+    public void IndependentModeDraftPreservesOtherSwitch()
+    {
+        var viewModel = SettingsViewModel.From(AppSettings.CreateDefault());
+        viewModel.LocalDesktopSessionEnabled = true;
+        Assert.True(viewModel.BuildDesktopSessionDraft().LocalChild!.Enabled);
+        Assert.False(viewModel.BuildDesktopSessionDraft().HyperV!.Enabled);
+        viewModel.HyperVDesktopSessionEnabled = true;
+        viewModel.LocalDesktopSessionEnabled = false;
+        var draft = viewModel.BuildDesktopSessionDraft();
+        Assert.False(draft.LocalChild!.Enabled);
+        Assert.True(draft.HyperV!.Enabled);
+        Assert.True(draft.Enabled);
+        Assert.True(viewModel.DesktopSessionsEdited);
+    }
+
+    [Fact]
     public void SettingsMergePreservesOtherPages()
     {
         var original = AppSettings.CreateDefault();
@@ -80,14 +126,35 @@ public sealed class DesktopSessionSettingsTests
                     new FakeRdpControl(),
                     "测试环境");
                 window.Show();
+                window.UpdateResolutionAsync(1024, 768).GetAwaiter().GetResult();
+                var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(window);
+                Assert.InRange(window.MaxWidth-1024/dpi.DpiScaleX,-1,1);
+                Assert.True(window.MaxHeight > 768 / dpi.DpiScaleY);
+                window.Width = 600;
+                window.Width = 1000;
+                window.UpdateLayout();
+                Assert.True(window.ActualWidth <= window.MaxWidth);
                 typeof(Window)
                     .GetMethod(
                         "OnDeactivated",
                         BindingFlags.Instance | BindingFlags.NonPublic)!
                     .Invoke(window, [EventArgs.Empty]);
                 Assert.True(window.IsVisible);
-                window.AllowClose();
-                window.Close();
+                var stopCalls = 0;
+                window.StopSessionAsync = () =>
+                {
+                    stopCalls++;
+                    return Task.FromResult(new DesktopSessionActionStatus(false, "cleanup failed"));
+                };
+                Assert.False(window.TryStopAndCloseAsync(() => false).GetAwaiter().GetResult());
+                Assert.Equal(0, stopCalls);
+                Assert.True(window.IsVisible);
+                Assert.False(window.TryStopAndCloseAsync(() => true).GetAwaiter().GetResult());
+                Assert.Equal(1, stopCalls);
+                Assert.True(window.IsVisible);
+                window.StopSessionAsync = () => Task.FromResult(new DesktopSessionActionStatus(true, "stopped"));
+                Assert.True(window.TryStopAndCloseAsync(() => true).GetAwaiter().GetResult());
+                Assert.False(window.IsVisible);
             }
             catch (Exception exception)
             {
@@ -107,8 +174,9 @@ public sealed class DesktopSessionSettingsTests
         Assert.Null(failure);
     }
 
-    private sealed class FakeRdpControl : IRdpControl
+    private sealed class FakeRdpControl : IRdpControl, IRdpDisplayControl
     {
+        public Task SetResolutionAsync(int width, int height, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task ConfigureAsync(
             int width,
             int height,

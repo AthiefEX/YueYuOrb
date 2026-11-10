@@ -1,0 +1,45 @@
+{
+  "formatVersion": 1,
+  "id": "39d5a3a1-015f-4c55-9d05-e8c30ec7ba3a",
+  "name": "记事本开关演示",
+  "environmentId": "11111111-1111-4111-8111-111111111111",
+  "steps": [
+    {
+      "retryCount": 0,
+      "kind": "LaunchApplication",
+      "id": "3a7dce7c-7536-499e-95af-d5d23d478da6",
+      "timeoutSeconds": 20,
+      "parameters": {
+        "startupEntry": "{\"enabled\":true,\"displayName\":\"记事本演示\",\"delaySeconds\":0,\"arguments\":[],\"order\":0,\"id\":\"845b845a-1780-4eab-a6ea-99e9e8281d3a\",\"revision\":1,\"workingDirectory\":null,\"waitForExit\":false,\"executablePath\":\"C:\\\\Windows\\\\System32\\\\notepad.exe\"}"
+      }
+    },
+    {
+      "retryCount": 0,
+      "kind": "Delay",
+      "id": "270e0f2c-154a-47be-b3fb-eaeb7dd21a7d",
+      "timeoutSeconds": 5,
+      "parameters": {
+        "milliseconds": "1000"
+      }
+    },
+    {
+      "retryCount": 0,
+      "kind": "CloseApplication",
+      "id": "e247c340-07ba-4c28-8f02-16ab97b4dfe8",
+      "timeoutSeconds": 20,
+      "parameters": {
+        "force": "false",
+        "path": "C:\\Windows\\System32\\notepad.exe"
+      }
+    }
+  ],
+  "trigger": {
+    "timeZoneId": null,
+    "kind": "Manual",
+    "localTime": null
+  },
+  "revision": 1,
+  "enabled": false,
+  "rules": "仅在所选分身执行。先核对环境，失败后检查实际状态。",
+  "scripts": []
+}

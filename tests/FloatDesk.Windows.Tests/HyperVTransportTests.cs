@@ -8,8 +8,10 @@ namespace FloatDesk.Windows.Tests;
 
 public sealed class HyperVTransportTests
 {
-    [Fact(Timeout = 10_000)]
-    public async Task PairingTransportConnectsToGuestListener()
+    [Theory(Timeout = 10_000)]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PairingTransportConnectsToGuestListener(bool acceptHostGeneration)
     {
         var vmId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
         var serviceId =
@@ -50,8 +52,8 @@ public sealed class HyperVTransportTests
             new HyperVAgentListenerOptions(
                 vmId,
                 serviceId,
-                binding,
-                secret.ToArray()),
+                acceptHostGeneration ? binding with { Generation = Guid.NewGuid() } : binding,
+                secret.ToArray()) { AcceptHostGeneration = acceptHostGeneration },
             CancellationToken.None);
 
         var endpoints = new HyperVAgentEndpointRegistry();

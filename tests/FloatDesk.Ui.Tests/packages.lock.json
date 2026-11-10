@@ -145,14 +145,15 @@
       "floatdesk.infrastructure": {
         "type": "Project",
         "dependencies": {
-          "FloatDesk.Core": "[1.0.0, )",
-          "Microsoft.Data.Sqlite": "[10.0.9, )"
+          "FloatDesk.Core": "[1.4.0, )",
+          "Microsoft.Data.Sqlite": "[10.0.9, )",
+          "PdfPig": "[0.1.16, )"
         }
       },
       "floatdesk.windows": {
         "type": "Project",
         "dependencies": {
-          "FloatDesk.Core": "[1.0.0, )",
+          "FloatDesk.Core": "[1.4.0, )",
           "System.Drawing.Common": "[10.0.0, )",
           "System.Security.Cryptography.ProtectedData": "[10.0.0, )"
         }
@@ -161,10 +162,18 @@
         "type": "Project",
         "dependencies": {
           "CommunityToolkit.Mvvm": "[8.2.2, )",
-          "FloatDesk.Core": "[1.0.0, )",
-          "FloatDesk.Infrastructure": "[1.0.0, )",
-          "FloatDesk.Windows": "[1.0.0, )",
-          "Microsoft.Web.WebView2": "[1.0.4314.35, )"
+          "FloatDesk.Core": "[1.4.0, )",
+          "FloatDesk.Infrastructure": "[1.4.0, )",
+          "FloatDesk.Windows": "[1.4.0, )",
+          "Microsoft.Web.WebView2": "[1.0.4314.35, )",
+          "YueYuOrb.SessionAgent": "[1.4.0, )"
+        }
+      },
+      "YueYuOrb.SessionAgent": {
+        "type": "Project",
+        "dependencies": {
+          "FloatDesk.Core": "[1.4.0, )",
+          "FloatDesk.Windows": "[1.4.0, )"
         }
       },
       "CommunityToolkit.Mvvm": {
@@ -189,6 +198,12 @@
         "requested": "[1.0.4314.35, )",
         "resolved": "1.0.4314.35",
         "contentHash": "x5MFf2W03xueU1mMNvivXfHSsQ+ODo7vJ36qw/dLtU5Gs+8d7+7N7zzmNNDoT3ffosmcvZNBtUnlzyiDUuBkSQ=="
+      },
+      "PdfPig": {
+        "type": "CentralTransitive",
+        "requested": "[0.1.16, )",
+        "resolved": "0.1.16",
+        "contentHash": "qQcbsNMYVY+K5ELptax2S8thNMk0+rSQq3H/KdYj3LLcko8yTCz8y5KIvsKxIyAuTN0ZYNnfsZkM+0EvxTwHVA=="
       },
       "System.Drawing.Common": {
         "type": "CentralTransitive",

@@ -91,6 +91,7 @@ public sealed class BrightnessControlWindow : Window, IDisposable
             Child = new ScrollViewer { Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto } };
         card.SetResourceReference(Border.BackgroundProperty, "SettingsCardBrush");
         card.SetResourceReference(Border.BorderBrushProperty, "SettingsLineBrush"); Content = card;
+        GlassWindowFrame.SetEnabled(card,true);GlassWindowFrame.Prepare(this);
         System.Windows.Automation.AutomationProperties.SetName(_brightness, "所有屏幕亮度");
         _brightness.ValueChanged += (_, _) =>
         {

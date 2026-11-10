@@ -19,7 +19,7 @@ public partial class AiBrowserWindow : Window, IDisposable
     private readonly BrowserThemeLifecycle _themeLifecycle =
         new(BrowserColorScheme.Light);
     private readonly List<AiPopupWindow> _popups = [];
-    private WebView2 _browser;
+    private WebView2CompositionControl _browser;
     private CoreWebView2Environment? _environment;
     private BrowserSite[] _sites = [];
     private BrowserSite? _selectedSite;
@@ -28,6 +28,7 @@ public partial class AiBrowserWindow : Window, IDisposable
     private bool _initialized;
     private bool _releaseOnClose;
     private bool _allowClose;
+    private bool _disposed;
     private int _zoomPercent = 100;
 
     public AiBrowserWindow(
@@ -35,6 +36,7 @@ public partial class AiBrowserWindow : Window, IDisposable
         Func<BrowserSite, Task> selectedSiteChanged)
     {
         InitializeComponent();
+        GlassWindowFrame.Prepare(this);
         _paths = paths;
         _selectedSiteChanged = selectedSiteChanged;
         _browser = CreateBrowser();
@@ -42,6 +44,7 @@ public partial class AiBrowserWindow : Window, IDisposable
         Closing += OnClosing;
         StateChanged += (_, _) => UpdateWindowStateVisuals();
         UpdateWindowStateVisuals();
+        InitializeFloatingBrowser();
     }
 
     private void OnTitleBarMouseLeftButtonDown(
@@ -91,13 +94,14 @@ public partial class AiBrowserWindow : Window, IDisposable
         AiMaximizeRestoreButton.ToolTip = isMaximized ? "还原" : "最大化";
         System.Windows.Automation.AutomationProperties.SetName(
             AiMaximizeRestoreButton,
-            isMaximized ? "还原 AI 网页" : "最大化 AI 网页");
+            isMaximized ? "还原悬浮浏览器" : "最大化悬浮浏览器");
     }
 
     public string CurrentAddress => _browser.Source?.AbsoluteUri ?? "";
 
     public void ApplySettings(AppSettings settings)
     {
+        _interactionHotkey = ViewModels.SettingsViewModel.FormatHotkey(settings.Hotkeys.GetValueOrDefault(HotkeyAction.ToggleBrowserInteraction));
         _releaseOnClose = settings.BrowserReleaseOnClose;
         _zoomPercent = settings.BrowserZoomPercent;
         _browserTheme = settings.BrowserTheme;
@@ -106,8 +110,7 @@ public partial class AiBrowserWindow : Window, IDisposable
             settings.General.Theme,
             ThemeService.SystemUsesDarkTheme());
         _themeLifecycle.Request(_resolvedColorScheme);
-        Topmost = settings.BrowserTopmost;
-        PinButton.Content = Topmost ? "取消固定" : "固定";
+        Topmost = settings.FloatingBrowser.AlwaysOnTop;
         _sites = settings.BrowserSites.OrderBy(site => site.Order).ToArray();
         SiteComboBox.ItemsSource = _sites;
         var selected = _sites.FirstOrDefault(site => site.Id == settings.SelectedBrowserSiteId)
@@ -123,13 +126,14 @@ public partial class AiBrowserWindow : Window, IDisposable
         }
         ZoomText.Text = $"{_zoomPercent}%";
         _ = ApplyThemeAsync();
+        ApplyFloatingSettings(settings.FloatingBrowser);
     }
 
     public async Task ShowAndEnsureAsync(CancellationToken cancellationToken)
     {
         if (!IsVisible)
             Show();
-        Activate();
+        if (!IsClickThrough) Activate();
         await EnsureBrowserAsync(cancellationToken);
         if (_browser.CoreWebView2?.IsSuspended == true)
             _browser.CoreWebView2.Resume();
@@ -140,7 +144,8 @@ public partial class AiBrowserWindow : Window, IDisposable
         CancellationToken cancellationToken)
     {
         await ShowAndEnsureAsync(cancellationToken);
-        _browser.CoreWebView2!.Navigate(site.Url.AbsoluteUri);
+        if (_browser.CoreWebView2 is null) return;
+        _browser.CoreWebView2.Navigate(site.Url.AbsoluteUri);
         _selectedSite = site;
         SiteComboBox.SelectedItem = site;
     }
@@ -163,7 +168,6 @@ public partial class AiBrowserWindow : Window, IDisposable
 
     public async ValueTask DisposeBrowserAsync()
     {
-        _allowClose = true;
         RebuildBrowser();
         if (IsVisible)
             Hide();
@@ -206,7 +210,7 @@ public partial class AiBrowserWindow : Window, IDisposable
             if (_selectedSite is not null &&
                 _browser.Source is null)
             {
-                _browser.CoreWebView2.Navigate(_selectedSite.Url.AbsoluteUri);
+                _browser.CoreWebView2.Navigate(string.IsNullOrWhiteSpace(_floating.StartupUrl) ? _selectedSite.Url.AbsoluteUri : _floating.StartupUrl);
             }
         }
         catch (Exception exception) when (
@@ -297,6 +301,7 @@ public partial class AiBrowserWindow : Window, IDisposable
         {
             StatusPanel.Visibility = Visibility.Collapsed;
             AddressText.Text = _browser.Source?.AbsoluteUri ?? "";
+            BrowserAddressInput.Text = CurrentAddress;
             FooterText.Text = _browser.Source?.Host is { Length: > 0 } host
                 ? $"当前站点：{host} · WebView2 独立进程"
                 : "WebView2 独立进程";
@@ -323,12 +328,13 @@ public partial class AiBrowserWindow : Window, IDisposable
         }
 
         e.Handled = true;
+        if (IsClickThrough) { FooterText.Text = "请切换到交互模式后打开新窗口。"; return; }
         var popup = new AiPopupWindow(
             uri,
             _environment!,
             _resolvedColorScheme)
         {
-            Owner = this
+            Owner = this, Topmost = Topmost, Opacity = Opacity
         };
         popup.Closed += (_, _) => _popups.Remove(popup);
         _popups.Add(popup);
@@ -441,8 +447,7 @@ public partial class AiBrowserWindow : Window, IDisposable
 
     private void OnPinClick(object sender, RoutedEventArgs e)
     {
-        Topmost = !Topmost;
-        PinButton.Content = Topmost ? "取消固定" : "固定";
+        ToggleInteraction();
     }
 
     private void OnZoomOutClick(object sender, RoutedEventArgs e) =>
@@ -466,6 +471,7 @@ public partial class AiBrowserWindow : Window, IDisposable
             return;
         e.Cancel = true;
         Hide();
+        SetInteraction(false);
         try
         {
             if (_initialized && _releaseOnClose)
@@ -497,9 +503,9 @@ public partial class AiBrowserWindow : Window, IDisposable
         }
     }
 
-    private WebView2 CreateBrowser()
+    private WebView2CompositionControl CreateBrowser()
     {
-        var browser = new WebView2();
+        var browser = new WebView2CompositionControl();
         browser.NavigationStarting += OnNavigationStarting;
         browser.NavigationCompleted += OnNavigationCompleted;
         return browser;
@@ -527,6 +533,13 @@ public partial class AiBrowserWindow : Window, IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
+        _allowClose = true;
+        _floatingSave.Stop();
+        foreach (var popup in _popups.ToArray()) popup.Close();
+        _popups.Clear();
+        _browser.Dispose();
         _themeLifecycle.Dispose();
         _initializationGate.Dispose();
         GC.SuppressFinalize(this);
@@ -535,7 +548,7 @@ public partial class AiBrowserWindow : Window, IDisposable
 
 internal sealed class AiPopupWindow : Window, IDisposable
 {
-    private readonly WebView2 _browser = new();
+    private readonly WebView2CompositionControl _browser = new();
     private readonly BrowserThemeLifecycle _themeLifecycle;
     private bool _disposed;
 
@@ -545,6 +558,10 @@ internal sealed class AiPopupWindow : Window, IDisposable
         BrowserColorScheme colorScheme)
     {
         _themeLifecycle = new BrowserThemeLifecycle(colorScheme);
+        WindowStyle = WindowStyle.None;
+        AllowsTransparency = true;
+        System.Windows.Shell.WindowChrome.SetWindowChrome(this, new System.Windows.Shell.WindowChrome
+        { CaptionHeight = 48, ResizeBorderThickness = new Thickness(6), GlassFrameThickness = new Thickness(0), CornerRadius = new CornerRadius(16), UseAeroCaptionButtons = false });
         Width = 640;
         Height = 720;
         MinWidth = 380;
@@ -562,6 +579,7 @@ internal sealed class AiPopupWindow : Window, IDisposable
         host.Children.Add(_browser);
         host.Children.Add(errorText);
         Content = host;
+        GlassWindowFrame.WrapStandardWindow(this);
         Loaded += async (_, _) =>
         {
             try

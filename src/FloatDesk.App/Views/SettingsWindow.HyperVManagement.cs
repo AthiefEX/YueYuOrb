@@ -6,6 +6,7 @@ using System.Windows.Controls;
 
 namespace FloatDesk.App.Views;
 
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001", Justification = "Standalone console controller is disposed by the Window.Closed handler.")]
 public partial class SettingsWindow
 {
     private bool _hyperVFeatureOperationRunning;
@@ -32,8 +33,10 @@ public partial class SettingsWindow
             Button("打开 Windows 功能", OpenWindowsFeatures)));
         panel.Children.Add(Description(
             "启用 Hyper-V 不会自动创建 Windows 虚拟机或安装来宾系统。移除月语中的环境配置只删除关联配置及任务，保留现有 VM 和虚拟磁盘。"));
-        panel.Children.Add(BuildVirtualMachineManagementPanel());
-        card.Child = panel;
+        var groups = new StackPanel();
+        groups.Children.Add(panel);
+        groups.Children.Add(BuildVirtualMachineManagementPanel());
+        card.Child = groups;
         _ = RefreshHyperVFeatureStatusAsync();
         return card;
     }
@@ -41,46 +44,104 @@ public partial class SettingsWindow
     private StackPanel BuildVirtualMachineManagementPanel()
     {
         var panel = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
-        panel.Children.Add(SectionTitle("虚拟机管理"));
-        panel.Children.Add(Description("可刷新、导入现有 VM 或使用 Windows ISO 创建第二代 VM。创建前会校验 ISO 路径和资源；删除虚拟机与磁盘始终需要产品所有权确认。"));
-        _hyperVVmList = new ListBox { MinHeight = 70, MaxHeight = 150, Margin = new Thickness(0, 8, 0, 4), DisplayMemberPath = nameof(HyperVVirtualMachine.Name) };
+        panel.Children.Add(SectionTitle("虚拟机环境与硬件"));
+        panel.Children.Add(Description("选择虚拟机管理电源与硬件；一键安装位于页面上方。"));
+        _hyperVVmList = new ListBox { MinHeight = 70, MaxHeight = 150, Margin = new Thickness(0, 8, 0, 4), DisplayMemberPath = nameof(HyperVVirtualMachine.DisplayStatus), Style = (Style)FindResource("ToolWindowListBoxStyle") };
+        _hyperVVmList.SelectionChanged += (_, _) =>
+        {
+            RefreshGuestCredentialSummary((_hyperVVmList.SelectedItem as HyperVVirtualMachine)?.Id);
+            if (_hyperVVmList.SelectedItem is HyperVVirtualMachine selected && _resourceVmId != selected.Id)
+            {
+                _resourceVmId = selected.Id;
+                _vmSelectedCpu.Text = selected.ProcessorCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                _vmSelectedMemory.Text = selected.MemoryStartupMiB.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+        };
         panel.Children.Add(_hyperVVmList);
         _hyperVVmStatus = Description("尚未读取虚拟机列表。");
+        _ = RefreshVmSwitchesAsync();
         panel.Children.Add(_hyperVVmStatus);
         panel.Children.Add(ButtonRow(
             Button("刷新虚拟机", () => _ = RefreshHyperVVmsAsync()),
-            Button("从 ISO 创建", () => _ = CreateHyperVVmAsync()),
             Button("启动", () => _ = ChangeSelectedHyperVVmAsync(true)),
             Button("关机", () => _ = ChangeSelectedHyperVVmAsync(false)),
             Button("打开控制台", OpenSelectedHyperVConsole),
+            Button("原生控制台", () => _ = OpenNativeHyperVConsoleAsync()),
             Button("删除", () => _ = DeleteSelectedHyperVVmAsync())));
+        panel.Children.Add(BuildSelectedVmResources());
+        panel.Children.Add(ButtonRow(
+            Button("从 ISO 创建空白虚拟机（手动安装）", () => _ = CreateHyperVVmAsync()),
+            Button("从 VHDX 模板创建", () => _ = CreateHyperVVmAsync(true)),
+            Button("导出来宾初始化包", () => _ = ExportGuestInstallerAsync()),
+            Button("测试 Agent 配对", () => _ = TestGuestPairingAsync()),
+            Button("注册来宾通信通道", () => _ = RegisterGuestChannelAsync())));
         _ = RefreshHyperVVmsAsync();
         return panel;
     }
 
     private async Task RefreshHyperVVmsAsync()
     {
-        if (_hyperVVmList is null) return;
+        if (_vmRefreshRunning || _guestMaintenanceBusy) return;
+        _vmRefreshRunning = true;
         try
         {
+            var selected = (_hyperVVmList?.SelectedItem as HyperVVirtualMachine)?.Id;
             var values = await _hyperVVmManager.ListAsync(CancellationToken.None);
-            _hyperVVmList.ItemsSource = values;
-            _hyperVVmStatus.Text = values.Count == 0 ? "未发现 Hyper-V 虚拟机。" : $"已发现 {values.Count} 台虚拟机；双击环境配置可继续 Agent 配对。";
+            ApplyDesktopVmStates(values);
+            if (_hyperVVmList is not null)
+            {
+                _hyperVVmList.ItemsSource = values;
+                _hyperVVmList.SelectedItem = values.FirstOrDefault(vm => vm.Id == selected);
+                if (_hyperVVmList.SelectedItem is null) SynchronizeSelectedVirtualMachine();
+                if (!_vmPollRefresh) _hyperVVmStatus.Text = values.Count == 0 ? "未发现 Hyper-V 虚拟机。" : $"已发现 {values.Count} 台虚拟机，状态每 3 秒更新。";
+            }
         }
-        catch (Exception exception) { _hyperVVmStatus.Text = $"读取虚拟机失败：{exception.Message}"; }
+        catch (Exception exception)
+        {
+            // A failed read used to leave the previous snapshot in place, so a machine the user had
+            // already stopped kept its green running dot for the rest of the session. An unknown
+            // state is reported as unknown instead.
+            ClearDesktopVmStates();
+            if (_hyperVVmList is not null) _hyperVVmStatus.Text = $"读取虚拟机失败：{exception.Message}";
+        }
+        finally { _vmRefreshRunning = false; }
     }
 
-    private async Task CreateHyperVVmAsync()
+    private void ApplyDesktopVmStates(IReadOnlyList<HyperVVirtualMachine> values)
     {
-        var dialog = new Microsoft.Win32.OpenFileDialog { Title = "选择 Windows ISO", Filter = "Windows ISO|*.iso" };
+        _desktopVmStates.Clear();
+        foreach (var machine in values) _desktopVmStates[machine.Id] = machine.State;
+        _desktopVmStatesObservedAt = DateTimeOffset.UtcNow;
+        RefreshEnvironmentStateIndicators();
+    }
+
+    private void ClearDesktopVmStates()
+    {
+        if (_desktopVmStates.Count == 0) return;
+        _desktopVmStates.Clear();
+        _desktopVmStatesObservedAt = DateTimeOffset.MinValue;
+        RefreshEnvironmentStateIndicators();
+    }
+
+    private async Task CreateHyperVVmAsync(bool fromTemplate = false)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = fromTemplate ? "选择已关闭、独立的 Windows VHDX 模板" : "选择 Windows ISO",
+            Filter = fromTemplate ? "独立虚拟磁盘|*.vhdx" : "Windows ISO|*.iso"
+        };
         if (dialog.ShowDialog(this) != true) return;
         var name = "月语分身-" + DateTime.Now.ToString("yyyyMMdd-HHmm", System.Globalization.CultureInfo.InvariantCulture);
-        var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "YueYuOrb", "HyperV", name);
         var environmentId = Guid.NewGuid();
         try
         {
+            var options = ReadHyperVCreationFields();
+            var root = Path.Combine(options.StorageDirectory, name);
             _hyperVVmStatus.Text = "正在创建第二代虚拟机，请勿关闭设置…";
-            var vm = await _hyperVVmManager.CreateAsync(new HyperVVmCreateRequest(environmentId, name, root, dialog.FileName, 4, 4096, 80, "Default Switch", true), CancellationToken.None);
+            var vm = await _hyperVVmManager.CreateAsync(new HyperVVmCreateRequest(environmentId, name, root, fromTemplate ? string.Empty : dialog.FileName, options.CpuCount, options.MemoryStartupMiB, options.DiskSizeGiB, options.SwitchName, options.SecureBoot)
+            {
+                TemplatePath = fromTemplate ? dialog.FileName : null
+            }, CancellationToken.None);
             _viewModel.AddDesktopSessionEnvironment(new EnvironmentProfile(environmentId, name, DesktopSessionBackendKind.HyperV, vm.Id.ToString(), SessionStartupPolicy.EnvironmentDefault, new SessionLimits(), []));
             RefreshDesktopSessionsPage();
             SetDesktopSessionStatus($"虚拟机已创建：{vm.Name}（{vm.Id}）。下一步需要安装来宾 Agent。", true);
@@ -152,7 +213,7 @@ public partial class SettingsWindow
         }
     }
 
-    private void OpenSelectedHyperVConsole()
+    private async void OpenSelectedHyperVConsole()
     {
         if (_hyperVVmList.SelectedItem is not HyperVVirtualMachine vm)
         {
@@ -162,13 +223,48 @@ public partial class SettingsWindow
 
         try
         {
-            Process.Start(HyperVVirtualMachineManager.BuildVmConnectCommand(vm.Name));
-            _hyperVVmStatus.Text = "已打开 Hyper-V 控制台；请在来宾 Windows 中安装并启动月语 Agent，完成配对后再打开桌面视图。";
+            var environment = _viewModel.DesktopSessionEnvironments.FirstOrDefault(item =>
+                item.Backend == DesktopSessionBackendKind.HyperV && Guid.TryParse(item.BackendProfileId, out var id) && id == vm.Id);
+            if (environment is not null && _desktopSessionActions is not null)
+            {
+                var status = await _desktopSessionActions.StartEnvironmentAsync(environment.Id, CancellationToken.None);
+                _hyperVVmStatus.Text = status.Message;
+                return;
+            }
+            if (_standaloneHyperVConsole is null)
+            {
+                _standaloneHyperVConsole = new FloatDesk.App.DesktopSessions.HyperVConsoleController();
+                Closed += (_, _) => _standaloneHyperVConsole.Dispose();
+            }
+            await _standaloneHyperVConsole.ShowAsync(vm.Id, 1280, 720, [],
+                () => Task.FromResult("控制台已关闭，虚拟机继续运行。"), CancellationToken.None,
+                openSettings: () => { Show(); Activate(); SelectDesktopSessionsPage(); });
+            _hyperVVmStatus.Text = "已打开月语 Hyper-V 控制台。";
         }
         catch (Exception exception)
         {
             _hyperVVmStatus.Text = $"打开 Hyper-V 控制台失败：{exception.Message}";
         }
+    }
+
+    private FloatDesk.App.DesktopSessions.HyperVConsoleController? _standaloneHyperVConsole;
+    private FloatDesk.App.DesktopSessions.HyperVConsoleController? _nativeHyperVConsole;
+
+    private async Task OpenNativeHyperVConsoleAsync()
+    {
+        if (_hyperVVmList.SelectedItem is not HyperVVirtualMachine vm) { _hyperVVmStatus.Text = "请先选择虚拟机。"; return; }
+        try
+        {
+            if (_nativeHyperVConsole is null)
+            {
+                _nativeHyperVConsole = new FloatDesk.App.DesktopSessions.HyperVConsoleController();
+                Closed += (_, _) => _nativeHyperVConsole.Dispose();
+            }
+            await _nativeHyperVConsole.ShowAsync(vm.Id, 1280, 720, [], () => Task.FromResult("控制台已关闭，虚拟机继续运行。"), CancellationToken.None,
+                openSettings: () => { Show(); Activate(); SelectDesktopSessionsPage(); }, useSavedLogin: false);
+            _hyperVVmStatus.Text = "已打开原生连接，不使用自动认证。";
+        }
+        catch (Exception exception) { _hyperVVmStatus.Text = exception.Message; }
     }
 
     private void OpenWindowsFeatures()

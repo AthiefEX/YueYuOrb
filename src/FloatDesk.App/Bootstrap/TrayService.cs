@@ -39,7 +39,7 @@ public sealed class TrayService : IDisposable
         menu.Items.Add("显示/隐藏悬浮球", null, (_, _) => toggleOrb());
         menu.Items.Add("打开快捷面板", null, (_, _) => openPanel());
         menu.Items.Add("设置", null, (_, _) => openSettings());
-        menu.Items.Add("AI 网页", null, (_, _) => openBrowser());
+        menu.Items.Add("悬浮浏览器", null, (_, _) => openBrowser());
         menu.Items.Add("记事本", null, (_, _) => openNotes());
         if (toggleNightMode is not null) menu.Items.Add("切换黑夜模式", null, (_, _) => toggleNightMode());
         if (recoverBrightness is not null) menu.Items.Add("恢复可见亮度", null, (_, _) => recoverBrightness());
@@ -102,6 +102,15 @@ public sealed class TrayService : IDisposable
                 title,
                 message,
                 ToolTipIcon.Warning));
+        });
+    }
+
+    public void ShowInfo(string title, string message)
+    {
+        RunOnCreatedThread(() =>
+        {
+            if (_disposed) return;
+            SystemNotificationPolicy.Deliver(_notificationsEnabled, () => _icon.ShowBalloonTip(4000, title, message, ToolTipIcon.Info));
         });
     }
 

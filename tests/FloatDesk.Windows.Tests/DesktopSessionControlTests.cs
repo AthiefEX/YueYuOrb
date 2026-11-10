@@ -6,11 +6,12 @@ namespace FloatDesk.Windows.Tests;
 
 public sealed class DesktopSessionControlTests
 {
+    private readonly string _pipeName = "YueYuOrb.Control.Tests." + Guid.NewGuid().ToString("N");
     [Fact(Timeout = 15_000)]
     public async Task ClientAndServerRoundTripListRunCancel()
     {
         var handler = new RecordingHandler();
-        await using var server = new DesktopSessionControlServer(handler);
+        await using var server = new DesktopSessionControlServer(handler, _pipeName);
         server.Start();
         using var timeout = new CancellationTokenSource(
             TimeSpan.FromSeconds(10));
@@ -22,7 +23,7 @@ public sealed class DesktopSessionControlTests
                 null,
                 null,
                 null),
-            timeout.Token);
+            timeout.Token, _pipeName);
         var run = await DesktopSessionControlClient.SendAsync(
             new DesktopSessionControlRequest(
                 DesktopSessionControlProtocol.CurrentVersion,
@@ -30,7 +31,7 @@ public sealed class DesktopSessionControlTests
                 RecordingHandler.EnvironmentId,
                 RecordingHandler.TaskId,
                 null),
-            timeout.Token);
+            timeout.Token, _pipeName);
         var cancelled = await DesktopSessionControlClient.SendAsync(
             new DesktopSessionControlRequest(
                 DesktopSessionControlProtocol.CurrentVersion,
@@ -38,7 +39,7 @@ public sealed class DesktopSessionControlTests
                 null,
                 null,
                 RecordingHandler.RunId),
-            timeout.Token);
+            timeout.Token, _pipeName);
 
         Assert.True(listed.Success);
         Assert.Single(listed.Environments!);
@@ -59,7 +60,7 @@ public sealed class DesktopSessionControlTests
     public async Task ServerRejectsUnknownProtocolVersion()
     {
         await using var server = new DesktopSessionControlServer(
-            new RecordingHandler());
+            new RecordingHandler(), _pipeName);
         server.Start();
         using var timeout = new CancellationTokenSource(
             TimeSpan.FromSeconds(10));
@@ -71,7 +72,7 @@ public sealed class DesktopSessionControlTests
                 null,
                 null,
                 null),
-            timeout.Token);
+            timeout.Token, _pipeName);
 
         Assert.False(response.Success);
         Assert.Equal("InvalidRequest", response.ErrorCode);
@@ -81,7 +82,7 @@ public sealed class DesktopSessionControlTests
     public async Task HandlerFailureReturnsErrorAndKeepsServerAlive()
     {
         await using var server = new DesktopSessionControlServer(
-            new ThrowingHandler());
+            new ThrowingHandler(), _pipeName);
         server.Start();
         using var timeout = new CancellationTokenSource(
             TimeSpan.FromSeconds(10));
@@ -93,7 +94,7 @@ public sealed class DesktopSessionControlTests
                 null,
                 null,
                 null),
-            timeout.Token);
+            timeout.Token, _pipeName);
         var recovered = await DesktopSessionControlClient.SendAsync(
             new DesktopSessionControlRequest(
                 DesktopSessionControlProtocol.CurrentVersion,
@@ -101,7 +102,7 @@ public sealed class DesktopSessionControlTests
                 null,
                 null,
                 null),
-            timeout.Token);
+            timeout.Token, _pipeName);
 
         Assert.False(failed.Success);
         Assert.Equal("HandlerFailed", failed.ErrorCode);

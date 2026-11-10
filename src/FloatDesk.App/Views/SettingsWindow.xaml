@@ -26,11 +26,12 @@
                 <ResourceDictionary Source="/YueYuOrb;component/Resources/SettingsWindowResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <Style x:Key="SettingsShellStyle" TargetType="{x:Type Border}">
-                <Setter Property="Margin" Value="7" />
+                <Setter Property="views:GlassWindowFrame.Enabled" Value="True" />
+                <Setter Property="Margin" Value="0" />
                 <Setter Property="CornerRadius" Value="16" />
                 <Setter Property="Background" Value="{DynamicResource SettingsShellBrush}" />
                 <Setter Property="BorderBrush" Value="{DynamicResource SettingsAccentOutlineBrush}" />
-                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="ClipToBounds" Value="True" />
                 <Style.Triggers>
                     <DataTrigger Binding="{Binding WindowState, RelativeSource={RelativeSource AncestorType=Window}}"
@@ -738,7 +739,7 @@
                                                 <CheckBox x:Name="ShowRegionCaptureInWheelCheckBox" Content="快速截图" IsChecked="{Binding ShowRegionCaptureInWheel}" Style="{StaticResource SettingsCheckBoxStyle}" VerticalAlignment="Center" />
                                                 <CheckBox x:Name="ShowWindowCaptureInWheelCheckBox" Grid.Row="1" Content="窗口截图" IsChecked="{Binding ShowWindowCaptureInWheel}" Style="{StaticResource SettingsCheckBoxStyle}" VerticalAlignment="Center" />
                                                 <CheckBox x:Name="ShowMonitorCaptureInWheelCheckBox" Grid.Row="2" Content="屏幕截图" IsChecked="{Binding ShowMonitorCaptureInWheel}" Style="{StaticResource SettingsCheckBoxStyle}" VerticalAlignment="Center" />
-                                                <CheckBox x:Name="ShowAiBrowserInWheelCheckBox" Grid.Row="3" Content="AI 网页" IsChecked="{Binding ShowAiBrowserInWheel}" Style="{StaticResource SettingsCheckBoxStyle}" VerticalAlignment="Center" />
+                                                <CheckBox x:Name="ShowAiBrowserInWheelCheckBox" Grid.Row="3" Content="悬浮浏览器" IsChecked="{Binding ShowAiBrowserInWheel}" Style="{StaticResource SettingsCheckBoxStyle}" VerticalAlignment="Center" />
                                                 <CheckBox x:Name="ShowNotesInWheelCheckBox" Grid.Column="1" Content="记事本" IsChecked="{Binding ShowNotesInWheel}" Style="{StaticResource SettingsCheckBoxStyle}" VerticalAlignment="Center" />
                                                 <CheckBox x:Name="ShowInputLockInWheelCheckBox" Grid.Row="1" Grid.Column="1" Content="锁定英文" IsChecked="{Binding ShowInputLockInWheel}" Style="{StaticResource SettingsCheckBoxStyle}" VerticalAlignment="Center" />
                                                 <CheckBox x:Name="ShowSettingsInWheelCheckBox" Grid.Row="2" Grid.Column="1" Content="设置" IsChecked="{Binding ShowSettingsInWheel}" Style="{StaticResource SettingsCheckBoxStyle}" VerticalAlignment="Center" />
@@ -961,11 +962,11 @@
 
 
 
-                    <TabItem Style="{StaticResource NavigationTabItemStyle}" AutomationProperties.Name="AI 网页">
+                    <TabItem Style="{StaticResource NavigationTabItemStyle}" AutomationProperties.Name="悬浮浏览器">
                         <TabItem.Header>
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock FontFamily="{StaticResource SettingsIconFont}" FontSize="15" Text="&#xE774;" Margin="0,0,7,0" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
-                                <TextBlock Text="AI 网页" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
+                                <TextBlock Text="悬浮浏览器" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" />
                             </StackPanel>
                         </TabItem.Header>
                         <Grid Margin="28,16,28,24">
@@ -986,7 +987,7 @@
                                         </Border>
                                         <StackPanel VerticalAlignment="Center">
                                             <TextBlock Text="网页窗口行为" Style="{StaticResource SettingsSectionTitleStyle}" />
-                                            <TextBlock Text="悬浮球内打开 AI 网页时使用的窗口与缩放设置。" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,2,0,0" />
+                                            <TextBlock Text="置顶观看时鼠标穿透；用快捷键切换交互后可操作网页和拖边缩放。" MaxWidth="340" TextWrapping="Wrap" Style="{StaticResource SettingsDescriptionStyle}" Margin="0,2,0,0" />
                                         </StackPanel>
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Width="250">
@@ -1009,7 +1010,14 @@
                                             </ComboBox>
                                         </Grid>
                                         <CheckBox Content="关闭窗口即释放网页" IsChecked="{Binding BrowserReleaseOnClose}" Style="{StaticResource ToggleSwitchStyle}" Margin="0,0,0,8" />
-                                        <CheckBox Content="AI 窗口独立置顶" IsChecked="{Binding BrowserTopmost}" Style="{StaticResource ToggleSwitchStyle}" />
+                                        <CheckBox Content="浏览器始终置顶" IsChecked="{Binding BrowserAlwaysOnTop}" Style="{StaticResource ToggleSwitchStyle}" />
+                                        <CheckBox Content="启动月语时自动打开" IsChecked="{Binding BrowserOpenOnStartup}" Style="{StaticResource ToggleSwitchStyle}" Margin="0,8,0,0" />
+                                        <TextBlock Text="默认打开的 HTTPS 地址（留空沿用所选收藏）" Style="{StaticResource SettingsCaptionStyle}" TextWrapping="Wrap" Margin="0,8,0,4" />
+                                        <TextBox Text="{Binding BrowserStartupUrl, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SettingsTextBoxStyle}" />
+                                        <TextBlock Text="观看/交互快捷键" Style="{StaticResource SettingsCaptionStyle}" Margin="0,8,0,4" />
+                                        <TextBox Text="{Binding BrowserInteractionHotkey, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource SettingsTextBoxStyle}" />
+                                        <TextBlock Text="浏览器不透明度（20%–100%）" Style="{StaticResource SettingsCaptionStyle}" Margin="0,8,0,4" />
+                                        <Slider Minimum="20" Maximum="100" Value="{Binding BrowserOpacityPercent}" />
                                     </StackPanel>
                                 </Grid>
                             </Border>

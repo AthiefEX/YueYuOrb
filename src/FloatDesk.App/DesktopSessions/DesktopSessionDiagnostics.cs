@@ -1,4 +1,5 @@
 using FloatDesk.Core.Models;
+using FloatDesk.Windows.DesktopSessions;
 
 namespace FloatDesk.App.DesktopSessions;
 
@@ -19,7 +20,8 @@ public sealed class DesktopSessionDiagnostics
 
     public IReadOnlyList<DesktopSessionDiagnostic> Inspect(
         DesktopSessionSettings settings,
-        bool runtimeAvailable)
+        bool runtimeAvailable,
+        HyperVFeatureStatus? hyperVStatus = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         var agent = ToolExists(
@@ -66,8 +68,8 @@ public sealed class DesktopSessionDiagnostics
                     : "运行时或窄权限准备组件未就绪。"),
             new(
                 "Hyper-V",
-                "不可用",
-                "生产 Hyper-V 执行宿主与来宾身份探测尚未接入；不会从主桌面替代执行。"),
+                GetHyperVState(hyperVStatus),
+                GetHyperVDetail(hyperVStatus)),
             new(
                 "输入隔离",
                 localChildReady ? "强制校验" : "未开放",
@@ -83,4 +85,34 @@ public sealed class DesktopSessionDiagnostics
             "desktop-sessions",
             folder,
             fileName));
+
+    private static string GetHyperVState(HyperVFeatureStatus? status) => status switch
+    {
+        { FeatureEnabled: true, HypervisorLaunchEnabled: true, HypervisorRunning: true, ManagementToolsAvailable: true } =>
+            "宿主已就绪",
+        { FeatureEnabled: true, HypervisorLaunchEnabled: true, HypervisorRunning: true } =>
+            "缺少管理工具",
+        { FeatureEnabled: true, HypervisorLaunchEnabled: true } =>
+            "需重启",
+        { FeatureEnabled: true } =>
+            "需配置启动项",
+        { FeatureEnabled: false } =>
+            "未启用",
+        _ => "不可用"
+    };
+
+    private static string GetHyperVDetail(HyperVFeatureStatus? status) => status switch
+    {
+        { FeatureEnabled: true, HypervisorLaunchEnabled: true, HypervisorRunning: true, ManagementToolsAvailable: true } =>
+            "Hyper-V 宿主已运行；仍需在设置中填写现有 Windows 虚拟机 GUID，并完成来宾 Agent 配对，才能启动虚拟机分身。",
+        { FeatureEnabled: true, HypervisorLaunchEnabled: true, HypervisorRunning: true } =>
+            "Hyper-V 已运行，但未发现 Hyper-V PowerShell 管理模块；请在 Windows 功能中启用 Hyper-V 管理工具后重启。",
+        { FeatureEnabled: true, HypervisorLaunchEnabled: true } =>
+            "组件和启动项已配置，但本次 Windows 启动尚未加载 Hyper-V；请重启电脑后刷新。",
+        { FeatureEnabled: true } =>
+            "组件已安装，但 hypervisorlaunchtype 仍未设为 Auto；点击“安装/启用 Hyper-V”修复后重启。",
+        { FeatureEnabled: false } =>
+            "Hyper-V 系统组件未启用；请在上方执行安装/启用操作。",
+        _ => "尚未读取 Hyper-V 宿主状态；不会从主桌面替代执行。"
+    };
 }

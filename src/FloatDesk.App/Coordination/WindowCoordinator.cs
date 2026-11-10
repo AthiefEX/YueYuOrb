@@ -94,9 +94,20 @@ public sealed class WindowCoordinator : IWindowCoordinator
                 window.Show();
             if (window.WindowState == WindowState.Minimized)
                 window.WindowState = WindowState.Normal;
-            window.Activate();
-            window.Topmost = true;
-            window.Topmost = false;
+            if (window is FloatDesk.App.Views.AiBrowserWindow browser)
+            {
+                if (!browser.IsClickThrough) browser.Activate();
+            }
+            else if (window is FloatDesk.App.Views.AssistantWindow)
+            {
+                window.Activate();
+            }
+            else
+            {
+                window.Activate();
+                window.Topmost = true;
+                window.Topmost = false;
+            }
             ToolShown?.Invoke(window);
         });
     }

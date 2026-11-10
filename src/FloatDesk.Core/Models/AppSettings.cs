@@ -6,7 +6,7 @@ public enum OrbDisplayMode { Classic, Crystal }
 public enum FullscreenPolicy { FollowAlwaysOnTop, AutoHide, KeepTopmost }
 public enum CaptureMode { Region, ActiveWindow, CurrentMonitor }
 public enum ImageFormat { Png, Jpeg }
-public enum HotkeyAction { Panel, RegionCapture, WindowCapture, MonitorCapture, PauseInput, AiBrowser, Notes, TranslateSelection, TranslateRegion, ToggleSubtitles, ExtractRegionText, BrightnessPanel, BrightnessPreset, BrightnessUp, BrightnessDown, ToggleNightMode, RecoverBrightness }
+public enum HotkeyAction { Panel, RegionCapture, WindowCapture, MonitorCapture, PauseInput, AiBrowser, Notes, TranslateSelection, TranslateRegion, ToggleSubtitles, ExtractRegionText, BrightnessPanel, BrightnessPreset, BrightnessUp, BrightnessDown, ToggleNightMode, RecoverBrightness, ToggleBrowserInteraction, Assistant }
 public readonly record struct HotkeyChord(ShortcutModifiers Modifiers, uint VirtualKey);
 
 public sealed record GeneralSettings(bool StartWithWindows, AppTheme Theme, bool ShowSystemNotifications = true)
@@ -83,6 +83,11 @@ public sealed record AppSettings(
 
     public bool ShowLauncherDock { get; init; } = true;
     public ResourceUsageSettings ResourceUsage { get; init; } = new();
+    public FloatDesk.Core.Assistant.AssistantSettings Assistant { get; init; } = new();
+    public FloatingBrowserSettings FloatingBrowser { get; init; } = new();
+    public CustomBackgroundSettings CustomBackground { get; init; } = new();
+    public SteamNetworkSettings SteamNetwork { get; init; } = new();
+    public HyperVAutomationSettings HyperVAutomation { get; init; } = new();
     public DesktopSessionSettings DesktopSessions { get; init; } =
         DesktopSessionSettings.CreateDefault();
 
@@ -135,7 +140,8 @@ public sealed record AppSettings(
                 [HotkeyAction.TranslateRegion] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x4F),
                 [HotkeyAction.ToggleSubtitles] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x4C),
                 [HotkeyAction.ExtractRegionText] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x45),
-                [HotkeyAction.RecoverBrightness] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt | ShortcutModifiers.Shift, 0x7B)
+                [HotkeyAction.RecoverBrightness] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt | ShortcutModifiers.Shift, 0x7B),
+                [HotkeyAction.ToggleBrowserInteraction] = new(ShortcutModifiers.Control | ShortcutModifiers.Alt, 0x42)
             },
             []);
     }

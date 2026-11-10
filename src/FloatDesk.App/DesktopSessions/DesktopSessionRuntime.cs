@@ -465,7 +465,8 @@ public sealed class DesktopSessionRuntime : IDisposable
             {
                 await _backend.StopAsync(
                     handle,
-                    SessionStopMode.Disconnect,
+                    state.Profile.Backend == DesktopSessionBackendKind.LocalChild
+                        ? SessionStopMode.LogoffOwnedSession : SessionStopMode.Disconnect,
                     CancellationToken.None).ConfigureAwait(false);
             }
             catch (Exception exception)
@@ -549,7 +550,8 @@ public sealed class DesktopSessionRuntime : IDisposable
         {
             await _backend.StopAsync(
                 handle,
-                SessionStopMode.Disconnect,
+                state.Profile.Backend == DesktopSessionBackendKind.LocalChild
+                    ? SessionStopMode.LogoffOwnedSession : SessionStopMode.Disconnect,
                 CancellationToken.None).ConfigureAwait(false);
             return true;
         }

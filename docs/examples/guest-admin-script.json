@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "id": "81288cc8-34f7-47a7-b11b-306b93060e88",
+  "name": "来宾管理员脚本演示",
+  "environmentId": "11111111-1111-4111-8111-111111111111",
+  "steps": [
+    {
+      "retryCount": 0,
+      "kind": "RunSystemScript",
+      "id": "06dc488a-c2d3-4b1e-a6b8-b6a9f8183833",
+      "timeoutSeconds": 60,
+      "parameters": {
+        "scriptName": "demo.ps1",
+        "arguments": "[]"
+      }
+    }
+  ],
+  "trigger": {
+    "timeZoneId": null,
+    "kind": "Manual",
+    "localTime": null
+  },
+  "revision": 1,
+  "enabled": false,
+  "rules": "仅在所选分身执行。先核对环境，失败后检查实际状态。",
+  "scripts": [
+    {
+      "name": "demo.ps1",
+      "sha256": "aff363b3b43cee27030d0e2b15af5429cabbfb904b38f0ddd82a60d8d0eb7384",
+      "content": "New-Item -ItemType Directory -Path (Join-Path $env:ProgramData 'YueYuOrb\\TaskDemo') -Force | Out-Null"
+    }
+  ]
+}

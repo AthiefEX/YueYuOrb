@@ -2,9 +2,9 @@ namespace FloatDesk.App;
 
 public sealed class AppDataPaths
 {
-    public AppDataPaths()
+    public AppDataPaths(string? root = null)
     {
-        Root = Path.Combine(
+        Root = root is not null ? Path.GetFullPath(root) : Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "FloatDesk");
         Assets = Path.Combine(Root, "assets");

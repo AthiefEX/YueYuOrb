@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "id": "22b3cacc-530f-4d01-bcf4-7e81af87c21d",
+  "name": "来宾普通脚本演示",
+  "environmentId": "11111111-1111-4111-8111-111111111111",
+  "steps": [
+    {
+      "retryCount": 0,
+      "kind": "RunScript",
+      "id": "69b5d917-3b40-4ccf-bcfc-523ad146ad14",
+      "timeoutSeconds": 60,
+      "parameters": {
+        "scriptName": "demo.ps1",
+        "arguments": "[]"
+      }
+    }
+  ],
+  "trigger": {
+    "timeZoneId": null,
+    "kind": "Manual",
+    "localTime": null
+  },
+  "revision": 1,
+  "enabled": false,
+  "rules": "仅在所选分身执行。先核对环境，失败后检查实际状态。",
+  "scripts": [
+    {
+      "name": "demo.ps1",
+      "sha256": "1eb01e12db68dc0672e225932516fb554493e67b2e362999206cd3caeb303541",
+      "content": "[IO.File]::WriteAllText((Join-Path $env:TEMP 'YueYu-task-demo.txt'),'任务成功')"
+    }
+  ]
+}

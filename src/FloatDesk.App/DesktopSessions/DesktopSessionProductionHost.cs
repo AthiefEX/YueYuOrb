@@ -12,7 +12,7 @@ public interface IDesktopSessionExecutionShutdown
     Task ShutdownAsync(CancellationToken cancellationToken);
 }
 
-public sealed class DesktopSessionProductionHost :
+internal sealed class SingleBackendDesktopSessionHost :
     IDesktopSessionExecutionHost,
     IDesktopSessionExecutionShutdown,
     IDisposable
@@ -28,7 +28,7 @@ public sealed class DesktopSessionProductionHost :
     private ActiveEnvironment? _active;
     private bool _disposed;
 
-    public DesktopSessionProductionHost(
+    public SingleBackendDesktopSessionHost(
         Func<AppSettings> getSettings,
         Func<EnvironmentProfile, DesktopSessionBackendBundle> backendFactory,
         IStartupExecutionLedger startupLedger,
@@ -314,17 +314,34 @@ public sealed class DesktopSessionProductionHost :
             existing = _active;
         if (existing is not null)
         {
-            return existing.Environment.Id == environment.Id
-                ? new(true, "桌面环境已在运行。")
-                : new(
-                    false,
-                    "当前仅允许一个桌面分身环境运行，请先停止现有环境。");
+            if (existing.Environment.Id != environment.Id)
+                return new(false, "每种模式仅允许一个桌面分身环境运行，请先停止该模式现有环境。");
+            if (IsEnvironmentReady(environment.Id) ||
+                existing.Runtime.GetStatus(environment.Id) == SessionRuntimeStatus.Paused)
+            {
+                await existing.Bundle.Backend.ShowAsync(existing.Handle, cancellationToken).ConfigureAwait(false);
+                return new(true, "桌面环境已显示。");
+            }
+            if (environment.Backend != DesktopSessionBackendKind.HyperV || existing.ActiveRunId is not null)
+                return new(false, "桌面环境未就绪，请先停止并重新启动。");
+
+            // Rebuild only the stale automation connection. Hyper-V runtime Stop
+            // uses Disconnect, so a live guest and its applications keep running.
+            try { await existing.Runtime.StopAsync(environment.Id, cancellationToken).ConfigureAwait(false); }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // The disconnected transport can no longer acknowledge lease release.
+                // A fresh authenticated generation is required before any new commands.
+            }
+            lock (_sync)
+                if (ReferenceEquals(_active, existing)) _active = null;
+            await DisposeActiveAsync(existing).ConfigureAwait(false);
         }
 
         var bundle = _backendFactory(environment);
         var runtime = new DesktopSessionRuntime(
             bundle.Backend,
-            bundle.Transport,
+            new TaskGuestTransport(environment, bundle.Transport),
             [environment]);
         SessionHandle? handle = null;
         try
@@ -347,6 +364,7 @@ public sealed class DesktopSessionProductionHost :
                 handle,
                 environment.StartupEntries,
                 cancellationToken).ConfigureAwait(false);
+            await bundle.Backend.ShowAsync(handle, cancellationToken).ConfigureAwait(false);
             var active = new ActiveEnvironment(
                 environment,
                 bundle,

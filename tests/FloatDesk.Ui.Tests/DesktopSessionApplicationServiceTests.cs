@@ -7,6 +7,26 @@ namespace FloatDesk.Ui.Tests;
 public sealed class DesktopSessionApplicationServiceTests
 {
     [Fact]
+    public async Task DisabledLocalModeBlocksStartAndTasksWhileVmEnabled()
+    {
+        var settings = CreateSettings(enabled: true);
+        settings = settings with
+        {
+            DesktopSessions = settings.DesktopSessions with
+            {
+                LocalChild = new(false, null), HyperV = new(true, null)
+            }
+        };
+        var host = new RecordingHost();
+        using var service = new DesktopSessionApplicationService(() => settings, new MemoryLedger(), host);
+        Assert.False((await service.StartEnvironmentAsync(settings.DesktopSessions.Environments[0].Id, CancellationToken.None)).Success);
+        Assert.False((await service.RunTaskAsync(settings.DesktopSessions.Tasks[0].Id, CancellationToken.None)).Success);
+        Assert.False(service.IsEnvironmentReady(settings.DesktopSessions.Environments[0].Id));
+        Assert.Equal(0, host.StartCalls);
+        Assert.Equal(0, host.RunCalls);
+    }
+
+    [Fact]
     public async Task DisabledFeatureDoesNotInvokeHost()
     {
         var settings = CreateSettings(enabled: false);

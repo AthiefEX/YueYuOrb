@@ -81,6 +81,7 @@ public sealed class HyperVSessionBackend :
     private readonly HyperVAgentEndpointRegistry _endpoints;
     private readonly Func<Guid> _generationFactory;
     private readonly TimeProvider _timeProvider;
+    private readonly Func<Guid, CancellationToken, Task>? _showView;
     private readonly object _sync = new();
     private ActiveSession? _active;
     private bool _launching;
@@ -91,7 +92,8 @@ public sealed class HyperVSessionBackend :
         IHyperVGuestAgentProbe guestProbe,
         HyperVAgentEndpointRegistry? endpoints = null,
         Func<Guid>? generationFactory = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        Func<Guid, CancellationToken, Task>? showView = null)
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _guestProbe = guestProbe ??
@@ -100,6 +102,7 @@ public sealed class HyperVSessionBackend :
         _generationFactory =
             generationFactory ?? (() => Guid.NewGuid());
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _showView = showView;
     }
 
     public Task<SessionCapabilities> ProbeAsync(
@@ -223,6 +226,9 @@ public sealed class HyperVSessionBackend :
                     "The Hyper-V VM did not reach the running state.");
             }
 
+            if (_showView is not null)
+                await _showView(vmId, cancellationToken).ConfigureAwait(false);
+
             var identity = await _guestProbe.ProbeAsync(
                 vmId,
                 cancellationToken).ConfigureAwait(false);
@@ -274,8 +280,8 @@ public sealed class HyperVSessionBackend :
     {
         ThrowIfDisposed();
         cancellationToken.ThrowIfCancellationRequested();
-        _ = GetActive(handle);
-        return Task.CompletedTask;
+        var active = GetActive(handle);
+        return _showView?.Invoke(active.VmId, cancellationToken) ?? Task.CompletedTask;
     }
 
     public async Task StopAsync(

@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using FloatDesk.Windows.DesktopSessions;
 
 namespace FloatDesk.App;
 
@@ -11,7 +12,8 @@ public sealed class StartupService
     internal static bool ShouldNotifyExistingInstance(IEnumerable<string> arguments) =>
         !arguments.Any(argument => string.Equals(argument, StartupArgument, StringComparison.OrdinalIgnoreCase));
 
-    internal static string BuildStartupCommand(string executable) => $"\"{executable}\" {StartupArgument}";
+    internal static string BuildStartupCommand(string executable, string? guardExecutable = null) =>
+        OrbStartupRegistration.BuildCommand(executable, guardExecutable);
 
     public static void SetEnabled(bool enabled)
     {
@@ -21,7 +23,7 @@ public sealed class StartupService
         {
             var executable = Environment.ProcessPath
                 ?? throw new InvalidOperationException("无法确定程序路径。");
-            key.SetValue(ValueName, BuildStartupCommand(executable));
+            key.SetValue(ValueName, BuildStartupCommand(executable, OrbStartupRegistration.GetVerifiedGuard()));
         }
         else
         {

@@ -44,7 +44,8 @@
         "type": "Project",
         "dependencies": {
           "FloatDesk.Core": "[1.4.0, )",
-          "Microsoft.Data.Sqlite": "[10.0.9, )"
+          "Microsoft.Data.Sqlite": "[10.0.9, )",
+          "PdfPig": "[0.1.16, )"
         }
       },
       "floatdesk.windows": {
@@ -60,7 +61,15 @@
           "FloatDesk.Core": "[1.4.0, )",
           "FloatDesk.Infrastructure": "[1.4.0, )",
           "FloatDesk.Windows": "[1.4.0, )",
-          "Microsoft.Web.WebView2": "[1.0.4314.35, )"
+          "Microsoft.Web.WebView2": "[1.0.4314.35, )",
+          "YueYuOrb.SessionAgent": "[1.4.0, )"
+        }
+      },
+      "YueYuOrb.SessionAgent": {
+        "type": "Project",
+        "dependencies": {
+          "FloatDesk.Core": "[1.4.0, )",
+          "FloatDesk.Windows": "[1.4.0, )"
         }
       },
       "CommunityToolkit.Mvvm": {
@@ -85,6 +94,12 @@
         "requested": "[1.0.4314.35, )",
         "resolved": "1.0.4314.35",
         "contentHash": "x5MFf2W03xueU1mMNvivXfHSsQ+ODo7vJ36qw/dLtU5Gs+8d7+7N7zzmNNDoT3ffosmcvZNBtUnlzyiDUuBkSQ=="
+      },
+      "PdfPig": {
+        "type": "CentralTransitive",
+        "requested": "[0.1.16, )",
+        "resolved": "0.1.16",
+        "contentHash": "qQcbsNMYVY+K5ELptax2S8thNMk0+rSQq3H/KdYj3LLcko8yTCz8y5KIvsKxIyAuTN0ZYNnfsZkM+0EvxTwHVA=="
       }
     },
     "net10.0-windows10.0.19041/win-x64": {

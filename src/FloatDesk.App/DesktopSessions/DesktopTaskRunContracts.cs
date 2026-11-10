@@ -24,7 +24,10 @@ public sealed record DesktopTaskRunResult(
     DesktopTaskRunOutcome Outcome,
     int CompletedSteps,
     Guid? FailedStepId,
-    string? ErrorCode);
+    string? ErrorCode)
+{
+    public string? DataJson { get; init; }
+}
 
 public sealed record DesktopTaskRunEvent(
     Guid RunId,

@@ -68,7 +68,10 @@ public sealed record SessionWireEnvelope(
     bool Accepted,
     bool Succeeded,
     bool OutcomeUnknown,
-    string? ErrorCode);
+    string? ErrorCode)
+{
+    public string? DataJson { get; init; }
+}
 
 public static class SessionConnectionAuthorization
 {
@@ -646,7 +649,7 @@ public sealed class NamedPipeSessionTransport :
                 : response.CommandId,
             response.Succeeded,
             response.OutcomeUnknown,
-            response.ErrorCode);
+            response.ErrorCode) { DataJson = response.DataJson };
     }
 
     public async ValueTask DisposeAsync()

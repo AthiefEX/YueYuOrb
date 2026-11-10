@@ -2,12 +2,13 @@ using System.Windows;
 using System.Windows.Media;
 using FloatDesk.Core.Models;
 using Microsoft.Win32;
+using System.Windows.Media.Imaging;
 
 namespace FloatDesk.App;
 
 public static class ThemeService
 {
-    private static readonly IReadOnlyDictionary<string, (string Light, string Dark)> Palette =
+    private static readonly Dictionary<string, (string Light, string Dark)> Palette =
         new Dictionary<string, (string Light, string Dark)>
         {
             ["AccentBrush"] = ("#2176E8", "#65B0FF"),
@@ -95,6 +96,41 @@ public static class ThemeService
             requested,
             SystemParameters.HighContrast,
             SystemUsesDarkTheme());
+    }
+
+    public static void ApplyCustomBackground(AppSettings settings, string assetsDirectory)
+    {
+        if (Application.Current is not { } app) return;
+        var dark = settings.General.Theme == AppTheme.Dark || settings.General.Theme == AppTheme.System && SystemUsesDarkTheme();
+        foreach (var key in new[] { "SettingsWindowBackgroundBrush", "SettingsShellBrush", "ToolWindowContentBrush", "SettingsCardBrush" })
+        {
+            if (SystemParameters.HighContrast) app.Resources[key] = SystemColors.WindowBrush;
+            else { var colors = Palette[key]; SetBrush(app.Resources, key, dark ? colors.Dark : colors.Light); }
+        }
+        if (SystemParameters.HighContrast) return;
+        var path = Path.Combine(assetsDirectory, "background.png");
+        if (!settings.CustomBackground.Enabled || !File.Exists(path)) return;
+        try
+        {
+            var frame = new BitmapImage(); frame.BeginInit(); frame.CacheOption = BitmapCacheOption.OnLoad; frame.CreateOptions = BitmapCreateOptions.IgnoreImageCache; frame.UriSource = new Uri(path); frame.DecodePixelWidth = 2048; frame.EndInit(); frame.Freeze();
+            foreach (var key in new[] { "SettingsWindowBackgroundBrush", "SettingsShellBrush", "ToolWindowContentBrush" })
+            {
+                var colors = Palette[key];
+                var color = (Color)ColorConverter.ConvertFromString(dark ? colors.Dark : colors.Light);
+                var bounds = new Rect(0, 0, frame.PixelWidth, frame.PixelHeight);
+                var drawing = new DrawingGroup();
+                drawing.Children.Add(new GeometryDrawing(new SolidColorBrush(color), null, new RectangleGeometry(bounds)));
+                var image = new DrawingGroup { Opacity = Math.Clamp(settings.CustomBackground.Opacity, 0, 1) };
+                image.Children.Add(new ImageDrawing(frame, bounds)); drawing.Children.Add(image);
+                var brush = new DrawingBrush(drawing) { Stretch = Stretch.UniformToFill }; brush.Freeze(); app.Resources[key] = brush;
+            }
+            var cardColors = Palette["SettingsCardBrush"];
+            var cardColor = (Color)ColorConverter.ConvertFromString(dark ? cardColors.Dark : cardColors.Light);
+            cardColor.A = 190;
+            var cardBrush = new SolidColorBrush(cardColor); cardBrush.Freeze(); app.Resources["SettingsCardBrush"] = cardBrush;
+        }
+        catch (Exception error) when (error is IOException or NotSupportedException or InvalidOperationException or ArgumentException)
+        { /* Missing or invalid images leave the standard theme intact. */ }
     }
 
     public static bool SystemUsesDarkTheme()

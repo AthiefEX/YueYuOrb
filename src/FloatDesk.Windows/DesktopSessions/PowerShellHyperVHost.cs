@@ -6,6 +6,7 @@ namespace FloatDesk.Windows.DesktopSessions;
 
 public sealed class PowerShellHyperVHost : IHyperVHost
 {
+    private static readonly TimeSpan ManagementTimeout = TimeSpan.FromSeconds(180);
     private readonly string _powerShellPath;
 
     public PowerShellHyperVHost(string powerShellPath = "powershell.exe")
@@ -92,7 +93,6 @@ public sealed class PowerShellHyperVHost : IHyperVHost
     public Task<string> RunScriptForManagementAsyncCore(
         string script,
         CancellationToken cancellationToken) => RunScriptAsync(script, cancellationToken);
-
     private async Task<VmQuery> QueryAsync(
         Guid vmId,
         CancellationToken cancellationToken)
@@ -161,9 +161,15 @@ public sealed class PowerShellHyperVHost : IHyperVHost
             cancellationToken);
         var errorTask = process.StandardError.ReadToEndAsync(
             cancellationToken);
+        // Every caller is a UI action with a busy flag behind it. An unbounded wait therefore
+        // wedges that flag forever: the status stays on the last snapshot (a green running dot) and
+        // every later power button returns silently. The budget covers a start script's own
+        // 120 second readiness wait plus module load and CIM latency.
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(ManagementTimeout);
         try
         {
-            await process.WaitForExitAsync(cancellationToken)
+            await process.WaitForExitAsync(budget.Token)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -174,6 +180,12 @@ public sealed class PowerShellHyperVHost : IHyperVHost
             }
             catch
             {
+            }
+
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException(
+                    $"Hyper-V PowerShell management did not finish within {ManagementTimeout.TotalSeconds:F0} seconds.");
             }
 
             throw;
@@ -207,7 +219,9 @@ public sealed class PowerShellHyperVHost : IHyperVHost
             CreateNoWindow = true,
             WindowStyle = ProcessWindowStyle.Hidden,
             RedirectStandardOutput = true,
-            RedirectStandardError = true
+            RedirectStandardError = true,
+            StandardOutputEncoding = System.Text.Encoding.UTF8,
+            StandardErrorEncoding = System.Text.Encoding.UTF8
         };
         startInfo.ArgumentList.Add("-NoLogo");
         startInfo.ArgumentList.Add("-NoProfile");
@@ -215,7 +229,7 @@ public sealed class PowerShellHyperVHost : IHyperVHost
         startInfo.ArgumentList.Add("-ExecutionPolicy");
         startInfo.ArgumentList.Add("Bypass");
         startInfo.ArgumentList.Add("-Command");
-        startInfo.ArgumentList.Add(script);
+        startInfo.ArgumentList.Add("[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false);" + Environment.NewLine + script);
         return startInfo;
     }
 

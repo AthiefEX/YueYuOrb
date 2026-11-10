@@ -84,6 +84,7 @@ public partial class TranslationOverlayWindow : Window
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
         Background = Brushes.Transparent;
+        GlassWindowFrame.SetEnabled(OverlayCard,true);GlassWindowFrame.Prepare(this);
         ResizeMode = ResizeMode.NoResize;
         SourceInitialized += OnSourceInitialized;
         Closing += OnClosing;
@@ -688,9 +689,9 @@ public partial class TranslationOverlayWindow : Window
         OverlayCard.SetResourceReference(
             Border.BorderBrushProperty,
             "SettingsLineBrush");
-        OverlayCard.BorderThickness = new Thickness(1);
-        OverlayCard.Padding = new Thickness(1);
-        OverlayCard.CornerRadius = new CornerRadius(10);
+        OverlayCard.BorderThickness = new Thickness(0);
+        OverlayCard.Padding = new Thickness(0);
+        OverlayCard.CornerRadius = new CornerRadius(16);
         MinWidth = MinimumInteractiveWidth;
         MaxWidth = MaximumSubtitleWidth;
         Width = DefaultOverlayWidth;

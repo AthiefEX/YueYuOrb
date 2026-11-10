@@ -18,6 +18,8 @@ public sealed class RdpChildSessionLauncher : IChildSessionLauncher
     private readonly Func<uint> _parentSessionIdProvider;
     private readonly IChildSessionAgentBootstrapper? _agentBootstrapper;
     private readonly ChildSessionAgentBootstrapStore? _bootstrapStore;
+    private readonly Func<Guid, Task<DesktopSessionActionStatus>>? _stopEnvironment;
+    private readonly Func<Guid, int, int, Task>? _saveResolution;
     private readonly ConcurrentDictionary<uint, RdpSessionView> _views = [];
 
     public RdpChildSessionLauncher(
@@ -25,7 +27,9 @@ public sealed class RdpChildSessionLauncher : IChildSessionLauncher
         IRdpControlFactory? controlFactory = null,
         Func<uint>? parentSessionIdProvider = null,
         IChildSessionAgentBootstrapper? agentBootstrapper = null,
-        ChildSessionAgentBootstrapStore? bootstrapStore = null)
+        ChildSessionAgentBootstrapStore? bootstrapStore = null,
+        Func<Guid, Task<DesktopSessionActionStatus>>? stopEnvironment = null,
+        Func<Guid, int, int, Task>? saveResolution = null)
     {
         _native = native ?? throw new ArgumentNullException(nameof(native));
         _controlFactory = controlFactory ?? new RdpControlFactory();
@@ -39,6 +43,8 @@ public sealed class RdpChildSessionLauncher : IChildSessionLauncher
 
         _agentBootstrapper = agentBootstrapper;
         _bootstrapStore = bootstrapStore;
+        _stopEnvironment = stopEnvironment;
+        _saveResolution = saveResolution;
     }
 
     public async Task<ChildSessionLaunch> LaunchAsync(
@@ -66,8 +72,8 @@ public sealed class RdpChildSessionLauncher : IChildSessionLauncher
                 cancellationToken);
             await view.ShowAsync(cancellationToken).ConfigureAwait(false);
             await view.ConnectAsync(
-                width: 1280,
-                height: 720,
+                width: profile.DesktopWidth,
+                height: profile.DesktopHeight,
                 cancellationToken).ConfigureAwait(false);
             var sessionId = await WaitForChildSessionAsync(
                 parentSessionId,
@@ -114,10 +120,28 @@ public sealed class RdpChildSessionLauncher : IChildSessionLauncher
                 loginInstanceId,
                 view);
         }
-        catch
+        catch (Exception startupError)
         {
             if (view is not null)
-                await view.DisposeAsync().ConfigureAwait(false);
+            {
+                try
+                {
+                    if (view.SessionId is not (0 or NoChildSession) &&
+                        view.SessionId != parentSessionId &&
+                        TryGetChildSessionId(out var currentSessionId) &&
+                        currentSessionId == view.SessionId &&
+                        !_native.TryLogoffSession(currentSessionId))
+                        throw new InvalidOperationException("新建子会话清理失败，请在设置中确认后清理遗留会话。");
+                }
+                catch (Exception cleanupError)
+                {
+                    throw new AggregateException("启动失败且子会话清理未完成。", startupError, cleanupError);
+                }
+                finally
+                {
+                    await view.DisposeAsync().ConfigureAwait(false);
+                }
+            }
             throw;
         }
     }
@@ -153,7 +177,11 @@ public sealed class RdpChildSessionLauncher : IChildSessionLauncher
         var host = new RdpChildSessionHost(control);
         var window = new DesktopSessionWindow(
             control,
-            profile.Name);
+            profile.Name, profile.DesktopWidth, profile.DesktopHeight);
+        if (_saveResolution is not null)
+            window.SaveResolutionAsync = (width, height) => _saveResolution(profile.Id, width, height);
+        if (_stopEnvironment is not null)
+            window.StopSessionAsync = () => _stopEnvironment(profile.Id);
         return new RdpSessionView(window, host, window.Dispatcher);
     }
 

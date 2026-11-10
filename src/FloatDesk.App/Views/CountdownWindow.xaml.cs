@@ -10,6 +10,7 @@ public partial class CountdownWindow : Window
     public CountdownWindow()
     {
         InitializeComponent();
+        if(Content is System.Windows.Controls.Border card){GlassWindowFrame.SetEnabled(card,true);GlassWindowFrame.Prepare(this);}
         Closing += (_, args) =>
         {
             args.Cancel = true;

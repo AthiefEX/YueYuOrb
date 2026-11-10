@@ -73,11 +73,13 @@ public sealed class DesktopTaskRunner
         }
 
         var completed = 0;
+        string? dataJson = null;
         try
         {
             for (var index = 0; index < task.Steps.Count; index++)
             {
                 var step = task.Steps[index];
+                step = step with { Parameters = DesktopTaskPackagePolicy.ResolveParameters(task, step) };
                 runCancellation.Token.ThrowIfCancellationRequested();
                 var validation = await ValidateCoordinatesAsync(
                     handle,
@@ -111,6 +113,7 @@ public sealed class DesktopTaskRunner
                     runCancellation.Token).ConfigureAwait(false);
                 if (result.Succeeded)
                 {
+                    dataJson = result.DataJson ?? dataJson;
                     completed++;
                     Report(
                         runId,
@@ -155,7 +158,7 @@ public sealed class DesktopTaskRunner
                 DesktopTaskRunOutcome.Succeeded,
                 completed,
                 FailedStepId: null,
-                ErrorCode: null);
+                ErrorCode: null) { DataJson = dataJson };
         }
         catch (OperationCanceledException)
             when (runCancellation.IsCancellationRequested)

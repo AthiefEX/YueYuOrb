@@ -1,60 +1,42 @@
 <Window x:Class="FloatDesk.App.Views.DesktopSessionWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:wf="clr-namespace:System.Windows.Forms.Integration;assembly=WindowsFormsIntegration"
-        Title="桌面分身"
-        Width="1280"
-        Height="760"
-        MinWidth="800"
-        MinHeight="600"
-        Background="#0B1422"
-        Foreground="#EAF6FF"
-        ShowActivated="False">
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
-        <Border Grid.Row="0"
-                Padding="14,9"
-                Background="#161F2D"
-                BorderBrush="#2C4A61"
-                BorderThickness="0,0,0,1">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock x:Name="EnvironmentNameText"
-                           FontSize="14"
-                           FontWeight="SemiBold"
-                           VerticalAlignment="Center" />
-                <TextBlock x:Name="StatusText"
-                           Grid.Column="1"
-                           Foreground="#8FD9F2"
-                           FontSize="12"
-                           VerticalAlignment="Center" />
-            </Grid>
-        </Border>
-
-        <Grid Grid.Row="1">
-            <wf:WindowsFormsHost x:Name="RdpHost" />
-            <Border x:Name="PlaceholderPanel"
-                    Background="#0B1422"
-                    IsHitTestVisible="False">
-                <StackPanel HorizontalAlignment="Center"
-                            VerticalAlignment="Center">
-                    <TextBlock Text="正在准备本机子会话"
-                               FontSize="20"
-                               FontWeight="SemiBold"
-                               HorizontalAlignment="Center" />
-                    <TextBlock Text="RDP 控件将在连接成功后显示"
-                               Margin="0,8,0,0"
-                               Foreground="#8CA6B8"
-                               HorizontalAlignment="Center" />
+        Title="桌面分身" Width="1280" Height="720" MinWidth="480" MinHeight="320"
+        Background="{DynamicResource SettingsWindowBackgroundBrush}"
+        Foreground="{DynamicResource SettingsInkBrush}" UseLayoutRounding="True" SnapsToDevicePixels="True">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="48" ResizeBorderThickness="7" GlassFrameThickness="0" CornerRadius="16" UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/YueYuOrb;component/Resources/SettingsWindowResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <Border Style="{StaticResource ToolWindowShellStyle}">
+        <Grid Background="{DynamicResource ToolWindowContentBrush}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="48" /><RowDefinition Height="*" /><RowDefinition Height="32" />
+            </Grid.RowDefinitions>
+            <Grid Style="{StaticResource ToolWindowTitleBarStyle}" MouseLeftButtonDown="OnTitleBarMouseDown">
+                <TextBlock x:Name="EnvironmentNameText" Margin="18,0,160,0" VerticalAlignment="Center" FontWeight="SemiBold" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button x:Name="ResolutionMenuButton" Style="{StaticResource CaptionButtonStyle}" Click="OnResolutionMenuClick" AutomationProperties.Name="设置分身分辨率"><TextBlock Text="⋮" FontSize="22" /></Button>
+                    <Button Style="{StaticResource CaptionButtonStyle}" Click="OnMinimizeClick" AutomationProperties.Name="最小化分身"><TextBlock FontFamily="{StaticResource SettingsIconFont}" Text="&#xE921;" /></Button>
+                    <Button Style="{StaticResource CaptionButtonStyle}" Click="OnMaximizeClick" AutomationProperties.Name="最大化或还原分身"><TextBlock x:Name="MaximizeGlyph" FontFamily="{StaticResource SettingsIconFont}" Text="&#xE922;" /></Button>
+                    <Button Style="{StaticResource CloseCaptionButtonStyle}" Click="OnCloseClick" AutomationProperties.Name="关闭并清理分身"><TextBlock FontFamily="{StaticResource SettingsIconFont}" Text="&#xE8BB;" /></Button>
                 </StackPanel>
-            </Border>
+            </Grid>
+            <Grid Grid.Row="1" ClipToBounds="True">
+                <wf:WindowsFormsHost x:Name="RdpHost" />
+                <Border x:Name="PlaceholderPanel" Background="{DynamicResource ToolWindowContentBrush}" IsHitTestVisible="False">
+                    <TextBlock Text="正在准备分身桌面…" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+            </Grid>
+            <TextBlock x:Name="StatusText" Grid.Row="2" Margin="16,0" VerticalAlignment="Center" Foreground="{DynamicResource SettingsMutedBrush}" TextTrimming="CharacterEllipsis" />
         </Grid>
-    </Grid>
+    </Border>
 </Window>

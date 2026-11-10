@@ -27,6 +27,7 @@ public partial class CaptureEditorWindow : Window
     public CaptureEditorWindow(CaptureFrame frame, CaptureSettings settings)
     {
         InitializeComponent();
+        GlassWindowFrame.WrapStandardWindow(this);
         _frame = frame;
         _settings = settings;
         CaptureImage.Source = CaptureExportService.ToBitmap(frame);
@@ -488,6 +489,7 @@ internal sealed class TextAnnotationWindow : Window
         buttons.Children.Add(ok);
         panel.Children.Add(buttons);
         Content = panel;
+        GlassWindowFrame.WrapStandardWindow(this);
         Loaded += (_, _) => _text.Focus();
     }
 

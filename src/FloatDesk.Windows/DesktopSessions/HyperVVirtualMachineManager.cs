@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using FloatDesk.Core.Models;
 
 namespace FloatDesk.Windows.DesktopSessions;
 
@@ -12,7 +13,12 @@ public sealed record HyperVVirtualMachine(
     int Generation,
     long MemoryStartupMiB,
     int ProcessorCount,
-    bool OwnedByProduct = false);
+    bool OwnedByProduct = false)
+{
+    public int CpuUsagePercent { get; init; }
+    public long MemoryAssignedMiB { get; init; }
+    public string DisplayStatus => $"{Name} · {State} · {ProcessorCount} CPU · 使用率 {CpuUsagePercent}% · 已分配 {MemoryAssignedMiB} MiB";
+}
 
 public sealed record HyperVVmCreateRequest(
     Guid EnvironmentId,
@@ -23,7 +29,10 @@ public sealed record HyperVVmCreateRequest(
     long MemoryStartupMiB,
     long DiskSizeGiB,
     string SwitchName,
-    bool SecureBoot);
+    bool SecureBoot)
+{
+    public string? TemplatePath { get; init; }
+}
 
 public sealed record HyperVVmDeleteRequest(Guid VmId, bool DeleteConfiguration, bool DeleteDisk);
 
@@ -44,11 +53,11 @@ public sealed class HyperVVirtualMachineManager
         $ErrorActionPreference = 'Stop'
         Import-Module Hyper-V -ErrorAction Stop
         $managedRoot = Join-Path $env:LOCALAPPDATA 'YueYuOrb\HyperV'
-        $vms = @(Get-VM | ForEach-Object { [pscustomobject]@{ id=$_.Id; name=$_.Name; state=[string]$_.State; generation=$_.Generation; memoryStartupMiB=[int64]($_.MemoryStartup/1MB); processorCount=$_.ProcessorCount; ownedByProduct=(([string]$_.Notes -like '*YueYuOrb:managed*') -or (([string]$_.Name -like '月语分身-*') -and ([string]$_.Path -like ($managedRoot + '*')))) } })
+        $vms = @(Get-VM | ForEach-Object { [pscustomobject]@{ id=$_.Id; name=$_.Name; state=[string]$_.State; generation=$_.Generation; memoryStartupMiB=[int64]($_.MemoryStartup/1MB); processorCount=$_.ProcessorCount; cpuUsage=[int]$_.CPUUsage; memoryAssignedMiB=[int64]($_.MemoryAssigned/1MB); ownedByProduct=(([string]$_.Notes -like '*YueYuOrb:managed*') -or (([string]$_.Name -like '月语分身-*') -and ([string]$_.Path -like ($managedRoot + '*')))) } })
         if ($vms.Count -eq 0) { '[]' } else { $vms | ConvertTo-Json -Compress }
         """;
 
-    public static ProcessStartInfo BuildVmConnectCommand(string vmName)
+    public static ProcessStartInfo BuildVmConnectCommand(string vmName, bool embedded = false)
     {
         if (string.IsNullOrWhiteSpace(vmName))
             throw new ArgumentException("A VM name is required.", nameof(vmName));
@@ -58,7 +67,9 @@ public sealed class HyperVVirtualMachineManager
             FileName = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.System),
                 "vmconnect.exe"),
-            UseShellExecute = true
+            UseShellExecute = !embedded,
+            CreateNoWindow = embedded,
+            WindowStyle = embedded ? ProcessWindowStyle.Hidden : ProcessWindowStyle.Normal
         };
         command.ArgumentList.Add("localhost");
         command.ArgumentList.Add(vmName);
@@ -69,12 +80,29 @@ public sealed class HyperVVirtualMachineManager
     {
         ValidateCreate(request);
         var json = await _host.RunScriptForManagementAsyncCore(BuildCreateScript(request), cancellationToken).ConfigureAwait(false);
-        var created = JsonDocument.Parse(json).RootElement;
-        return (await ListAsync(cancellationToken).ConfigureAwait(false)).First(vm => vm.Id == created.GetProperty("id").GetGuid());
+        using var document = JsonDocument.Parse(json);
+        var createdId = document.RootElement.GetProperty("id").GetGuid();
+        return (await ListAsync(cancellationToken).ConfigureAwait(false)).First(vm => vm.Id == createdId);
     }
 
     public async Task StartAsync(Guid vmId, CancellationToken cancellationToken) => await _host.StartVmAsync(vmId, cancellationToken).ConfigureAwait(false);
     public async Task StopAsync(Guid vmId, CancellationToken cancellationToken) => await _host.StopVmAsync(vmId, cancellationToken).ConfigureAwait(false);
+
+    /// <summary>
+    /// Applies an environment close action (save state or turn off) and verifies the resulting
+    /// state. Saving is refused up front for a machine with a GPU partition assigned, because the
+    /// host rejects that combination every time.
+    /// </summary>
+    public async Task ApplyCloseActionAsync(Guid vmId, HyperVConsoleCloseAction action, CancellationToken cancellationToken)
+    {
+        if (action == HyperVConsoleCloseAction.SaveState &&
+            await HyperVGpuSharing.IsEnabledAsync(vmId, cancellationToken).ConfigureAwait(false))
+        {
+            throw new InvalidOperationException(HyperVGpuSharing.SaveStateBlockedMessage);
+        }
+        await _host.RunScriptForManagementAsyncCore(
+            HyperVConsoleSettings.BuildCloseScript(vmId, action), cancellationToken).ConfigureAwait(false);
+    }
 
     public Task DeleteAsync(Guid vmId, bool deleteDisk, bool ownedByProduct, CancellationToken cancellationToken)
     {
@@ -101,8 +129,9 @@ public sealed class HyperVVirtualMachineManager
         ArgumentNullException.ThrowIfNull(request);
         if (request.EnvironmentId == Guid.Empty) throw new InvalidOperationException("HyperVEnvironmentRequired");
         if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 80) throw new InvalidOperationException("HyperVVmNameInvalid");
-        if (!Path.IsPathFullyQualified(request.StorageDirectory) || !Path.IsPathFullyQualified(request.IsoPath)) throw new InvalidOperationException("HyperVPathInvalid");
-        if (!File.Exists(request.IsoPath)) throw new FileNotFoundException("HyperVInstallMediaMissing", request.IsoPath);
+        ValidateCreateForScript(request);
+        var sourcePath = request.TemplatePath ?? request.IsoPath;
+        if (!File.Exists(sourcePath)) throw new FileNotFoundException("HyperVInstallMediaMissing", sourcePath);
         if (request.ProcessorCount is < 2 or > 128 || request.MemoryStartupMiB < 2048 || request.DiskSizeGiB < 32) throw new InvalidOperationException("HyperVResourcesInvalid");
         if (string.IsNullOrWhiteSpace(request.SwitchName)) throw new InvalidOperationException("HyperVSwitchRequired");
     }
@@ -115,6 +144,19 @@ public sealed class HyperVVirtualMachineManager
         var iso = request.IsoPath.Replace("'", "''", StringComparison.Ordinal);
         var switchName = request.SwitchName.Replace("'", "''", StringComparison.Ordinal);
         var secureBoot = request.SecureBoot ? "$true" : "$false";
+        var source = request.TemplatePath?.Replace("'", "''", StringComparison.Ordinal);
+        var createDisk = source is null
+            ? $"New-VHD -Path $vhd -SizeBytes {request.DiskSizeGiB}GB -Dynamic -ErrorAction Stop | Out-Null"
+            : $$"""
+              $source = '{{source}}'
+              $info = Get-VHD -Path $source -ErrorAction Stop
+              if ($info.Attached -or $info.ParentPath) { throw 'TemplateInUseOrDifferencingDisk' }
+              if ($info.Size -gt {{request.DiskSizeGiB}}GB) { throw 'TemplateDiskCannotShrink' }
+              Copy-Item -LiteralPath $source -Destination $vhd -ErrorAction Stop
+              """;
+        var bootMedia = source is null
+            ? "Add-VMDvdDrive -VMName $name -Path $iso -ErrorAction Stop\nSet-VMFirmware -VMName $name -FirstBootDevice (Get-VMDvdDrive -VMName $name) -ErrorAction Stop"
+            : $"if ($info.Size -lt {request.DiskSizeGiB}GB) {{ Resize-VHD -Path $vhd -SizeBytes {request.DiskSizeGiB}GB -ErrorAction Stop }}\nSet-VMFirmware -VMName $name -FirstBootDevice (Get-VMHardDiskDrive -VMName $name | Select-Object -First 1) -ErrorAction Stop";
         return $$"""
             $ErrorActionPreference = 'Stop'
             Import-Module Hyper-V -ErrorAction Stop
@@ -123,19 +165,23 @@ public sealed class HyperVVirtualMachineManager
             $vhd = Join-Path $root ($name + '.vhdx')
             $iso = '{{iso}}'
             $vm = $null
+            $createdDisk = $false
+            if (Test-Path -LiteralPath $vhd) { throw 'HyperVDiskAlreadyExists' }
+            Get-VMSwitch -Name '{{switchName}}' -ErrorAction Stop | Out-Null
             try {
                 New-Item -ItemType Directory -Force -Path $root | Out-Null
                 if (Get-VM -Name $name -ErrorAction SilentlyContinue) { throw 'HyperVVmAlreadyExists' }
-                New-VHD -Path $vhd -SizeBytes {{request.DiskSizeGiB}}GB -Dynamic -ErrorAction Stop | Out-Null
+                {{createDisk}}
+                $createdDisk = $true
                 $vm = New-VM -Name $name -Generation 2 -MemoryStartupBytes {{request.MemoryStartupMiB}}MB -VHDPath $vhd -Path $root -SwitchName '{{switchName}}' -ErrorAction Stop
                 Set-VM -VM $vm -ProcessorCount {{request.ProcessorCount}} -AutomaticStopAction ShutDown -Notes 'YueYuOrb:managed' -ErrorAction Stop
-                Add-VMDvdDrive -VMName $name -Path $iso -ErrorAction Stop
+                {{bootMedia}}
                 if ({{secureBoot}}) { Set-VMFirmware -VMName $name -EnableSecureBoot On -ErrorAction Stop }
                 [pscustomobject]@{ id = $vm.Id; name = $vm.Name; vhd = $vhd } | ConvertTo-Json -Compress
             }
             catch {
-                if ($null -ne $vm) { Remove-VM -VM $vm -Force -ErrorAction SilentlyContinue }
-                if (Test-Path -LiteralPath $vhd) { Remove-Item -LiteralPath $vhd -Force -ErrorAction SilentlyContinue }
+                if ($null -ne $vm) { Remove-VM -VM $vm -Force -Confirm:$false -ErrorAction Stop }
+                if ($createdDisk -and (Test-Path -LiteralPath $vhd)) { Remove-Item -LiteralPath $vhd -Force -ErrorAction Stop }
                 throw
             }
             """;
@@ -163,7 +209,11 @@ public sealed class HyperVVirtualMachineManager
         {
             if (!Guid.TryParse(item.GetProperty("id").GetString(), out var id)) continue;
             var owned = item.TryGetProperty("ownedByProduct", out var ownedProperty) && ownedProperty.ValueKind == JsonValueKind.True;
-            list.Add(new(id, item.GetProperty("name").GetString() ?? string.Empty, ParseState(item.GetProperty("state").GetString()), item.GetProperty("generation").GetInt32(), item.GetProperty("memoryStartupMiB").GetInt64(), item.GetProperty("processorCount").GetInt32(), owned));
+            list.Add(new(id, item.GetProperty("name").GetString() ?? string.Empty, ParseState(item.GetProperty("state").GetString()), item.GetProperty("generation").GetInt32(), item.GetProperty("memoryStartupMiB").GetInt64(), item.GetProperty("processorCount").GetInt32(), owned)
+            {
+                CpuUsagePercent = item.TryGetProperty("cpuUsage", out var cpu) ? cpu.GetInt32() : 0,
+                MemoryAssignedMiB = item.TryGetProperty("memoryAssignedMiB", out var memory) ? memory.GetInt64() : 0
+            });
         }
         return list;
     }
@@ -181,6 +231,6 @@ public sealed class HyperVVirtualMachineManager
     {
         ArgumentNullException.ThrowIfNull(request);
         if (request.EnvironmentId == Guid.Empty || string.IsNullOrWhiteSpace(request.Name) || request.ProcessorCount < 2 || request.MemoryStartupMiB < 2048 || request.DiskSizeGiB < 32) throw new InvalidOperationException("HyperVCreateRequestInvalid");
-        if (!Path.IsPathFullyQualified(request.StorageDirectory) || !Path.IsPathFullyQualified(request.IsoPath)) throw new InvalidOperationException("HyperVPathInvalid");
+        if (!Path.IsPathFullyQualified(request.StorageDirectory) || !Path.IsPathFullyQualified(request.TemplatePath ?? request.IsoPath)) throw new InvalidOperationException("HyperVPathInvalid");
     }
 }

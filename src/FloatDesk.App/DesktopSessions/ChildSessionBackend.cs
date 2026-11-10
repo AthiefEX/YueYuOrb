@@ -269,9 +269,6 @@ public sealed class ChildSessionBackend :
                 return;
 
             case SessionStopMode.LogoffOwnedSession:
-                await DisconnectOwnedAsync(
-                    active,
-                    cancellationToken).ConfigureAwait(false);
                 EnsureChildSessionCanBeLoggedOff(active.Handle);
                 if (!_native.TryLogoffSession(
                         active.Handle.WindowsSessionId))
@@ -279,6 +276,10 @@ public sealed class ChildSessionBackend :
                     throw new InvalidOperationException(
                         "The owned child session could not be logged off.");
                 }
+
+                await DisconnectOwnedAsync(
+                    active,
+                    cancellationToken).ConfigureAwait(false);
 
                 return;
 

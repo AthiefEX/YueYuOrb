@@ -86,6 +86,11 @@ public sealed class WindowsHyperVSocketListener : IAsyncDisposable
             return address;
         }
 
-        public override EndPoint Create(SocketAddress socketAddress) => throw new NotSupportedException();
+        public override EndPoint Create(SocketAddress socketAddress)
+        {
+            if (socketAddress.Family != AddressFamily || socketAddress.Size < 36)
+                throw new ArgumentException("Invalid Hyper-V socket address.", nameof(socketAddress));
+            return new HyperVSocketEndPoint(new Guid(socketAddress.Buffer.Span.Slice(4, 16)), new Guid(socketAddress.Buffer.Span.Slice(20, 16)));
+        }
     }
 }

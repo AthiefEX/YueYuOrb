@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Threading;
 using FloatDesk.App.Coordination;
@@ -52,6 +53,9 @@ internal sealed partial class AppRuntime : IDisposable
         _desktopSessionBootstrapStore;
     private readonly DesktopSessionApplicationService _desktopSessions;
     private readonly DesktopSessionControlServer _desktopSessionControl;
+    private readonly DesktopAutomationControlHandler _desktopAutomationControl;
+    private readonly AutomationConnectionRegistry _automationConnections;
+    private readonly AutomationTaskActivation _automationActivation;
     private readonly DispatcherTimer _desktopSessionTimer = new()
     {
         Interval = TimeSpan.FromSeconds(30)
@@ -82,12 +86,26 @@ internal sealed partial class AppRuntime : IDisposable
     {
         _paths = paths;
         _paths.EnsureCreated();
+        _steamNetwork = new FloatDesk.Windows.Network.SteamNetworkController(paths.Root);
         _launcherIconExtractor = new LauncherIconExtractor();
         _launcherIconCache = new LauncherIconCache(
             paths.LauncherIcons,
             _launcherIconExtractor.ExtractPngAsync,
             LauncherEntryResolver.GetIconSources);
         _logger = new FileLogger(paths.Logs);
+        _steamNetwork.Diagnostic += diagnostic => _ = _logger.WriteAsync(
+            "network.upstream",
+            new Dictionary<string, object?>
+            {
+                ["host"] = diagnostic.Host,
+                ["ip"] = diagnostic.Address,
+                ["source"] = diagnostic.Source,
+                ["sniMode"] = diagnostic.SniMode,
+                ["stage"] = diagnostic.Stage,
+                ["elapsedMs"] = diagnostic.ElapsedMilliseconds,
+                ["errorCode"] = diagnostic.ErrorCode,
+                ["certificateValidated"] = diagnostic.CertificateValidated
+            });
         _settings = new SettingsCoordinator(new JsonSettingsStore(paths.Root));
         _desktopTaskLedger = new DesktopTaskExecutionLedger(
             Path.Combine(paths.Root, "desktop-sessions"));
@@ -97,16 +115,28 @@ internal sealed partial class AppRuntime : IDisposable
             HasDesktopSessionBrokerPayload()
                 ? new ChildSessionAgentBootstrapStore()
                 : null;
-        var desktopSessionHost = new DesktopSessionProductionHost(
+        var desktopSessionHost = new GlobalDesktopTaskHost(new DesktopSessionProductionHost(
             () => _settings.Current,
             CreateDesktopSessionBackendBundle,
-            _desktopStartupLedger);
+            _desktopStartupLedger),_brightness);
         _desktopSessions = new DesktopSessionApplicationService(
             () => _settings.Current,
             _desktopTaskLedger,
             desktopSessionHost);
-        _desktopSessionControl =
-            new DesktopSessionControlServer(_desktopSessions);
+        _automationConnections=new AutomationConnectionRegistry(_settings);
+        _automationConnections.ConfirmationRequested+=client=>
+        {
+            _=Application.Current.Dispatcher.InvokeAsync(async()=>
+            {
+                if(_lifetime.IsCancellationRequested)return;
+                var owner=GetTool<SettingsWindow>();
+                var accepted=await AutomationConnectionDialog.ShowAsync(client,owner?.IsVisible==true?owner:null);
+                if(accepted&&!_lifetime.IsCancellationRequested)await _automationConnections.SetEnabledAsync(client.Id,true,_lifetime.Token);
+            });
+        };
+        _automationActivation=new AutomationTaskActivation(_settings,_desktopSessions);
+        _desktopAutomationControl = new DesktopAutomationControlHandler(_settings,_desktopSessions,_automationConnections);
+        _desktopSessionControl = new DesktopSessionControlServer(_desktopAutomationControl);
         _notes = new SqliteNoteRepository(paths.NotesDatabase);
         _translationCredentials = new DpapiTranslationCredentialStore(
             Path.Combine(paths.Root, "translation-secrets.dat"));
@@ -140,7 +170,19 @@ internal sealed partial class AppRuntime : IDisposable
     public async Task InitializeAsync()
     {
         await _logger.WriteAsync("startup.begin");
+        try { await FloatDesk.Infrastructure.Settings.UserDataArchive.ApplyPendingAsync(_paths.Root, _lifetime.Token); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            await _logger.WriteAsync("userdata.pending.failed", new Dictionary<string, object?> { ["errorType"] = error.GetType().Name });
+        }
         await _settings.InitializeAsync(_lifetime.Token);
+        ThemeService.Apply(_settings.Current.General.Theme);
+        ThemeService.ApplyCustomBackground(_settings.Current, _paths.Assets);
+        try { await _steamNetwork.RecoverRuntimeAsync(_lifetime.Token); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or System.Text.Json.JsonException)
+        {
+            await _logger.WriteAsync("network.recovery.failed", new Dictionary<string, object?> { ["errorType"] = exception.GetType().Name });
+        }
         _desktopSessionControl.Start();
         if (_settings.Current.General.StartWithWindows)
         {
@@ -152,6 +194,7 @@ internal sealed partial class AppRuntime : IDisposable
             }
         }
         await _notes.InitializeAsync(_lifetime.Token);
+        InitializeAssistant();
         _ = _notes.PurgeDeletedAsync(
             DateTimeOffset.UtcNow.AddDays(-30),
             _lifetime.Token);
@@ -161,6 +204,7 @@ internal sealed partial class AppRuntime : IDisposable
             [ToolWindow.QuickPanel] = () => _panel!,
             [ToolWindow.Settings] = CreateSettingsWindow,
             [ToolWindow.AiBrowser] = CreateAiWindow,
+            [ToolWindow.Assistant] = CreateAssistantWindow,
             [ToolWindow.Notes] = CreateNotesWindow
         };
         _orb = new OrbWindow(
@@ -180,6 +224,7 @@ internal sealed partial class AppRuntime : IDisposable
         _panel.SettingsRequested += ShowSettings;
         _panel.InputLockToggleRequested += ToggleManualEnglish;
         _panel.AiRequested += OpenAi;
+        _panel.AssistantRequested += OpenAssistant;
         _panel.NotesRequested += OpenNotes;
         _panel.CaptureRequested += mode => _ = StartCaptureAsync(mode);
         _panel.TranslateSelectionRequested +=
@@ -192,6 +237,7 @@ internal sealed partial class AppRuntime : IDisposable
         _panel.DesktopSessionsRequested += OnDesktopSessionsRequested;
         _panel.DesktopTaskRequested += OnDesktopTaskRequested;
         _panel.AudioRequested += OpenAudioControls;
+        _panel.NetworkRequested += ToggleSteamNetwork;
         _panel.BrightnessRequested += OpenBrightnessControls;
         _panel.NightModeRequested += ToggleNightMode;
         _panel.AudioGroupRequested += group => _ = CycleAudioGroupAsync(group);
@@ -322,6 +368,8 @@ internal sealed partial class AppRuntime : IDisposable
         Microsoft.Win32.SystemEvents.UserPreferenceChanged +=
             OnUserPreferenceChanged;
         await _logger.WriteAsync("startup.complete");
+        if (_settings.Current.FloatingBrowser.OpenOnStartup) ShowTool(ToolWindow.AiBrowser);
+        _= _desktopSessions.ProcessEnvironmentReadyAsync(GlobalTaskTarget.Id,_lifetime.Token);
     }
 
     public void ShowTool(ToolWindow tool)
@@ -346,6 +394,7 @@ internal sealed partial class AppRuntime : IDisposable
         try
         {
             _lifetime.Cancel();
+            DisposeAssistant();
             _inputTimer.Stop();
             _overlayTimer.Stop();
             _desktopSessionTimer.Stop();
@@ -378,6 +427,9 @@ internal sealed partial class AppRuntime : IDisposable
             catch (AggregateException) { }
             _brightness.Dispose();
             _audio.Dispose();
+            try { _steamNetwork.Dispose(); }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or System.Text.Json.JsonException)
+            { _ = _logger.WriteAsync("network.restore.failed", new Dictionary<string, object?> { ["errorType"] = exception.GetType().Name }); }
             _translationRegionCapture.Dispose();
             _selectedTextReader.Dispose();
             _coordinator?.UnregisterCaptureHiddenWindow(
@@ -416,7 +468,10 @@ internal sealed partial class AppRuntime : IDisposable
             _ocr.Dispose();
             _desktopSessionControl.DisposeAsync()
                 .AsTask().GetAwaiter().GetResult();
+            _desktopAutomationControl.Dispose();
+            _automationActivation.Dispose();
             _desktopSessions.Dispose();
+            _hyperVConsoleController.Dispose();
             _desktopSessionBootstrapStore?.Dispose();
             _desktopStartupLedger.Dispose();
             _desktopTaskLedger.Dispose();
@@ -465,11 +520,32 @@ internal sealed partial class AppRuntime : IDisposable
             () => _ocr.AvailableLanguages,
             _launcherIconCache,
             audioService: _audio,
-            desktopSessionActions: _desktopSessions);
+            desktopSessionActions: _desktopSessions,
+            steamNetwork: _steamNetwork,
+            assistantStore: _assistantStore,
+            assistantCredentials: _assistantCredentials,
+            openAssistant: OpenAssistant);
 
     private AiBrowserWindow CreateAiWindow()
     {
         var window = new AiBrowserWindow(_paths, PersistSelectedSiteAsync);
+        window.ConfigureFloating(
+            async update =>
+            {
+                var result = await _settings.UpdateAsync(current => current with { FloatingBrowser = update(current.FloatingBrowser) }, _lifetime.Token);
+                if (!result.Success) throw new IOException("浏览器窗口设置未保存。");
+            },
+            async (title, uri) =>
+            {
+                var result = await _settings.UpdateAsync(current =>
+                {
+                    if (current.BrowserSites.Any(site => site.Url == uri)) return current;
+                    var name = string.IsNullOrWhiteSpace(title) ? uri.Host : title;
+                    name = name[..Math.Min(name.Length, 40)];
+                    return current with { BrowserSites = current.BrowserSites.Append(new BrowserSite(Guid.NewGuid(), name, uri, current.BrowserSites.Count)).ToArray() };
+                }, _lifetime.Token);
+                if (!result.Success) throw new IOException("收藏未保存。");
+            });
         window.ApplySettings(_settings.Current);
         return window;
     }
@@ -786,6 +862,12 @@ internal sealed partial class AppRuntime : IDisposable
             case HotkeyAction.AiBrowser:
                 OpenAi();
                 break;
+            case HotkeyAction.Assistant:
+                OpenAssistant();
+                break;
+            case HotkeyAction.ToggleBrowserInteraction:
+                if (GetTool<AiBrowserWindow>() is { IsVisible: true } floatingBrowser) floatingBrowser.ToggleInteraction();
+                break;
             case HotkeyAction.Notes:
                 OpenNotes();
                 break;
@@ -1048,7 +1130,14 @@ internal sealed partial class AppRuntime : IDisposable
 
     private void ApplySettings(AppSettings settings)
     {
+        if (_steamNetwork.IsRunning && _steamNetwork.ActiveSettings is { } network &&
+            (network with { ShowInWheel = settings.SteamNetwork.ShowInWheel }) != settings.SteamNetwork)
+        {
+            _ = StopSteamNetworkForSettingsAsync();
+        }
         ThemeService.Apply(settings.General.Theme);
+        ThemeService.ApplyCustomBackground(settings, _paths.Assets);
+        ApplyAssistantSettings(settings);
         _nightMode?.SetDimmingPercent(_nightDimmingPreference?.Resolve() ?? settings.Brightness.NightDimmingPercent);
         _orb?.ApplySettings(settings);
         KeepOrbOnCurrentMonitor();
@@ -1176,6 +1265,7 @@ internal sealed partial class AppRuntime : IDisposable
             Microsoft.Win32.SessionSwitchReason.SessionLock or
             Microsoft.Win32.SessionSwitchReason.ConsoleDisconnect;
         _translationRuntime.SetSessionLocked(_sessionLocked);
+        if (_sessionLocked) { _assistantRuntime?.RevokePermissions(); StopAssistantAudio(); }
         UpdateInputPollingCadence();
         if (!_sessionLocked)
             _ = ReEvaluateCurrentAsync();
@@ -1220,8 +1310,10 @@ internal sealed partial class AppRuntime : IDisposable
             if (_disposed)
                 return;
             ThemeService.Apply(_settings.Current.General.Theme);
+            ThemeService.ApplyCustomBackground(_settings.Current, _paths.Assets);
             if (GetTool<AiBrowserWindow>() is { } browser)
                 browser.ApplySettings(_settings.Current);
+            GetTool<AssistantWindow>()?.ApplySettings(_settings.Current);
         });
     }
 

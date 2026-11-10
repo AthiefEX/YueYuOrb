@@ -41,6 +41,7 @@ public sealed class PromptWindow : Window
         buttons.Children.Add(ok);
         panel.Children.Add(buttons);
         Content = panel;
+        GlassWindowFrame.WrapStandardWindow(this);
     }
 
     public string FirstValue => _first.Text;

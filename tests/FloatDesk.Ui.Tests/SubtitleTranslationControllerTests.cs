@@ -496,6 +496,7 @@ public sealed class SubtitleTranslationControllerTests
         await source.GateEntered.WaitAsync(TimeSpan.FromSeconds(2));
         controller.Pause("字幕翻译已暂停。");
         await ocr.FirstCancelled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        ocr.ReleaseFirst();
         controller.Resume();
         source.ReleaseGate();
 
@@ -1755,6 +1756,10 @@ public sealed class SubtitleTranslationControllerTests
     private sealed class BlockingFirstOcr : IScreenOcrService
     {
         private int _callCount;
+        private readonly TaskCompletionSource _firstRelease =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void ReleaseFirst() => _firstRelease.TrySetResult();
 
         public IReadOnlyList<OcrLanguageOption> AvailableLanguages { get; } =
             [new("en-US", "English")];
@@ -1785,6 +1790,9 @@ public sealed class SubtitleTranslationControllerTests
                 catch (OperationCanceledException)
                 {
                     FirstCancelled.TrySetResult();
+                    // Publishing a newer frame also cancels OCR. Keep it in flight until
+                    // the test has paused and cleared the queued frame it intends to exercise.
+                    await _firstRelease.Task.WaitAsync(TimeSpan.FromSeconds(2), CancellationToken.None);
                     throw;
                 }
             }

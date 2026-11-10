@@ -227,6 +227,9 @@ public partial class SettingsViewModel : ObservableObject
             AppSettings.CreateDefault().Hotkeys[HotkeyAction.ExtractRegionText]));
         vm._baseline = settings;
         vm.LoadAudio(settings);
+        vm.LoadNetwork(settings.SteamNetwork);
+        vm.LoadFloatingBrowser(settings);
+        vm.LoadAssistant(settings);
         vm.LoadBrightness(settings);
         vm.LoadResourceUsage(settings.ResourceUsage);
         vm.LoadDesktopSessions(settings.DesktopSessions);
@@ -365,6 +368,8 @@ public partial class SettingsViewModel : ObservableObject
         MergeHotkey(HotkeyAction.ToggleSubtitles, SubtitlesHotkey);
         MergeHotkey(HotkeyAction.ExtractRegionText, ExtractRegionTextHotkey);
         MergeBrightnessKeys(hotkeys);
+        MergeHotkey(HotkeyAction.ToggleBrowserInteraction, BrowserInteractionHotkey);
+        MergeHotkey(HotkeyAction.Assistant, AssistantHotkey);
 
         return latest with
         {
@@ -380,9 +385,13 @@ public partial class SettingsViewModel : ObservableObject
             BrowserZoomPercent = browserZoomPercent,
             BrowserTopmost = browserTopmost,
             BrowserTheme = browserTheme,
+            FloatingBrowser = MergeFloatingBrowser(latest.FloatingBrowser),
+            Assistant = MergeAssistant(latest.Assistant),
+            CustomBackground = MergeCustomBackground(latest.CustomBackground),
             Capture = capture,
             Hotkeys = hotkeys,
             Brightness = MergeBrightness(latest.Brightness),
+            SteamNetwork = BuildNetwork(latest.SteamNetwork),
             ResourceUsage = BuildResourceUsage(latest.ResourceUsage),
             Windows = latest.Windows,
             WheelActions = effectiveWheelActions,
@@ -553,6 +562,13 @@ public partial class SettingsViewModel : ObservableObject
         out string error)
     {
         var invalidBrightnessKey = BrightnessKeys.FirstOrDefault(k => !string.IsNullOrWhiteSpace(k.Text) && !TryParseHotkey(k.Text, out _));
+        if (AssistantSendMode == 2 && !TryParseHotkey(AssistantSendShortcut, out _)) { candidate = latest; error = "自定义发送按键格式无效。"; return false; }
+        if (!string.IsNullOrWhiteSpace(AssistantHotkey) && !TryParseHotkey(AssistantHotkey, out _))
+        { candidate = latest; error = "AI助手快捷键无效，可留空或设置单键/组合键。"; return false; }
+        if (!TryParseHotkey(BrowserInteractionHotkey, out _))
+        {
+            candidate = latest; error = "浏览器交互快捷键无效，请使用 Ctrl+Alt+B 等组合。"; return false;
+        }
         if (invalidBrightnessKey is not null)
         {
             candidate = latest;

@@ -16,15 +16,17 @@ public sealed class DesktopSessionControlServer :
     IAsyncDisposable
 {
     private readonly IDesktopSessionControlHandler _handler;
+    private readonly string? _pipeName;
     private readonly CancellationTokenSource _lifetime = new();
     private Task? _acceptLoop;
     private bool _disposed;
 
     public DesktopSessionControlServer(
-        IDesktopSessionControlHandler handler)
+        IDesktopSessionControlHandler handler, string? pipeName = null)
     {
         _handler = handler ??
             throw new ArgumentNullException(nameof(handler));
+        _pipeName = pipeName;
     }
 
     public void Start()
@@ -66,7 +68,7 @@ public sealed class DesktopSessionControlServer :
         while (!cancellationToken.IsCancellationRequested)
         {
             using var pipe = CreatePipe(
-                DesktopSessionControlProtocol.GetPipeName(sessionId),
+                _pipeName ?? DesktopSessionControlProtocol.GetPipeName(sessionId),
                 user);
             try
             {
@@ -91,7 +93,7 @@ public sealed class DesktopSessionControlServer :
                     cancellationToken).ConfigureAwait(false);
             }
             catch (Exception exception) when (
-                exception is IOException or UnauthorizedAccessException or
+                exception is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or ArgumentException or
                 InvalidOperationException or OperationCanceledException)
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -120,6 +122,8 @@ public sealed class DesktopSessionControlServer :
 
         try
         {
+            var caller=NamedPipePeerIdentity.GetClientIdentity(pipe);
+            request=request with {VerifiedCaller=new(caller.ProcessId,caller.SessionId,caller.ProcessStartedAtUtc)};
             return await _handler.HandleAsync(
                 request,
                 cancellationToken).ConfigureAwait(false);

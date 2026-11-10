@@ -302,7 +302,7 @@ internal static class SessionAgentServer
                 true,
                 result.Succeeded,
                 result.OutcomeUnknown,
-                result.ErrorCode),
+                result.ErrorCode) { DataJson = result.DataJson },
             cancellationToken).ConfigureAwait(false);
     }
 

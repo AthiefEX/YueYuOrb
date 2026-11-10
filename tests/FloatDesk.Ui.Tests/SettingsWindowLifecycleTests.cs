@@ -4,13 +4,18 @@ namespace FloatDesk.Ui.Tests;
 
 public sealed class SettingsWindowLifecycleTests
 {
-    [Fact]
-    public async Task ProbeOpensAndReopensDefaultAndDesktopSessionSettings()
+    [Theory]
+    [InlineData("")]
+    [InlineData("--console-power-ui")]
+    [InlineData("--console-close-policy-ui")]
+    [InlineData("--glass-frame-ui")]
+    public async Task ProbeOpensAndReopensDefaultAndDesktopSessionSettings(string probeArgument)
     {
         var probe = FindProbe();
         using var process = Process.Start(new ProcessStartInfo
         {
             FileName = probe,
+            Arguments = probeArgument,
             RedirectStandardError = true,
             RedirectStandardOutput = true,
             UseShellExecute = false,
@@ -42,6 +47,7 @@ public sealed class SettingsWindowLifecycleTests
     {
         var candidates = new[]
         {
+            Path.Combine(AppContext.BaseDirectory, "SettingsWindowProbe.exe"),
             Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory,
             "..",
@@ -63,7 +69,9 @@ public sealed class SettingsWindowLifecycleTests
                 "net10.0-windows10.0.19041.0",
                 "SettingsWindowProbe.exe"))
         };
-        var candidate = candidates.FirstOrDefault(File.Exists);
+        var candidate = candidates.FirstOrDefault(path => File.Exists(path) &&
+            File.Exists(Path.ChangeExtension(path, ".dll")) &&
+            File.Exists(Path.ChangeExtension(path, ".runtimeconfig.json")));
         Assert.True(candidate is not null,
             $"Settings-window probe was not built: {string.Join("; ", candidates)}");
         return candidate!;

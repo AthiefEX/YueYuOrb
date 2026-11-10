@@ -54,8 +54,15 @@ public sealed class DesktopSessionApplicationService :
         IDesktopSessionExecutionHost? host = null,
         TimeProvider? timeProvider = null)
     {
-        _getSettings = getSettings ??
-            throw new ArgumentNullException(nameof(getSettings));
+        ArgumentNullException.ThrowIfNull(getSettings);
+        _getSettings = () =>
+        {
+            var settings = getSettings();
+            return settings with
+            {
+                DesktopSessions = DesktopSessionModePolicy.Normalize(settings.DesktopSessions)
+            };
+        };
         ArgumentNullException.ThrowIfNull(ledger);
         _host = host;
         _timeProvider = timeProvider ?? TimeProvider.System;
@@ -75,6 +82,8 @@ public sealed class DesktopSessionApplicationService :
         var environment = FindEnvironment(settings, environmentId);
         if (environment is null)
             return new(false, "未找到桌面分身环境。");
+        if (!DesktopSessionModePolicy.IsEnabled(settings.DesktopSessions, environment.Backend))
+            return new(false, "该模式的桌面分身已关闭。");
         if (_host is null)
             return Unavailable();
 
@@ -150,7 +159,7 @@ public sealed class DesktopSessionApplicationService :
     {
         ThrowIfDisposed();
         var settings = _getSettings();
-        if (!settings.DesktopSessions.Enabled)
+        if (!settings.DesktopSessions.Enabled && settings.DesktopSessions.Tasks.FirstOrDefault(task=>task.Id==taskId)?.EnvironmentId!=GlobalTaskTarget.Id)
             return Disabled();
         if (_host is null)
             return Unavailable();
@@ -214,7 +223,7 @@ public sealed class DesktopSessionApplicationService :
     {
         ThrowIfDisposed();
         var settings = _getSettings();
-        if (!settings.DesktopSessions.Enabled || _host is null)
+        if ((!settings.DesktopSessions.Enabled&&!settings.DesktopSessions.Tasks.Any(task=>task.Enabled&&task.EnvironmentId==GlobalTaskTarget.Id)) || _host is null)
             return 0;
 
         var now = _timeProvider.GetUtcNow();
@@ -228,7 +237,7 @@ public sealed class DesktopSessionApplicationService :
         if (now <= from)
             return 0;
         return await _scheduler.ProcessScheduledAsync(
-            settings.DesktopSessions.Tasks,
+            settings.DesktopSessions.Tasks.Where(task=>settings.DesktopSessions.Enabled||task.EnvironmentId==GlobalTaskTarget.Id).ToArray(),
             from,
             now,
             cancellationToken).ConfigureAwait(false);
@@ -240,7 +249,7 @@ public sealed class DesktopSessionApplicationService :
     {
         ThrowIfDisposed();
         var settings = _getSettings();
-        if (!settings.DesktopSessions.Enabled || _host is null)
+        if ((!settings.DesktopSessions.Enabled&&environmentId!=GlobalTaskTarget.Id) || _host is null)
             return false;
         var started = false;
         foreach (var task in settings.DesktopSessions.Tasks.Where(
@@ -278,7 +287,16 @@ public sealed class DesktopSessionApplicationService :
     }
 
     public bool IsEnvironmentReady(Guid environmentId) =>
-        _host?.IsEnvironmentReady(environmentId) == true;
+        IsModeEnabled(environmentId) && _host?.IsEnvironmentReady(environmentId) == true;
+
+    private bool IsModeEnabled(Guid environmentId)
+    {
+        if(environmentId==GlobalTaskTarget.Id)return true;
+        var settings = _getSettings();
+        var environment = FindEnvironment(settings, environmentId);
+        return environment is not null &&
+            DesktopSessionModePolicy.IsEnabled(settings.DesktopSessions, environment.Backend);
+    }
 
     public Guid? GetLoginInstanceId(Guid environmentId) =>
         _host?.GetLoginInstanceId(environmentId);
@@ -460,6 +478,15 @@ public sealed class DesktopSessionApplicationService :
     {
         if (_host is null)
             return null;
+        var target = FindEnvironment(_getSettings(),task.EnvironmentId);
+        if(target is null) return new(runId,task.Id,DesktopTaskRunOutcome.Failed,0,null,"EnvironmentNotFound");
+        try { DesktopTaskPackagePolicy.Validate(task,target.Backend); }
+        catch(InvalidOperationException) { return new(runId,task.Id,DesktopTaskRunOutcome.Failed,0,null,"TaskDefinitionInvalid"); }
+        if(task.McpEnvironmentBinding is {} binding && binding!=DesktopTaskPackagePolicy.EnvironmentBinding(target))
+            return new(runId,task.Id,DesktopTaskRunOutcome.Failed,0,null,"TaskEnvironmentChanged");
+        if (!IsModeEnabled(task.EnvironmentId))
+            return new DesktopTaskRunResult(
+                runId, task.Id, DesktopTaskRunOutcome.Failed, 0, null, "BackendModeDisabled");
         lock (_sync)
         {
             if (_activeRuns.ContainsKey(task.EnvironmentId))
@@ -526,8 +553,7 @@ public sealed class DesktopSessionApplicationService :
     private static EnvironmentProfile? FindEnvironment(
         AppSettings settings,
         Guid environmentId) =>
-        settings.DesktopSessions.Environments.FirstOrDefault(
-            environment => environment.Id == environmentId);
+        GlobalTaskTarget.Find(settings.DesktopSessions,environmentId);
 
     private static DesktopSessionTask? FindTask(
         AppSettings settings,

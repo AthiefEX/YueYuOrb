@@ -150,8 +150,8 @@ public sealed class NotesWindowSelectionTests
                 "AiMaximizeRestoreButton",
                 "AiCloseButton",
                 "AiMaximizeGlyph",
-                "最大化 AI 网页",
-                "还原 AI 网页");
+                "最大化悬浮浏览器",
+                "还原悬浮浏览器");
         }).Task.Unwrap();
 
         await window.Dispatcher.InvokeAsync(window.Hide);

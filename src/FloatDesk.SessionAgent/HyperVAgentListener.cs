@@ -7,7 +7,11 @@ public sealed record HyperVAgentListenerOptions(
     Guid VmId,
     Guid ServiceId,
     SessionAgentBinding Binding,
-    byte[] PairingSecret);
+    byte[] PairingSecret)
+{
+    public HyperVGuestIdentity? Identity { get; init; }
+    public bool AcceptHostGeneration { get; init; }
+}
 
 public static class HyperVAgentListener
 {
@@ -28,6 +32,8 @@ public static class HyperVAgentListener
         }
 
         var pairingSecret = options.PairingSecret.ToArray();
+        try
+        {
         using var timeout = CancellationTokenSource
             .CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(SessionProtocol.HandshakeTimeout);
@@ -54,6 +60,15 @@ public static class HyperVAgentListener
             return;
         }
 
+        if (hello.DiscoverOnly)
+        {
+            if (options.Identity is not { } identity)
+                throw new InvalidOperationException("Guest discovery is not configured.");
+            await SessionProtocolJson.WriteAsync(stream,
+                new HyperVGuestDiscoveryResponse(identity, HyperVGuestDiscovery.CreateProof(pairingSecret, hello.ClientNonce, identity)),
+                timeout.Token).ConfigureAwait(false);
+            return;
+        }
         var serverHello = HyperVPairingProtocol.CreateServerHello(
             pairingSecret,
             hello);
@@ -68,7 +83,7 @@ public static class HyperVAgentListener
         var claimedBinding = clientProof?.Binding;
         var binding = new HyperVPairingBinding(
             options.Binding.EnvironmentId,
-            options.Binding.Generation,
+            options.AcceptHostGeneration ? claimedBinding?.Generation ?? Guid.Empty : options.Binding.Generation,
             options.Binding.LoginInstanceId,
             options.Binding.WindowsSessionId,
             options.Binding.UserSid,
@@ -78,8 +93,8 @@ public static class HyperVAgentListener
                 { Binding: not null, Proof: not null } proof &&
             proof.Binding.EnvironmentId ==
                 options.Binding.EnvironmentId &&
-            proof.Binding.Generation ==
-                options.Binding.Generation &&
+            proof.Binding.Generation != Guid.Empty &&
+            (options.AcceptHostGeneration || proof.Binding.Generation == options.Binding.Generation) &&
             proof.Binding.LoginInstanceId ==
                 options.Binding.LoginInstanceId &&
             proof.Binding.WindowsSessionId ==
@@ -106,7 +121,9 @@ public static class HyperVAgentListener
         CryptographicOperations.ZeroMemory(pairingSecret);
         await SessionAgentServer.RunProtocolLoopAsync(
             stream,
-            options.Binding,
+            options.Binding with { Generation = binding.Generation },
             executor).ConfigureAwait(false);
+        }
+        finally { CryptographicOperations.ZeroMemory(pairingSecret); }
     }
 }

@@ -7,6 +7,7 @@ namespace FloatDesk.App;
 internal sealed partial class AppRuntime
 {
     private System.Windows.Controls.Primitives.Popup? _desktopSessionPicker;
+    private readonly HyperVConsoleController _hyperVConsoleController = new();
     private static readonly string DesktopSessionBrokerPath = Path.Combine(
         AppContext.BaseDirectory,
         "desktop-sessions",
@@ -32,8 +33,30 @@ internal sealed partial class AppRuntime
             var secrets = new DpapiHyperVPairingSecretStore();
             var backend = new HyperVSessionBackend(
                 new PowerShellHyperVHost(),
-                new UnavailableHyperVGuestAgentProbe(),
-                endpoints);
+                new HyperVGuestAgentProbe(secrets),
+                endpoints,
+                showView: (id, token) =>
+                {
+                    var current = _settings.Current.DesktopSessions.Environments.FirstOrDefault(item => item.Id == environment.Id) ?? environment;
+                    return _hyperVConsoleController.ShowAsync(id, current.DesktopWidth, current.DesktopHeight,
+                        current.HostSharingEnabled ? current.HostSharedPaths : [],
+                        () => OnHyperVConsoleClosedAsync(environment.Id, id), token,
+                        saveResolution: async (width, height) =>
+                        {
+                            var result = await _settings.UpdateAsync(settings => settings with
+                            {
+                                DesktopSessions = DesktopSessionResolutionPreferences.Update(settings.DesktopSessions, environment.Id, width, height)
+                            }, _lifetime.Token);
+                            if (!result.Success) throw new InvalidOperationException("分辨率偏好保存失败，请重试。");
+                        },
+                        environmentId: environment.Id,
+                        useSavedLogin: current.UseAuthenticatedRdp,
+                        openSettings: () =>
+                        {
+                            ShowSettings();
+                            GetTool<FloatDesk.App.Views.SettingsWindow>()?.SelectDesktopSessionsPage();
+                        });
+                });
             var transport = new HyperVSocketTransport(
                 new WindowsHyperVSocketConnector(),
                 endpoints,
@@ -67,6 +90,53 @@ internal sealed partial class AppRuntime
             new ChildSessionBackend(native, launcher),
             new NamedPipeSessionTransport(
                 handle => bootstrapStore.Take(handle)));
+    }
+
+    /// <summary>
+    /// Applies the configured close action for a console that is being closed. Runs while the
+    /// console window is still open so a failure can be shown and retried.
+    /// </summary>
+    private async Task<string> OnHyperVConsoleClosedAsync(Guid environmentId, Guid vmId)
+    {
+        var environment = _settings.Current.DesktopSessions.Environments.FirstOrDefault(item => item.Id == environmentId);
+        if (environment is null || environment.ConsoleCloseAction == HyperVConsoleCloseAction.CloseView)
+            return "控制台已关闭，虚拟机继续运行。";
+        try
+        {
+            var stopped = await _desktopSessions.StopEnvironmentAsync(environmentId, _lifetime.Token).ConfigureAwait(false);
+            if (!stopped.Success && _desktopSessions.IsEnvironmentReady(environmentId))
+                throw new InvalidOperationException(stopped.Message);
+            await new HyperVVirtualMachineManager().ApplyCloseActionAsync(
+                vmId, environment.ConsoleCloseAction, _lifetime.Token).ConfigureAwait(false);
+            await _logger.WriteAsync(
+                "desktop-session.console.close-policy",
+                new Dictionary<string, object?>
+                {
+                    ["environmentId"] = environmentId,
+                    ["action"] = environment.ConsoleCloseAction.ToString()
+                }).ConfigureAwait(false);
+            return environment.ConsoleCloseAction == HyperVConsoleCloseAction.SaveState
+                ? "已保存虚拟机状态并释放运行资源。"
+                : "已关闭虚拟机。";
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested)
+        {
+            return "已跳过关闭设置（应用正在退出）。";
+        }
+        catch (Exception exception)
+        {
+            await _logger.WriteAsync(
+                "desktop-session.console.close-policy.failed",
+                new Dictionary<string, object?>
+                {
+                    ["environmentId"] = environmentId,
+                    ["action"] = environment.ConsoleCloseAction.ToString(),
+                    ["errorType"] = exception.GetType().Name
+                }).ConfigureAwait(false);
+            _tray?.ShowWarning("桌面分身关闭策略未完成", exception.Message);
+            // Rethrown so the console window keeps the message on screen and lets the user retry.
+            throw;
+        }
     }
 
     private void OnDesktopSessionsRequested()

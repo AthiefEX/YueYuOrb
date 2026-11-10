@@ -57,6 +57,7 @@ public partial class QuickPanelWindow : Window
     public event Action? SettingsRequested;
     public event Action? InputLockToggleRequested;
     public event Action? AiRequested;
+    public event Action? AssistantRequested;
     public event Action? NotesRequested;
     public event Action<FloatDesk.Core.Models.CaptureMode>? CaptureRequested;
     public event Action? TranslateSelectionRequested;
@@ -91,6 +92,7 @@ public partial class QuickPanelWindow : Window
         UpdateInputStatus(manualLockEnabled, inputStatus);
 
         var enabledWheelActions = settings.WheelActions.ToHashSet();
+        if (settings.Assistant.Enabled && settings.Assistant.ShowInWheel) enabledWheelActions.Add(WheelActionKind.Assistant);
         if (!settings.DesktopSessions.Enabled)
         {
             enabledWheelActions.Remove(WheelActionKind.DesktopSessions);
@@ -138,6 +140,7 @@ public partial class QuickPanelWindow : Window
         }
         ApplyAudioWheel(settings);
         ApplyBrightnessWheel(settings);
+        ApplyNetworkWheel(settings);
         WheelScroller.Visibility = GetVisibleWheelButtons().Length > 0
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -408,6 +411,7 @@ public partial class QuickPanelWindow : Window
         (WindowCaptureButton, WheelActionKind.WindowCapture),
         (MonitorCaptureButton, WheelActionKind.MonitorCapture),
         (AiButton, WheelActionKind.AiBrowser),
+        (AssistantButton, WheelActionKind.Assistant),
         (NotesButton, WheelActionKind.Notes),
         (InputLockButton, WheelActionKind.InputLock),
         (SettingsButton, WheelActionKind.Settings),
@@ -1187,6 +1191,8 @@ public partial class QuickPanelWindow : Window
 
     private void OnAiClick(object sender, RoutedEventArgs e) =>
         AiRequested?.Invoke();
+
+    private void OnAssistantClick(object sender, RoutedEventArgs e) => AssistantRequested?.Invoke();
 
     private void OnNotesClick(object sender, RoutedEventArgs e) =>
         NotesRequested?.Invoke();

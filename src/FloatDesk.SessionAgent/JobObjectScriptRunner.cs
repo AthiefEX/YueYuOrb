@@ -20,6 +20,16 @@ public sealed class JobObjectScriptRunner :
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(command);
+        if (command.Kind == SessionCommandKind.RunScript && command.Parameters.ContainsKey("scriptContent"))
+        {
+            try
+            {
+                var parameters = command.Parameters.ToDictionary(pair => pair.Key, pair => pair.Value);
+                parameters["scriptPath"] = TaskScriptAssets.Materialize(command.Handle.EnvironmentId, parameters);
+                command = command with { Parameters = parameters };
+            }
+            catch (Exception) { return Failed(command, "ScriptAssetInvalid"); }
+        }
         if (command.Kind != SessionCommandKind.RunScript ||
             !RunScriptCommandCodec.TryDecode(
                 command.Parameters,

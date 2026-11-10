@@ -7,6 +7,19 @@ namespace FloatDesk.Windows.Tests;
 
 public sealed class HyperVSessionBackendTests
 {
+    [Fact]
+    public async Task ShowInvokesViewForTheAuthenticatedVm()
+    {
+        Guid? shownVm = null;
+        await using var backend = new HyperVSessionBackend(new FakeHost(), new FakeGuestProbe { Identity = ValidIdentity() },
+            showView: (vmId, token) => { token.ThrowIfCancellationRequested(); shownVm = vmId; return Task.CompletedTask; });
+        var profile = CreateProfile();
+        var preparation = await backend.PrepareAsync(profile, profile.StartupPolicy, CancellationToken.None);
+        var handle = await backend.StartAsync(profile, preparation, CancellationToken.None);
+        Assert.Equal(VmId, shownVm);
+        await backend.ShowAsync(handle, CancellationToken.None);
+        Assert.Equal(VmId, shownVm);
+    }
     private static readonly Guid VmId =
         Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static readonly Guid ServiceId =

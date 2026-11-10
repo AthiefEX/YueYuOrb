@@ -5,6 +5,37 @@ namespace FloatDesk.Windows.Tests;
 public sealed class HyperVVirtualMachineManagerTests
 {
     [Fact]
+    public void EmbeddedConsoleStartsHiddenWithoutShellWindow()
+    {
+        var command = HyperVVirtualMachineManager.BuildVmConnectCommand("月语测试", embedded: true);
+        Assert.False(command.UseShellExecute);
+        Assert.True(command.CreateNoWindow);
+        Assert.Equal(System.Diagnostics.ProcessWindowStyle.Hidden, command.WindowStyle);
+        Assert.Contains("月语测试", command.ArgumentList);
+    }
+    [Fact]
+    public void ParsesLiveCpuAndAssignedMemory()
+    {
+        var json = "{\"id\":\"" + Guid.NewGuid() + "\",\"name\":\"Live\",\"state\":\"Running\",\"generation\":2,\"memoryStartupMiB\":4096,\"processorCount\":4,\"cpuUsage\":23,\"memoryAssignedMiB\":3072}";
+        var vm = Assert.Single(HyperVVirtualMachineManager.ParseVmList(json));
+        Assert.Equal(23, vm.CpuUsagePercent);
+        Assert.Equal(3072, vm.MemoryAssignedMiB);
+        Assert.Contains("23%", vm.DisplayStatus);
+    }
+    [Fact]
+    public void TemplateCreationCopiesSourceAndBootsDiskWithoutAttachingIso()
+    {
+        var request = new HyperVVmCreateRequest(Guid.NewGuid(), "Template copy", @"D:\VMs\copy", "",
+            4, 4096, 80, "Default Switch", true) { TemplatePath = @"E:\Templates\base.vhdx" };
+        var script = HyperVVirtualMachineManager.BuildCreateScript(request);
+        Assert.Contains("Copy-Item -LiteralPath", script);
+        Assert.DoesNotContain("Add-VMDvdDrive", script);
+        Assert.DoesNotContain("New-VHD", script);
+        Assert.Contains("Get-VHD -Path $source", script);
+        Assert.Contains("TemplateInUse", script);
+        Assert.Contains("FirstBootDevice", script);
+    }
+    [Fact]
     public void CreateScriptUsesSecondGenerationAndDoesNotAcceptArbitraryCommands()
     {
         var request = new HyperVVmCreateRequest(
@@ -75,6 +106,9 @@ public sealed class HyperVVirtualMachineManagerTests
         Assert.Contains("catch", script, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Remove-VM", script, StringComparison.Ordinal);
         Assert.Contains("Remove-Item", script, StringComparison.Ordinal);
+        Assert.Contains("HyperVDiskAlreadyExists", script, StringComparison.Ordinal);
+        Assert.Contains("$createdDisk -and", script, StringComparison.Ordinal);
+        Assert.Contains("Get-VMSwitch -Name", script, StringComparison.Ordinal);
     }
 
     [Fact]

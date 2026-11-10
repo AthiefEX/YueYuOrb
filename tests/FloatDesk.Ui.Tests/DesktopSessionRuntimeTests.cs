@@ -259,7 +259,7 @@ public sealed class DesktopSessionRuntimeTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => start);
         Assert.Equal(1, backend.StartCalls);
         Assert.Equal(1, backend.StopCalls);
-        Assert.Equal(SessionStopMode.Disconnect, backend.LastStopMode);
+        Assert.Equal(SessionStopMode.LogoffOwnedSession, backend.LastStopMode);
         Assert.Equal(SessionRuntimeStatus.Stopped, runtime.GetStatus(environmentId));
     }
 

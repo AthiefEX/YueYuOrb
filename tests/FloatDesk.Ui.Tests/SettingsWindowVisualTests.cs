@@ -9,7 +9,7 @@ public sealed class SettingsWindowVisualTests
     {
         var document = XDocument.Load(FindRepoFile("src/FloatDesk.App/Views/SettingsWindow.xaml"));
         var tabs = document.Descendants().Where(e => e.Name.LocalName == "TabItem").ToArray();
-        Assert.Equal(["常规", "悬浮球", "轮盘", "AI 网页", "实时翻译", "音频", "亮度", "桌面分身", "关于"],
+        Assert.Equal(["常规", "悬浮球", "轮盘", "悬浮浏览器", "实时翻译", "音频", "亮度", "桌面分身", "关于"],
             tabs.Select(t => (string?)t.Attribute("AutomationProperties.Name")));
         var general = tabs[0].ToString();
         Assert.Contains("InputRuleGrid", general);

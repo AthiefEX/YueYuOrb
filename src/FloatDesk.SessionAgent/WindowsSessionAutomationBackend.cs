@@ -94,7 +94,7 @@ public sealed class WindowsSessionAutomationBackend :
         while (DateTimeOffset.UtcNow < command.DeadlineUtc)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (FindWindow(title, processName) != IntPtr.Zero)
+            if (DesktopInputDiagnostics.IsReady() && FindWindow(title, processName) != IntPtr.Zero)
                 return Succeeded(command);
             await Task.Delay(
                 TimeSpan.FromMilliseconds(200),
@@ -162,6 +162,8 @@ public sealed class WindowsSessionAutomationBackend :
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (!DesktopInputDiagnostics.IsReady())
+            return Task.FromResult(Failed(command, "InputDesktopNotReady"));
         if (!command.Parameters.TryGetValue("text", out var text))
             return Task.FromResult(Failed(command, "TextMissing"));
 
@@ -181,15 +183,16 @@ public sealed class WindowsSessionAutomationBackend :
 
             element?.SetFocus();
         }
-        catch
+        catch (Exception exception)
         {
-            return Task.FromResult(Failed(command, "TextInputFailed"));
+            return Task.FromResult(Failed(command,
+                $"TextInputFailed:{exception.GetType().Name}:{exception.HResult:X8}"));
         }
 
         return Task.FromResult(
             SendUnicodeText(text)
                 ? Succeeded(command)
-                : Failed(command, "TextInputFailed"));
+                : Failed(command, $"TextInputFailed:Win32:{Marshal.GetLastWin32Error()}:{DesktopInputDiagnostics.Describe()}"));
     }
 
     public Task<CommandResult> SendKeysAsync(
@@ -197,6 +200,8 @@ public sealed class WindowsSessionAutomationBackend :
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (!DesktopInputDiagnostics.IsReady())
+            return Task.FromResult(Failed(command, "InputDesktopNotReady"));
         if (!command.Parameters.TryGetValue("keys", out var keys) ||
             !TrySendKeySequence(keys))
         {
@@ -762,7 +767,7 @@ public sealed class WindowsSessionAutomationBackend :
         public nuint ExtraInfo;
     }
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(
         uint inputCount,
         [In] InputNative[] inputs,

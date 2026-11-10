@@ -4,13 +4,14 @@
     <AssemblyName>YueYuOrb.McpServer</AssemblyName>
     <RootNamespace>FloatDesk.McpServer</RootNamespace>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../FloatDesk.Core/FloatDesk.Core.csproj" />
     <ProjectReference Include="../FloatDesk.Infrastructure/FloatDesk.Infrastructure.csproj" />
+    <ProjectReference Include="../FloatDesk.Windows/FloatDesk.Windows.csproj" />
   </ItemGroup>
 
 </Project>

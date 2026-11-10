@@ -31,7 +31,10 @@ public sealed record HyperVPairingClientHello(
     int Version,
     Guid VmId,
     Guid ServiceId,
-    byte[] ClientNonce);
+    byte[] ClientNonce)
+{
+    public bool DiscoverOnly { get; init; }
+}
 
 public sealed record HyperVPairingServerHello(
     int Version,

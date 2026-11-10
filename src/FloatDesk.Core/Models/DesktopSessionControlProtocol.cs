@@ -16,18 +16,36 @@ public sealed record DesktopSessionControlRequest(
     string Operation,
     Guid? EnvironmentId,
     Guid? TaskId,
-    Guid? RunId);
+    Guid? RunId)
+{
+    public DesktopSessionTask? TaskDefinition { get; init; }
+    public int? ExpectedRevision { get; init; }
+    public string? DefinitionHash { get; init; }
+    public SessionTaskStep? Step { get; init; }
+    public string? ClientName { get; init; }
+    public Guid? ClientConnectionId { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public AutomationCaller? VerifiedCaller { get; init; }
+}
 
 public sealed record DesktopSessionControlEnvironment(
     Guid Id,
     string Name,
-    string Backend);
+    string Backend)
+{
+    public bool McpControlAllowed { get; init; }
+}
 
 public sealed record DesktopSessionControlTask(
     Guid Id,
     string Name,
     Guid EnvironmentId,
-    bool Enabled);
+    bool Enabled)
+{
+    public int Revision { get; init; }
+    public bool McpApproved { get; init; }
+    public string Source { get; init; } = "manual";
+}
 
 public sealed record DesktopSessionControlResponse(
     bool Success,
@@ -40,6 +58,10 @@ public sealed record DesktopSessionControlResponse(
     int? CompletedSteps,
     Guid? FailedStepId)
 {
+    public DesktopSessionTask? TaskDefinition { get; init; }
+    public string? DataJson { get; init; }
+    public Guid? ClientConnectionId { get; init; }
+    public string? ConnectionState { get; init; }
     public static DesktopSessionControlResponse Fail(
         string errorCode,
         string message) =>

@@ -144,20 +144,33 @@ public sealed class RdpChildSessionHost : IAsyncDisposable
     }
 }
 
-public sealed class RdpControlFactory : IRdpControlFactory
+public sealed class RdpControlFactory(string? initialProgram = null) : IRdpControlFactory
 {
-    public IRdpControl Create() => new MsRdpControl();
+    public IRdpControl Create() => new MsRdpControl(initialProgram);
 }
 
-internal sealed class MsRdpControl : IRdpControl, IRdpControlView
+public interface IRdpDisplayControl
+{
+    Task SetResolutionAsync(int width, int height, CancellationToken cancellationToken);
+}
+
+internal sealed class MsRdpControl : IRdpControl, IRdpControlView, IRdpDisplayControl
 {
     private const string ChildSessionClsid =
         "8B918B82-7985-4C24-89DF-C33AD2BBFBCD";
     private readonly RdpAxHost _host = new();
+    private readonly Panel _viewport = new() { AutoScroll = true, Dock = DockStyle.Fill };
+    private readonly string? _initialProgram;
     private object? _ocx;
     private bool _disposed;
 
-    public Control View => _host;
+    public MsRdpControl(string? initialProgram = null)
+    {
+        _initialProgram = initialProgram;
+        _viewport.Controls.Add(_host);
+    }
+
+    public Control View => _viewport;
 
     public async Task ConfigureAsync(
         int width,
@@ -179,22 +192,24 @@ internal sealed class MsRdpControl : IRdpControl, IRdpControlView
                 SetRequiredProperty(ocx, "DesktopWidth", width);
                 SetRequiredProperty(ocx, "DesktopHeight", height);
                 SetRequiredProperty(ocx, "FullScreen", false);
+                if (_initialProgram is not null)
+                    SetRequiredProperty(GetRequiredProperty(ocx, "SecuredSettings2"), "StartProgram", _initialProgram);
 
                 var advanced = GetRequiredProperty(
                     ocx,
                     "AdvancedSettings9");
                 SetRequiredProperty(advanced, "EnableCredSspSupport", true);
+                SetRequiredProperty(advanced, "SmartSizing", false);
+                _host.Size = new System.Drawing.Size(width, height);
+                _viewport.AutoScrollMinSize = _host.Size;
                 SetRequiredProperty(advanced, "RedirectClipboard", false);
                 SetRequiredProperty(advanced, "RedirectDrives", false);
                 SetRequiredProperty(advanced, "RedirectPrinters", false);
                 SetRequiredProperty(advanced, "RedirectPOSDevices", false);
 
-                var extended = GetRequiredProperty(ocx, "ExtendedSettings");
-                InvokeRequiredMethod(
-                    extended,
-                    "set_Property",
-                    "ConnectToChildSession",
-                    true);
+                var extended = (IMsRdpExtendedSettings)ocx;
+                object childSession = true;
+                extended.SetProperty("ConnectToChildSession", ref childSession);
                 completion.TrySetResult();
             }
             catch (Exception exception)
@@ -212,6 +227,22 @@ internal sealed class MsRdpControl : IRdpControl, IRdpControlView
             InvokeRequiredMethod(GetOcx(), "Connect"));
     }
 
+    public Task SetResolutionAsync(int width, int height, CancellationToken cancellationToken)
+    {
+        if (width is < 800 or > 3840 || height is < 600 or > 2160)
+            throw new ArgumentOutOfRangeException(nameof(width));
+        cancellationToken.ThrowIfCancellationRequested();
+        InvokeOnView(() =>
+        {
+            InvokeRequiredMethod(GetOcx(), "UpdateSessionDisplaySettings",
+                (uint)width, (uint)height, (uint)(width * 254 / 960), (uint)(height * 254 / 960),
+                0u, 100u, 100u);
+            _host.Size = new System.Drawing.Size(width, height);
+            _viewport.AutoScrollMinSize = _host.Size;
+        });
+        return Task.CompletedTask;
+    }
+
     public void Disconnect()
     {
         if (_disposed || _ocx is null)
@@ -219,6 +250,9 @@ internal sealed class MsRdpControl : IRdpControl, IRdpControlView
 
         InvokeOnView(() =>
         {
+            if (Convert.ToInt32(GetRequiredProperty(_ocx, "Connected"),
+                CultureInfo.InvariantCulture) == 0)
+                return;
             try
             {
                 InvokeRequiredMethod(_ocx, "Disconnect");
@@ -243,11 +277,11 @@ internal sealed class MsRdpControl : IRdpControl, IRdpControlView
             _disposed = true;
             if (_host.IsHandleCreated && _host.InvokeRequired)
             {
-                _host.BeginInvoke(new Action(_host.Dispose));
+                _host.BeginInvoke(new Action(_viewport.Dispose));
             }
             else
             {
-                _host.Dispose();
+                _viewport.Dispose();
             }
         }
     }
@@ -352,6 +386,19 @@ internal sealed class MsRdpControl : IRdpControl, IRdpControlView
                 $"The RDP control does not support {methodName}.",
                 exception);
         }
+    }
+
+    [ComImport]
+    [Guid("302D8188-0052-4807-806A-362B628F9AC5")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IMsRdpExtendedSettings
+    {
+        void SetProperty(
+            [MarshalAs(UnmanagedType.BStr)] string name,
+            [In, MarshalAs(UnmanagedType.Struct)] ref object value);
+
+        [return: MarshalAs(UnmanagedType.Struct)]
+        object GetProperty([MarshalAs(UnmanagedType.BStr)] string name);
     }
 
     private sealed class RdpAxHost() : AxHost(ChildSessionClsid)

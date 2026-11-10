@@ -79,7 +79,7 @@ public partial class OrbWindow : Window
         var menu = new System.Windows.Controls.ContextMenu();
         AddMenu(menu, "打开快捷面板", _openPanel);
         AddMenu(menu, "设置", settingsRequested);
-        AddMenu(menu, "AI 网页", aiRequested);
+        AddMenu(menu, "悬浮浏览器", aiRequested);
         AddMenu(menu, "记事本", notesRequested);
         AddMenu(menu, "框选截图", captureRequested);
         menu.Items.Add(new System.Windows.Controls.Separator());

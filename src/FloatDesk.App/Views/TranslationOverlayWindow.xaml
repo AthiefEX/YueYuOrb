@@ -16,8 +16,8 @@
         </ResourceDictionary>
     </Window.Resources>
     <Border x:Name="OverlayCard" Background="{DynamicResource SettingsCardBrush}"
-            BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="1"
-            CornerRadius="10" Padding="1">
+            BorderBrush="{DynamicResource SettingsLineBrush}" BorderThickness="0"
+            CornerRadius="16" Padding="0">
         <Grid>
             <Grid x:Name="CardBackdrop" IsHitTestVisible="False" Visibility="Collapsed" />
             <Grid x:Name="TransitionLayer">

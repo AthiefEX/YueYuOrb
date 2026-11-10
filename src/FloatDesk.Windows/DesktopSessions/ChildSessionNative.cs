@@ -71,7 +71,20 @@ public sealed class ChildSessionNative : IChildSessionNative
 
         try
         {
-            return WtsGetChildSessionId(out sessionId);
+            if (!WtsGetChildSessionId(out sessionId) || sessionId is 0 or uint.MaxValue)
+                return false;
+            if (WtsQuerySessionInformation(IntPtr.Zero, sessionId, 8, out var buffer, out _))
+            {
+                WtsFreeMemory(buffer);
+                return true;
+            }
+            var error = Marshal.GetLastWin32Error();
+            if (error is 2 or 7022)
+            {
+                sessionId = uint.MaxValue;
+                return false;
+            }
+            throw new System.ComponentModel.Win32Exception(error, "Child session existence query failed.");
         }
         catch (EntryPointNotFoundException)
         {
@@ -92,7 +105,7 @@ public sealed class ChildSessionNative : IChildSessionNative
 
         try
         {
-            return WtsLogoffSession(IntPtr.Zero, sessionId, wait: false);
+            return WtsLogoffSession(IntPtr.Zero, sessionId, wait: true);
         }
         catch (EntryPointNotFoundException)
         {
@@ -155,6 +168,13 @@ public sealed class ChildSessionNative : IChildSessionNative
         SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool WtsGetChildSessionId(out uint sessionId);
+
+    [DllImport("wtsapi32.dll", EntryPoint = "WTSQuerySessionInformationW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool WtsQuerySessionInformation(IntPtr server, uint sessionId, int infoClass, out IntPtr buffer, out uint bytesReturned);
+
+    [DllImport("wtsapi32.dll", EntryPoint = "WTSFreeMemory")]
+    private static extern void WtsFreeMemory(IntPtr buffer);
 
     [DllImport(
         "wtsapi32.dll",

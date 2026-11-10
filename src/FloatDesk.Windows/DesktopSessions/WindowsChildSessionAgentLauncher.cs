@@ -10,7 +10,7 @@ using System.Text;
 
 namespace FloatDesk.Windows.DesktopSessions;
 
-public sealed class WindowsChildSessionAgentLauncher :
+public sealed partial class WindowsChildSessionAgentLauncher :
     ISessionBrokerAgentLauncher
 {
     private const uint TokenQuery = 0x0008;
@@ -65,7 +65,10 @@ public sealed class WindowsChildSessionAgentLauncher :
         SessionBrokerProtocol.ValidateRequest(request);
         ArgumentNullException.ThrowIfNull(caller);
         await VerifyAgentManifestAsync(cancellationToken).ConfigureAwait(false);
-        ValidateChildSession(request, caller);
+        EnableRequiredPrivilege("SeTcbPrivilege");
+        EnableRequiredPrivilege("SeAssignPrimaryTokenPrivilege");
+        EnableRequiredPrivilege("SeIncreaseQuotaPrivilege");
+        await ValidateChildSessionAsync(request, caller, cancellationToken).ConfigureAwait(false);
 
         var rawToken = await QueryUserTokenWithRetryAsync(
             request.WindowsSessionId,
@@ -90,10 +93,6 @@ public sealed class WindowsChildSessionAgentLauncher :
                 userSid,
                 authenticationId,
                 loginTime));
-
-        EnableRequiredPrivilege("SeTcbPrivilege");
-        EnableRequiredPrivilege("SeAssignPrimaryTokenPrivilege");
-        EnableRequiredPrivilege("SeIncreaseQuotaPrivilege");
 
         var secret = RandomNumberGenerator.GetBytes(
             SessionProtocol.BootstrapSecretSize);
@@ -264,9 +263,10 @@ public sealed class WindowsChildSessionAgentLauncher :
         }
     }
 
-    private static void ValidateChildSession(
+    private async Task ValidateChildSessionAsync(
         SessionBrokerRequest request,
-        SessionPeerIdentity caller)
+        SessionPeerIdentity caller,
+        CancellationToken cancellationToken)
     {
         var activeConsole = WTSGetActiveConsoleSessionId();
         if (activeConsole == InvalidSessionId ||
@@ -276,8 +276,16 @@ public sealed class WindowsChildSessionAgentLauncher :
                 "BrokerCallerNotActiveConsole");
         }
 
-        if (!WTSGetChildSessionId(out var childSessionId) ||
-            childSessionId != request.WindowsSessionId ||
+        uint childSessionId;
+        try
+        {
+            childSessionId = await ProbeParentChildSessionAsync(caller, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException exception)
+        {
+            throw new InvalidOperationException("ParentSessionProbeTimedOut", exception);
+        }
+        if (childSessionId != request.WindowsSessionId ||
             childSessionId == caller.SessionId)
         {
             throw new InvalidOperationException(
@@ -608,7 +616,7 @@ public sealed class WindowsChildSessionAgentLauncher :
         uint sessionId,
         out IntPtr token);
 
-    [DllImport("wtsapi32.dll", SetLastError = true)]
+    [DllImport("kernel32.dll", SetLastError = true)]
     private static extern uint WTSGetActiveConsoleSessionId();
 
     [DllImport("wtsapi32.dll", SetLastError = true)]

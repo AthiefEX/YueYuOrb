@@ -62,6 +62,7 @@ public sealed class AudioControlWindow : Window, IDisposable
         card.SetResourceReference(Border.BorderBrushProperty, "SettingsLineBrush");
         body.SetResourceReference(TextElement.ForegroundProperty, "SettingsInkBrush");
         Content = card;
+        GlassWindowFrame.SetEnabled(card,true);GlassWindowFrame.Prepare(this);
         _volume.ValueChanged += (_, _) =>
         {
             _level.Text = $"音量 {Math.Round(_volume.Value)}%";

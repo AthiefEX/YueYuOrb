@@ -6,6 +6,38 @@ namespace FloatDesk.Windows.Tests;
 public sealed class SessionBrokerProtocolTests
 {
     [Fact]
+    public async Task Win32LaunchFailureReturnsCodeAndServerAcceptsNextRequest()
+    {
+        var pipeName = "YueYuOrb.Broker.Win32." + Guid.NewGuid().ToString("N");
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var serverTask = new SessionBrokerServer(new Win32FailureLauncher(), pipeName).RunAsync(cancellation.Token);
+        try
+        {
+            for (var attempt = 0; attempt < 2; attempt++)
+            {
+                var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                    new SessionBrokerClient(pipeName).LaunchAsync(
+                        Guid.NewGuid(), Guid.NewGuid(), 7, cancellation.Token));
+                Assert.Equal("BrokerWin32Error:1314", exception.Message);
+                Assert.False(serverTask.IsCompleted);
+            }
+        }
+        finally
+        {
+            cancellation.Cancel();
+            try { await serverTask; }
+            catch (OperationCanceledException) { }
+        }
+    }
+
+    private sealed class Win32FailureLauncher : ISessionBrokerAgentLauncher
+    {
+        public Task<SessionBrokerResponse> LaunchAsync(
+            SessionBrokerRequest request, SessionPeerIdentity caller, CancellationToken cancellationToken) =>
+            throw new System.ComponentModel.Win32Exception(1314);
+    }
+
+    [Fact]
     public async Task ClientReceivesBoundBootstrapAndNeverUsesCommandLineSecret()
     {
         var pipeName = "YueYuOrb.SessionBroker.Tests." +

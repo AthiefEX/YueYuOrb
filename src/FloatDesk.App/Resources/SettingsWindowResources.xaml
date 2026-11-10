@@ -1,6 +1,7 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime"
+                    xmlns:views="clr-namespace:FloatDesk.App.Views">
 
     <!-- SystemParameters.HighContrast and system highlight brushes provide the
          accessible fallback for caption, focus, and selection surfaces. -->
@@ -163,6 +164,57 @@
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="FocusVisualStyle" Value="{StaticResource SettingsKeyboardFocusVisualStyle}" />
+    </Style>
+
+    <Style x:Key="DesktopSessionExpanderStyle" TargetType="{x:Type Expander}">
+        <Setter Property="Foreground" Value="{DynamicResource SettingsInkBrush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Expander}">
+                    <Border Style="{StaticResource SettingsCardStyle}" Padding="16,10" Margin="0">
+                        <StackPanel>
+                            <ToggleButton x:Name="HeaderToggle"
+                                          FontSize="14" FontWeight="SemiBold"
+                                          IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                                          HorizontalContentAlignment="Stretch" Cursor="Hand"
+                                          Foreground="{TemplateBinding Foreground}"
+                                          FocusVisualStyle="{StaticResource SettingsKeyboardFocusVisualStyle}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="{x:Type ToggleButton}">
+                                        <Border x:Name="HeaderSurface" Background="Transparent" CornerRadius="10" Padding="8,6">
+                                            <DockPanel>
+                                                <TextBlock x:Name="Arrow" Text="&#xE76C;" FontFamily="{DynamicResource SettingsIconFont}"
+                                                           FontSize="12" Margin="0,0,12,0" VerticalAlignment="Center"
+                                                           RenderTransformOrigin="0.5,0.5">
+                                                    <TextBlock.RenderTransform><RotateTransform Angle="0" /></TextBlock.RenderTransform>
+                                                </TextBlock>
+                                                <ContentPresenter Content="{Binding Header, RelativeSource={RelativeSource AncestorType=Expander}}"
+                                                                  VerticalAlignment="Center" />
+                                            </DockPanel>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="HeaderSurface" Property="Background" Value="{DynamicResource SettingsNavHoverBrush}" />
+                                            </Trigger>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="HeaderSurface" Property="Background" Value="{DynamicResource SettingsAccentSoftBrush}" />
+                                                <Setter Property="Foreground" Value="{DynamicResource SettingsAccentBrush}" />
+                                                <Setter TargetName="Arrow" Property="RenderTransform"><Setter.Value><RotateTransform Angle="90" /></Setter.Value></Setter>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <ContentPresenter x:Name="ExpandedContent" ContentSource="Content" Visibility="Collapsed" Margin="4,12,4,6" />
+                        </StackPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsExpanded" Value="True"><Setter TargetName="ExpandedContent" Property="Visibility" Value="Visible" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <Style x:Key="NavigationTabItemStyle" TargetType="{x:Type TabItem}">
@@ -738,13 +790,14 @@
 
     <Style x:Key="ToolWindowShellStyle"
            TargetType="{x:Type Border}">
-        <Setter Property="Margin" Value="7" />
+        <Setter Property="views:GlassWindowFrame.Enabled" Value="True" />
+        <Setter Property="Margin" Value="0" />
         <Setter Property="CornerRadius" Value="16" />
         <Setter Property="Background"
                 Value="{DynamicResource ToolWindowContentBrush}" />
         <Setter Property="BorderBrush"
                 Value="{DynamicResource AccentOutlineBrush}" />
-        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderThickness" Value="0" />
         <Setter Property="ClipToBounds" Value="True" />
         <Style.Triggers>
             <DataTrigger Binding="{Binding WindowState, RelativeSource={RelativeSource AncestorType=Window}}"

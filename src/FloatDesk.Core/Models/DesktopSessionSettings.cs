@@ -5,6 +5,7 @@ using System.Text;
 namespace FloatDesk.Core.Models;
 
 public enum DesktopSessionBackendKind { LocalChild, HyperV }
+public enum HyperVConsoleCloseAction { CloseView, SaveState, Shutdown }
 public enum SessionStartupPolicy { EnvironmentDefault, ManagedOnly }
 public enum SessionStopMode { HideView, Disconnect, LogoffOwnedSession, ShutdownGuest }
 public enum SessionRuntimeStatus
@@ -39,7 +40,11 @@ public enum SessionCommandKind
     SendKeys,
     Delay,
     CaptureScreenshot,
-    RunScript
+    RunScript,
+    CloseApplication,
+    RunSystemScript,
+    ObserveDesktop,
+    SetBrightness
 }
 public enum TaskTriggerKind { Manual, EnvironmentReady, Scheduled }
 
@@ -57,6 +62,13 @@ public sealed record EnvironmentProfile(
     SessionLimits Limits,
     IReadOnlyList<SessionStartupEntry> StartupEntries)
 {
+    public int DesktopWidth { get; init; } = 1280;
+    public int DesktopHeight { get; init; } = 720;
+    public HyperVConsoleCloseAction ConsoleCloseAction { get; init; } = HyperVConsoleCloseAction.CloseView;
+    public bool HostSharingEnabled { get; init; }
+    public bool GpuSharingEnabled { get; init; }
+    public bool UseAuthenticatedRdp { get; init; } = true;
+    public IReadOnlyList<string> HostSharedPaths { get; init; } = [];
     public static EnvironmentProfile CreateDefault() => new(
         Guid.Empty,
         string.Empty,
@@ -99,7 +111,14 @@ public sealed record DesktopSessionTask(
     IReadOnlyList<SessionTaskStep> Steps,
     SessionTaskTrigger Trigger,
     int Revision,
-    bool Enabled);
+    bool Enabled)
+{
+    public string Rules { get; init; } = "";
+    public IReadOnlyList<DesktopTaskScript> Scripts { get; init; } = [];
+    public string Source { get; init; } = "manual";
+    public string? McpApprovalHash { get; init; }
+    public string? McpEnvironmentBinding { get; init; }
+}
 
 public static class DesktopSessionFormat
 {
@@ -111,8 +130,16 @@ public sealed record DesktopSessionSettings(
     IReadOnlyList<EnvironmentProfile> Environments,
     IReadOnlyList<DesktopSessionTask> Tasks)
 {
+    public BackendModeSettings? LocalChild { get; init; }
+    public BackendModeSettings? HyperV { get; init; }
+    public bool ShowAdvancedSettings { get; init; }
+    public IReadOnlyList<Guid> McpAllowedEnvironments { get; init; } = [];
+    public IReadOnlyList<AutomationClientTrust> AutomationClients { get; init; } = [];
+
     public static DesktopSessionSettings CreateDefault() => new(false, [], []);
 }
+
+public sealed record BackendModeSettings(bool Enabled, Guid? DefaultEnvironmentId);
 
 public sealed record SessionHandle(
     Guid EnvironmentId,
@@ -147,7 +174,10 @@ public sealed record CommandResult(
     Guid CommandId,
     bool Succeeded,
     bool OutcomeUnknown,
-    string? ErrorCode);
+    string? ErrorCode)
+{
+    public string? DataJson { get; init; }
+}
 
 public sealed record LoginIdentitySource(
     string BootId,
@@ -210,6 +240,10 @@ public static class DesktopSessionSettingsValidator
             throw new InvalidOperationException(
                 "Desktop session entries cannot be null.");
         }
+        if(settings.AutomationClients is null||settings.AutomationClients.Count>64||settings.AutomationClients.Any(client=>client is null||
+            string.IsNullOrWhiteSpace(client.Id)||string.IsNullOrWhiteSpace(client.Name)||client.Name.Length>100||
+            client.Name.Any(char.IsControl)||string.IsNullOrWhiteSpace(client.ExecutablePath)||!Path.IsPathFullyQualified(client.ExecutablePath)||string.IsNullOrWhiteSpace(client.Sha256)||client.Sha256.Length!=64))
+            throw new InvalidOperationException("Automation client records are invalid.");
 
         if (settings.Environments
             .GroupBy(environment => environment.Id)
@@ -221,6 +255,7 @@ public static class DesktopSessionSettingsValidator
 
         foreach (var environment in settings.Environments)
         {
+            DesktopSessionResolutionPreferences.Validate(environment.DesktopWidth, environment.DesktopHeight);
             if (!Enum.IsDefined(environment.Backend) ||
                 !Enum.IsDefined(environment.StartupPolicy) ||
                 environment.Limits is null ||
@@ -269,6 +304,8 @@ public static class DesktopSessionSettingsValidator
 
         var environments = settings.Environments.ToDictionary(
             environment => environment.Id);
+        if(!environments.TryAdd(GlobalTaskTarget.Id,GlobalTaskTarget.Profile))
+            throw new InvalidOperationException("Global task target ID is reserved.");
         foreach (var task in settings.Tasks)
         {
             if (task.Trigger is null ||

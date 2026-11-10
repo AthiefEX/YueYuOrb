@@ -1,0 +1,14 @@
+{
+  "formatVersion": 1,
+  "id": "3f627465-6a38-428c-9826-1dce9c04758c",
+  "name": "主桌面晚间亮度",
+  "environmentId": "e5b0f46b-4583-4ef3-9e66-5d3f887aba71",
+  "steps": [
+    { "id": "5719458e-ae54-4921-9c66-bd541406ec6b", "kind": "SetBrightness", "parameters": { "percent": "35" }, "timeoutSeconds": 30, "retryCount": 0 }
+  ],
+  "trigger": { "kind": "Scheduled", "localTime": "22:00", "timeZoneId": "China Standard Time" },
+  "revision": 1,
+  "enabled": false,
+  "rules": "每天 22:00 调整所有可控制的主机屏幕亮度。请先核对目标并启用。",
+  "scripts": []
+}

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Security.Principal;
+using FloatDesk.Windows.DesktopSessions;
 
 namespace FloatDesk.SessionBroker;
 
@@ -48,6 +49,7 @@ internal static class SessionBrokerInstallation
         }
         CopyDirectoryWithRetry(sourceBroker, BrokerDirectory);
         CopyDirectoryWithRetry(sourceAgent, AgentDirectory);
+        OrbStartupRegistration.MarkInstalledAndUpgradeOwnEntry();
 
         var binPath = Quote(InstalledBrokerPath) + " --service";
         if (TryRunSc("query", ServiceName))
@@ -90,6 +92,9 @@ internal static class SessionBrokerInstallation
     public static int Uninstall()
     {
         EnsureAdministrator();
+        if (File.Exists(Path.Combine(ProgramRoot, "startup-guards", "Clash-Verge-Admin.active.json")))
+            throw new InvalidOperationException("请先恢复Clash启动任务，再卸载服务，避免删除启动守卫导致Clash无法自启。恢复备份位于startup-guards目录。");
+        OrbStartupRegistration.RestoreOwnEntryBeforeUninstall();
         if (TryRunSc("query", ServiceName))
         {
             _ = TryRunSc("stop", ServiceName);

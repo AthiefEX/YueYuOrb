@@ -9,6 +9,7 @@ namespace FloatDesk.App.Brightness;
 
 public sealed class NightModeController : IDisposable
 {
+    internal static bool KeepAboveMask(Type windowType) => !typeof(OrbWindow).IsAssignableFrom(windowType);
     private readonly Dispatcher _dispatcher;
     private readonly NightModeState _state = new();
     private readonly List<NightDimWindow> _windows = [];
@@ -60,7 +61,7 @@ public sealed class NightModeController : IDisposable
         if (!_state.IsVisible || _disposed || Application.Current is not { } app || !app.Dispatcher.CheckAccess()) return;
         foreach (Window window in app.Windows)
         {
-            if (window is NightDimWindow || !window.IsVisible) continue;
+            if (window is NightDimWindow || !window.IsVisible || !KeepAboveMask(window.GetType())) continue;
             _originalTopmost.TryAdd(window, window.Topmost);
             window.Topmost = true;
             RaiseWindow(new WindowInteropHelper(window).Handle);
@@ -76,7 +77,7 @@ public sealed class NightModeController : IDisposable
     private void MaintainStackingCore()
     {
         var controls = (Application.Current is { } app && app.Dispatcher.CheckAccess() ? app.Windows.Cast<Window>() : [])
-            .Where(w => w is not NightDimWindow && w.IsVisible)
+            .Where(w => w is not NightDimWindow && w.IsVisible && KeepAboveMask(w.GetType()))
             .Select(w => new WindowInteropHelper(w).Handle).ToHashSet();
         var masks = _windows.Select(w => new WindowInteropHelper(w).Handle).ToHashSet();
         foreach (var mask in masks)

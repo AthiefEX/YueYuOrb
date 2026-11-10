@@ -222,6 +222,10 @@ public sealed class SessionBrokerServer
                     ? "BrokerLaunchTimedOut"
                     : exception.Message);
         }
+        catch (System.ComponentModel.Win32Exception exception)
+        {
+            response = Rejected($"BrokerWin32Error:{exception.NativeErrorCode}");
+        }
 
         try
         {

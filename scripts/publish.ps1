@@ -116,6 +116,13 @@ try {
         -Destination (Join-Path $docsDirectory 'manual-desktop-sessions.md')
     Copy-Item -LiteralPath (Join-Path $root 'docs/user-guide.md') `
         -Destination (Join-Path $docsDirectory 'user-guide.md')
+    Copy-Item -LiteralPath (Join-Path $root 'docs/desktop-automation-guide.md') `
+        -Destination (Join-Path $docsDirectory 'desktop-automation-guide.md')
+    foreach ($assistantDocument in @('ai-assistant-guide.md', 'ai-assistant-example-role.json', 'ai-assistant-example-SKILL.md', 'third-party-notices.md', 'third-party-pdfpig-LICENSE.txt')) {
+        Copy-Item -LiteralPath (Join-Path $root "docs/$assistantDocument") -Destination (Join-Path $docsDirectory $assistantDocument)
+    }
+    Copy-Item -LiteralPath (Join-Path $root 'docs/examples') `
+        -Destination (Join-Path $docsDirectory 'examples') -Recurse
     Copy-Item -LiteralPath (Join-Path $root 'docs/manual-desktop-sessions.md') `
         -Destination (Join-Path $sessionAgentDirectory 'SESSION-AGENT.md')
 

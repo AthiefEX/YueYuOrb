@@ -66,9 +66,14 @@ public partial class SettingsWindow : Window
         ILauncherIconProvider? launcherIconProvider = null,
         IAudioService? audioService = null,
         DesktopSessions.IDesktopSessionSettingsActions?
-            desktopSessionActions = null)
+            desktopSessionActions = null,
+        FloatDesk.Windows.Network.SteamNetworkController? steamNetwork = null,
+        FloatDesk.Core.Assistant.IAssistantStore? assistantStore = null,
+        FloatDesk.Core.Assistant.IAssistantCredentialStore? assistantCredentials = null,
+        Action? openAssistant = null)
     {
         InitializeComponent();
+        GlassWindowFrame.Prepare(this);
         _settings = settings;
         _audioService = audioService;
         _paths = paths;
@@ -108,6 +113,11 @@ public partial class SettingsWindow : Window
         DataContextChanged += OnAudioDataContextChanged;
         InitializeResourceUsageSettings();
         InitializeDesktopSessionsSettings();
+        InitializeAutomationSettings();
+        OrganizeSettingsNavigation();
+        InitializeNetworkSettings(steamNetwork);
+        InitializeUserDataAndBackgroundSettings();
+        InitializeAssistantSettings(assistantStore, assistantCredentials, openAssistant);
         Closing += (_, args) =>
         {
             CancelLauncherDrop();
@@ -250,7 +260,7 @@ public partial class SettingsWindow : Window
 
     private async void OnApplyClick(object sender, RoutedEventArgs e)
     {
-        if (_applyInProgress)
+        if (_applyInProgress || _networkBusy)
             return;
         try
         {
@@ -916,9 +926,9 @@ public partial class SettingsWindow : Window
             SaveStatusText.Text = "请输入有效的 HTTPS 地址。";
             return;
         }
-        if (_viewModel.BrowserSites.Count >= 10)
+        if (_viewModel.BrowserSites.Count >= 200)
         {
-            SaveStatusText.Text = "最多添加 10 个网页。";
+            SaveStatusText.Text = "最多保存 200 个收藏书签。";
             return;
         }
         _viewModel.BrowserSites.Add(new BrowserSite(
@@ -1036,7 +1046,7 @@ public partial class SettingsWindow : Window
         {
             File.WriteAllText(
                 dialog.FileName,
-                JsonSerializer.Serialize(_settings.Current, SettingsJsonOptions));
+                JsonSerializer.Serialize(UserDataPolicy.Exportable(_settings.Current), SettingsJsonOptions));
             SaveStatusText.Text = $"设置已导出：{dialog.FileName}";
         }
         catch (Exception exception)
@@ -1069,7 +1079,7 @@ public partial class SettingsWindow : Window
             if (preview != MessageBoxResult.Yes)
                 return;
             var result = await _preferenceWorkflow.ImportAsync(
-                imported,
+                UserDataPolicy.MergeOrdinary(imported, _settings.Current),
                 CancellationToken.None);
             if (!result.Success)
             {
@@ -1099,7 +1109,7 @@ public partial class SettingsWindow : Window
         var defaults = AppSettings.CreateDefault(
             Environment.GetFolderPath(Environment.SpecialFolder.MyPictures));
         var result = await _preferenceWorkflow.ResetAsync(
-            defaults,
+            UserDataPolicy.MergeOrdinary(defaults, _settings.Current),
             CancellationToken.None);
         if (!result.Success)
         {
@@ -1201,6 +1211,7 @@ internal sealed class LauncherEditWindow : Window
         buttons.Children.Add(ok);
         panel.Children.Add(buttons);
         Content = panel;
+        GlassWindowFrame.WrapStandardWindow(this);
         Loaded += (_, _) => _name.Focus();
     }
 

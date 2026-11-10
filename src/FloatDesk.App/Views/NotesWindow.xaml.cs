@@ -23,6 +23,7 @@ public partial class NotesWindow : Window, IDisposable
     public NotesWindow(INoteRepository repository)
     {
         InitializeComponent();
+        GlassWindowFrame.Prepare(this);
         _repository = repository;
         _saveTimer.Interval = TimeSpan.FromMilliseconds(500);
         _saveTimer.Tick += async (_, _) =>

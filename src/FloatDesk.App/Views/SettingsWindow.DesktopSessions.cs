@@ -1,5 +1,6 @@
 using FloatDesk.App.DesktopSessions;
 using FloatDesk.Core.Models;
+using FloatDesk.Windows.DesktopSessions;
 using System.Diagnostics;
 using System.Globalization;
 using System.Windows;
@@ -10,6 +11,8 @@ namespace FloatDesk.App.Views;
 
 public partial class SettingsWindow
 {
+    private static readonly string[] DesktopResolutionOptions =
+        ["1024 × 768", "1280 × 720", "1600 × 900", "1920 × 1080", "2560 × 1440", "3840 × 2160"];
     private readonly Dictionary<string, TextBox> _stepParameterInputs =
         new(StringComparer.Ordinal);
     private ListBox _desktopEnvironmentList = null!;
@@ -20,6 +23,27 @@ public partial class SettingsWindow
     private TextBox _desktopBackendProfile = null!;
     private ComboBox _desktopBackendKind = null!;
     private ComboBox _desktopStartupPolicy = null!;
+    private ComboBox _desktopResolution = null!;
+    private ComboBox _desktopConsoleClose = null!;
+    private CheckBox _desktopHostSharing = null!;
+    private CheckBox _desktopEnvironmentGpu = null!;
+    private CheckBox _desktopUseSavedLogin = null!;
+    private StackPanel _desktopHyperVOptions = null!;
+    private ComboBox _desktopEnvironmentFilter = null!;
+    private Grid _desktopEnvironmentColumns = null!;
+    private StackPanel _desktopLocalOptions = null!;
+    private StackPanel _desktopSharingPanel = null!;
+    private Border _desktopAdvancedPanel = null!;
+    private TabControl _desktopAdvancedTabs = null!;
+    private Button _desktopAdvancedButton = null!;
+    private readonly List<Expander> _desktopFoldedSections = [];
+    private TextBox _desktopHostSharedPaths = null!;
+    private static readonly string[] HyperVCloseOptions =
+    [
+        "仅关闭控制台，虚拟机继续运行",
+        "保存状态并释放运行资源，下次恢复",
+        "直接断电关机（未保存内容会丢失），下次启动"
+    ];
     private TextBox _desktopTaskName = null!;
     private ComboBox _desktopTaskEnvironment = null!;
     private ComboBox _desktopTaskTrigger = null!;
@@ -41,6 +65,7 @@ public partial class SettingsWindow
     private StackPanel _desktopDiagnosticsRows = null!;
     private readonly DesktopSessionDiagnostics _desktopDiagnostics =
         new(AppContext.BaseDirectory);
+    private HyperVFeatureStatus? _hyperVFeatureSnapshot;
     private bool _desktopSessionsUiReady;
     private Guid? _selectedDesktopEnvironmentId;
     private Guid? _selectedDesktopTaskId;
@@ -69,22 +94,47 @@ public partial class SettingsWindow
         headerGrid.Children.Add(headerText);
         var enabledToggle = new CheckBox
         {
-            Content = "启用桌面分身",
+            Content = "本机分身（无需虚拟机）",
             Style = (Style)FindResource("ToggleSwitchStyle"),
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(20, 0, 0, 0)
         };
         enabledToggle.SetBinding(
             System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty,
-            new Binding(nameof(ViewModels.SettingsViewModel.DesktopSessionsEnabled))
+            new Binding(nameof(ViewModels.SettingsViewModel.LocalDesktopSessionEnabled))
             {
                 Mode = BindingMode.TwoWay,
                 UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
             });
         Grid.SetColumn(enabledToggle, 1);
-        headerGrid.Children.Add(enabledToggle);
+        var modeToggles = new StackPanel();
+        modeToggles.Children.Add(enabledToggle);
+        var vmToggle = new CheckBox
+        {
+            Content = "虚拟机分身（Hyper-V）",
+            Style = (Style)FindResource("ToggleSwitchStyle"),
+            Margin = new Thickness(20, 10, 0, 0)
+        };
+        vmToggle.SetBinding(
+            System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty,
+            new Binding(nameof(ViewModels.SettingsViewModel.HyperVDesktopSessionEnabled))
+            {
+                Mode = BindingMode.TwoWay,
+                UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged
+            });
+        modeToggles.Children.Add(vmToggle);
+        Grid.SetColumn(modeToggles, 1);
+        headerGrid.Children.Add(modeToggles);
         header.Child = headerGrid;
         root.Children.Add(header);
+
+        var installCard = Card();
+        installCard.Margin = new Thickness(0, 14, 0, 0);
+        var installation = new StackPanel();
+        installation.Children.Add(SectionTitle("一键安装虚拟机"));
+        installation.Children.Add(BuildHyperVCreationFields());
+        installation.Children.Add(BuildAutomaticInstallFields());
+        installCard.Child = installation;
 
         var columns = new Grid
         {
@@ -92,22 +142,21 @@ public partial class SettingsWindow
         };
         columns.ColumnDefinitions.Add(
             new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        columns.ColumnDefinitions.Add(new ColumnDefinition
-        {
-            Width = new GridLength(14)
-        });
-        columns.ColumnDefinitions.Add(
-            new ColumnDefinition { Width = new GridLength(1.1, GridUnitType.Star) });
         columns.Children.Add(BuildEnvironmentCard());
         var taskCard = BuildTaskCard();
-        Grid.SetColumn(taskCard, 2);
-        columns.Children.Add(taskCard);
         root.Children.Add(columns);
+        _ = BuildDesktopAdvancedPanel();
+        root.Children.Add(_desktopAdvancedPopup);
+        root.Children.Add(FoldDesktopSection("一键安装虚拟机", installCard));
+        taskCard.Margin = new Thickness(0, 14, 0, 0);
+        root.Children.Add(FoldDesktopSection("自动任务", taskCard));
 
         var diagnosticsCard = Card();
         diagnosticsCard.Margin = new Thickness(0, 14, 0, 0);
         var diagnosticsPanel = new StackPanel();
         var diagnosticsHeader = new Grid();
+        diagnosticsHeader.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        diagnosticsHeader.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         diagnosticsHeader.ColumnDefinitions.Add(new ColumnDefinition
         {
             Width = new GridLength(1, GridUnitType.Star)
@@ -121,10 +170,10 @@ public partial class SettingsWindow
         diagnosticsHeading.Children.Add(Description(
             "只检查随包文件、功能开关与运行时状态；不会探测 Hyper-V、创建会话或启动虚拟机。"));
         diagnosticsHeader.Children.Add(diagnosticsHeading);
-        var diagnosticActions = new StackPanel
+        var diagnosticActions = new WrapPanel
         {
             Orientation = Orientation.Horizontal,
-            Margin = new Thickness(16, 0, 0, 0),
+            Margin = new Thickness(0, 8, 0, 0),
             VerticalAlignment = VerticalAlignment.Center
         };
         diagnosticActions.Children.Add(Button(
@@ -136,7 +185,11 @@ public partial class SettingsWindow
         diagnosticActions.Children.Add(Button(
             "刷新诊断",
             OnRefreshDesktopDiagnostics));
-        Grid.SetColumn(diagnosticActions, 1);
+        diagnosticActions.Children.Add(Button(
+            "清理遗留本机会话",
+            () => _ = RecoverLocalChildSessionAsync()));
+        Grid.SetRow(diagnosticActions, 1);
+        Grid.SetColumnSpan(diagnosticActions, 2);
         diagnosticsHeader.Children.Add(diagnosticActions);
         diagnosticsPanel.Children.Add(diagnosticsHeader);
         _desktopDiagnosticsRows = new StackPanel
@@ -145,15 +198,17 @@ public partial class SettingsWindow
         };
         diagnosticsPanel.Children.Add(_desktopDiagnosticsRows);
         diagnosticsCard.Child = diagnosticsPanel;
-        root.Children.Add(diagnosticsCard);
+        root.Children.Add(FoldDesktopSection("诊断", diagnosticsCard));
 
         var activityCard = Card();
         activityCard.Margin = new Thickness(0, 14, 0, 0);
         var activityPanel = new StackPanel();
         activityPanel.Children.Add(SectionTitle("运行状态与最近活动"));
-        _desktopSessionStatus = Description("尚未启动桌面分区。");
-        _desktopSessionStatus.Margin = new Thickness(0, 5, 0, 8);
-        activityPanel.Children.Add(_desktopSessionStatus);
+        var activityStatus = Description("");
+        activityStatus.Margin = new Thickness(0, 4, 0, 8);
+        activityStatus.SetBinding(TextBlock.TextProperty, new Binding(nameof(TextBlock.Text)) { Source = _desktopSessionStatus });
+        activityStatus.SetBinding(TextBlock.ForegroundProperty, new Binding(nameof(TextBlock.Foreground)) { Source = _desktopSessionStatus });
+        activityPanel.Children.Add(activityStatus);
         _desktopActivityList = new ListBox
         {
             Height = 120,
@@ -170,25 +225,47 @@ public partial class SettingsWindow
     {
         var card = Card();
         card.Margin = new Thickness(0);
+        var outer = new StackPanel();
+        outer.Children.Add(SectionTitle("本地分身与虚拟环境"));
+        outer.Children.Add(Description("左侧选择和编辑环境，右侧管理所选类型的设置。"));
+        _desktopEnvironmentColumns = new Grid { Margin = new Thickness(0, 12, 0, 0) };
+        _desktopEnvironmentColumns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        _desktopEnvironmentColumns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) });
+        _desktopEnvironmentColumns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         var panel = new StackPanel();
-        panel.Children.Add(SectionTitle("环境"));
-        panel.Children.Add(Description(
-            "选择可用的 Windows 子会话或已配对的 Hyper-V 虚拟机。"));
+        var details = new StackPanel();
+        Grid.SetColumn(details, 2);
+        _desktopEnvironmentColumns.Children.Add(panel);
+        _desktopEnvironmentColumns.Children.Add(details);
+        outer.Children.Add(_desktopEnvironmentColumns);
+        _desktopEnvironmentFilter = new ComboBox { ItemsSource = new[] { "全部环境", "本地分身", "虚拟机环境" },
+            SelectedIndex = 0, Style = (Style)FindResource("SettingsComboBoxStyle"), Margin = new Thickness(0, 8, 0, 0) };
+        _desktopEnvironmentFilter.SelectionChanged += (_, _) => RefreshDesktopSessionsPage();
+        panel.Children.Add(_desktopEnvironmentFilter);
         _desktopEnvironmentList = new ListBox
         {
             Height = 132,
             Margin = new Thickness(0, 10, 0, 8),
-            DisplayMemberPath = nameof(EnvironmentProfile.Name),
             Style = (Style)FindResource("ToolWindowListBoxStyle")
         };
+        _desktopEnvironmentList.ItemTemplate = BuildEnvironmentItemTemplate();
         _desktopEnvironmentList.SelectionChanged +=
             OnDesktopEnvironmentSelectionChanged;
         panel.Children.Add(_desktopEnvironmentList);
+        _desktopAdvancedButton = Button("高级设置", ToggleDesktopAdvancedPanel);
+        _desktopAdvancedButton.Visibility = Visibility.Collapsed;
         panel.Children.Add(ButtonRow(
             Button("添加", OnAddDesktopEnvironment),
             Button("删除", OnRemoveDesktopEnvironment),
             Button("打开视图", OnStartDesktopEnvironment),
             Button("停止", OnStopDesktopEnvironment)));
+        _desktopVmActionRow = ButtonRow(
+            Button("开机", () => _ = RunEnvironmentPowerAsync("start")),
+            Button("关机", () => _ = RunEnvironmentPowerAsync("shutdown")),
+            Button("保存", () => _ = RunEnvironmentPowerAsync("save")),
+            _desktopAdvancedButton);
+        _desktopVmActionRow.Visibility = Visibility.Collapsed;
+        panel.Children.Add(_desktopVmActionRow);
 
         var form = new Grid
         {
@@ -200,7 +277,7 @@ public partial class SettingsWindow
         });
         form.ColumnDefinitions.Add(
             new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        for (var index = 0; index < 4; index++)
+        for (var index = 0; index < 6; index++)
             form.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         _desktopEnvironmentName = AddField(
             form, 0, "名称", new TextBox());
@@ -216,13 +293,49 @@ public partial class SettingsWindow
             3,
             "启动策略",
             Enum.GetValues<SessionStartupPolicy>());
+        _desktopResolution = AddComboField(form, 4, "启动分辨率",
+            DesktopResolutionOptions);
         panel.Children.Add(form);
+        _desktopBackendKind.SelectionChanged += (_, _) => UpdateDesktopEnvironmentContext();
+        _desktopHyperVOptions = new StackPanel();
+        details.Children.Add(_desktopHyperVOptions);
+        _desktopHyperVOptions.Children.Add(SectionTitle("虚拟机设置"));
+        _desktopHyperVOptions.Children.Add(Description("关闭行为"));
+        _desktopConsoleClose = new ComboBox { ItemsSource = HyperVCloseOptions, Style = (Style)FindResource("SettingsComboBoxStyle"), Margin = new Thickness(0, 6, 0, 8) };
+        _desktopHyperVOptions.Children.Add(_desktopConsoleClose);
+        _desktopEnvironmentGpu = new CheckBox { Content = "共享主机显卡（GPU-P）", ToolTip = "实验性；切换立即应用，请先关闭虚拟机。",
+            Style = (Style)FindResource("ToggleSwitchStyle"), Margin = new Thickness(0, 10, 0, 6) };
+        _desktopEnvironmentGpu.Click += async (_, _) => await ToggleEnvironmentGpuAsync();
+        _desktopHyperVOptions.Children.Add(_desktopEnvironmentGpu);
+        _desktopUseSavedLogin = new CheckBox { Content = "使用保存凭据进入桌面", ToolTip = "需要来宾网络，首次连接确认系统证书。",
+            Style = (Style)FindResource("ToggleSwitchStyle"), Margin = new Thickness(0, 8, 0, 6) };
+        _desktopHyperVOptions.Children.Add(_desktopUseSavedLogin);
+        _desktopHyperVOptions.Children.Add(Description("硬件、共享位置和网络登录选项请点击左侧“高级设置”。"));
+        _desktopSharingPanel = new StackPanel();
+        _desktopHostSharing = new CheckBox { Content = "Hyper-V 共享宿主磁盘／文件夹（读写）", Style = (Style)FindResource("ToggleSwitchStyle"), Margin = new Thickness(0, 10, 0, 6) };
+        _desktopSharingPanel.Children.Add(_desktopHostSharing);
+        _desktopHostSharedPaths = new TextBox { AcceptsReturn = true, Height = 85, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Style = (Style)FindResource("SettingsTextBoxStyle") };
+        _desktopSharingPanel.Children.Add(_desktopHostSharedPaths);
+        _desktopSharingPanel.Children.Add(Button("添加磁盘或文件夹", () =>
+        {
+            var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "选择共享磁盘根目录或文件夹" };
+            if (dialog.ShowDialog(this) == true)
+                _desktopHostSharedPaths.Text = string.Join(Environment.NewLine, _desktopHostSharedPaths.Text.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Append(dialog.FolderName).Distinct(StringComparer.OrdinalIgnoreCase));
+        }));
+        _desktopSharingPanel.Children.Add(Description("每行一个本机完整路径。保存环境并应用后，完全关闭并重新打开连接。磁盘根目录保留原盘符；文件夹会映射为临时盘符，在来宾“此电脑”查看。删除一行即可取消共享。来宾可修改文件；应用和游戏可能仍需在来宾安装依赖。"));
+        panel.Children.Add(Description("分身内切换分辨率后会自动记住，下次启动沿用。"));
         panel.Children.Add(ButtonRow(
             Button("保存环境", OnSaveDesktopEnvironment)));
+        _desktopSessionStatus = Description("选择环境后打开视图，或管理对应的分身设置。");
+        _desktopSessionStatus.Margin = new Thickness(0, 8, 0, 0);
+        panel.Children.Add(_desktopSessionStatus);
 
         var startupTitle = SectionTitle("自启动应用");
         startupTitle.Margin = new Thickness(0, 16, 0, 4);
-        panel.Children.Add(startupTitle);
+        var startupPanel = new StackPanel();
+        _desktopLocalOptions = startupPanel;
+        details.Children.Add(startupPanel);
+        startupPanel.Children.Add(startupTitle);
         _desktopStartupList = new ListBox
         {
             Height = 96,
@@ -231,8 +344,8 @@ public partial class SettingsWindow
         };
         _desktopStartupList.SelectionChanged +=
             OnStartupEntrySelectionChanged;
-        panel.Children.Add(_desktopStartupList);
-        panel.Children.Add(ButtonRow(
+        startupPanel.Children.Add(_desktopStartupList);
+        startupPanel.Children.Add(ButtonRow(
             Button("选择应用", OnAddStartupEntry),
             Button("删除", OnRemoveStartupEntry)));
         var startupForm = new Grid
@@ -275,11 +388,12 @@ public partial class SettingsWindow
         Grid.SetRow(startupChecks, 4);
         Grid.SetColumn(startupChecks, 1);
         startupForm.Children.Add(startupChecks);
-        panel.Children.Add(startupForm);
-        panel.Children.Add(ButtonRow(
+        startupPanel.Children.Add(startupForm);
+        startupPanel.Children.Add(ButtonRow(
             Button("保存自启动项", OnSaveStartupEntry)));
 
-        card.Child = panel;
+        card.Child = outer;
+        InitializeVmStatusPolling(panel);
         return card;
     }
 
@@ -289,23 +403,39 @@ public partial class SettingsWindow
         card.Margin = new Thickness(0);
         var panel = new StackPanel();
         panel.Children.Add(SectionTitle("自动任务"));
+        _desktopTaskBackendTabs = new TabControl { Style = (Style)FindResource("SettingsTabControlStyle") };
+        _desktopTaskBackendTabs.Items.Add(new TabItem { Header="本地分身",Style=(Style)FindResource("NavigationTabItemStyle") });
+        _desktopTaskBackendTabs.Items.Add(new TabItem { Header="虚拟机",Style=(Style)FindResource("NavigationTabItemStyle") });
+        _desktopTaskBackendTabs.Items.Add(new TabItem { Header="全局任务",Style=(Style)FindResource("NavigationTabItemStyle") });
+        _desktopTaskBackendTabs.SelectedIndex=0;
+        panel.Children.Add(_desktopTaskBackendTabs);
+        _desktopTaskScope = new ComboBox
+        {
+            DisplayMemberPath = nameof(EnvironmentProfile.Name),
+            Style = (Style)FindResource("SettingsComboBoxStyle"),
+            Margin = new Thickness(0, 10, 0, 0),
+            ToolTip = "选择分身，仅显示此分身的自动任务"
+        };
+        _desktopTaskScope.SelectionChanged += OnDesktopTaskScopeChanged;
+        panel.Children.Add(_desktopTaskScope);
         panel.Children.Add(Description(
             "任务按步骤顺序执行；点击、输入和脚本不会自动重试。"));
         _desktopTaskList = new ListBox
         {
             Height = 116,
             Margin = new Thickness(0, 10, 0, 8),
-            DisplayMemberPath = nameof(DesktopSessionTask.Name),
+            ItemTemplate = BuildTaskItemTemplate(),
             Style = (Style)FindResource("ToolWindowListBoxStyle")
         };
         _desktopTaskList.SelectionChanged += OnDesktopTaskSelectionChanged;
         panel.Children.Add(_desktopTaskList);
         panel.Children.Add(ButtonRow(
-            Button("添加任务", OnAddDesktopTask),
             Button("删除任务", OnRemoveDesktopTask),
             Button("运行任务", OnRunDesktopTask),
             Button("停止最近运行", OnCancelDesktopTask)));
 
+        var manual = new StackPanel();
+        manual.Children.Add(ButtonRow(Button("添加任务", OnAddDesktopTask)));
         var taskForm = new Grid
         {
             Margin = new Thickness(0, 10, 0, 0)
@@ -342,11 +472,11 @@ public partial class SettingsWindow
         Grid.SetRow(_desktopTaskEnabled, 5);
         Grid.SetColumn(_desktopTaskEnabled, 1);
         taskForm.Children.Add(_desktopTaskEnabled);
-        panel.Children.Add(taskForm);
-        panel.Children.Add(ButtonRow(
+        manual.Children.Add(taskForm);
+        manual.Children.Add(ButtonRow(
             Button("保存任务", OnSaveDesktopTask)));
 
-        panel.Children.Add(SectionTitle("步骤"));
+        manual.Children.Add(SectionTitle("步骤"));
         _desktopStepList = new ListBox
         {
             Height = 108,
@@ -354,8 +484,8 @@ public partial class SettingsWindow
             Style = (Style)FindResource("ToolWindowListBoxStyle")
         };
         _desktopStepList.SelectionChanged += OnDesktopStepSelectionChanged;
-        panel.Children.Add(_desktopStepList);
-        panel.Children.Add(ButtonRow(
+        manual.Children.Add(_desktopStepList);
+        manual.Children.Add(ButtonRow(
             Button("添加步骤", OnAddDesktopStep),
             Button("上移", () => MoveDesktopStep(-1)),
             Button("下移", () => MoveDesktopStep(1)),
@@ -375,12 +505,12 @@ public partial class SettingsWindow
             Enum.GetValues<SessionCommandKind>());
         _desktopStepKind.SelectionChanged +=
             (_, _) => RebuildStepParameterInputs();
-        panel.Children.Add(stepKindField);
+        manual.Children.Add(stepKindField);
         _desktopStepParameters = new StackPanel
         {
             Margin = new Thickness(0, 8, 0, 0)
         };
-        panel.Children.Add(_desktopStepParameters);
+        manual.Children.Add(_desktopStepParameters);
         var limits = new Grid();
         limits.ColumnDefinitions.Add(new ColumnDefinition
         {
@@ -398,9 +528,23 @@ public partial class SettingsWindow
             limits, "超时秒数（1–600）", 0);
         _desktopStepRetry = FieldWithLabel(
             limits, "重试次数（0–3）", 2);
-        panel.Children.Add(limits);
-        panel.Children.Add(ButtonRow(
+        manual.Children.Add(limits);
+        manual.Children.Add(ButtonRow(
             Button("保存步骤", OnSaveDesktopStep)));
+        _desktopTaskManualPanel = new Expander
+        {
+            Header = "手动添加", Content = manual, IsExpanded = false,
+            Style = (Style)FindResource("DesktopSessionExpanderStyle"),
+            Margin = new Thickness(0, 10, 0, 0)
+        };
+        panel.Children.Add(_desktopTaskManualPanel);
+        panel.Children.Add(BuildTaskPackageEditor());
+        _desktopTaskBackendTabs.SelectionChanged += (_, e) =>
+        {
+            if(e.Source!=_desktopTaskBackendTabs) return;
+            _selectedDesktopTaskId=null; _selectedDesktopStepId=null;
+            RefreshDesktopSessionsPage();
+        };
 
         card.Child = panel;
         return card;
@@ -411,27 +555,17 @@ public partial class SettingsWindow
         if (!_desktopSessionsUiReady)
             return;
         var selectedEnvironment = _selectedDesktopEnvironmentId;
-        var selectedTask = _selectedDesktopTaskId;
-        _desktopEnvironmentList.ItemsSource =
-            _viewModel.DesktopSessionEnvironments;
-        _desktopTaskList.ItemsSource = _viewModel.DesktopSessionTasks;
-        _desktopTaskEnvironment.ItemsSource =
-            _viewModel.DesktopSessionEnvironments;
+        var filter = _desktopEnvironmentFilter.SelectedIndex;
+        _desktopEnvironmentList.ItemsSource = _viewModel.DesktopSessionEnvironments
+            .Where(item => filter == 0 || (filter == 1 ? item.Backend == DesktopSessionBackendKind.LocalChild : item.Backend == DesktopSessionBackendKind.HyperV)).ToArray();
+        RefreshDesktopTaskScope();
         _desktopEnvironmentList.SelectedItem =
             _viewModel.DesktopSessionEnvironments.FirstOrDefault(
                 item => item.Id == selectedEnvironment);
-        _desktopTaskList.SelectedItem =
-            _viewModel.DesktopSessionTasks.FirstOrDefault(
-                item => item.Id == selectedTask);
         if (_desktopEnvironmentList.SelectedItem is null &&
-            _viewModel.DesktopSessionEnvironments.Count > 0)
+            _desktopEnvironmentList.Items.Count > 0)
         {
             _desktopEnvironmentList.SelectedIndex = 0;
-        }
-        if (_desktopTaskList.SelectedItem is null &&
-            _viewModel.DesktopSessionTasks.Count > 0)
-        {
-            _desktopTaskList.SelectedIndex = 0;
         }
 
         RefreshStartupEntries();
@@ -442,8 +576,11 @@ public partial class SettingsWindow
 
     private void OnRefreshDesktopDiagnostics(
         object sender,
-        RoutedEventArgs e) =>
+        RoutedEventArgs e)
+    {
         RefreshDesktopDiagnostics();
+        _ = RefreshHyperVFeatureStatusAsync();
+    }
 
     private async Task RunSessionBrokerServiceCommandAsync(string argument)
     {
@@ -510,7 +647,8 @@ public partial class SettingsWindow
         _desktopDiagnosticsRows.Children.Clear();
         var diagnostics = _desktopDiagnostics.Inspect(
             _viewModel.BuildDesktopSessionDraft(),
-            _desktopSessionActions?.IsRuntimeAvailable == true);
+            _desktopSessionActions?.IsRuntimeAvailable == true,
+            _hyperVFeatureSnapshot);
         foreach (var item in diagnostics)
         {
             var row = new StackPanel
@@ -548,6 +686,12 @@ public partial class SettingsWindow
         if (_desktopEnvironmentList.SelectedItem is not EnvironmentProfile
             environment)
         {
+            _desktopHyperVOptions.Visibility = Visibility.Collapsed;
+            _desktopLocalOptions.Visibility = Visibility.Collapsed;
+            _desktopAdvancedButton.Visibility = Visibility.Collapsed;
+            _desktopVmActionRow.Visibility = Visibility.Collapsed;
+            if (_desktopAdvancedPopup is not null) _desktopAdvancedPopup.IsOpen = false;
+            if (_desktopAdvancedPanel is not null) _desktopAdvancedPanel.Visibility = Visibility.Collapsed;
             return;
         }
 
@@ -556,6 +700,21 @@ public partial class SettingsWindow
         _desktopBackendKind.SelectedItem = environment.Backend;
         _desktopBackendProfile.Text = environment.BackendProfileId;
         _desktopStartupPolicy.SelectedItem = environment.StartupPolicy;
+        var resolution = $"{environment.DesktopWidth} × {environment.DesktopHeight}";
+        if (!_desktopResolution.Items.Contains(resolution))
+            _desktopResolution.ItemsSource = _desktopResolution.Items.Cast<string>().Append(resolution).ToArray();
+        _desktopResolution.SelectedItem = resolution;
+        _desktopConsoleClose.SelectedIndex = (int)environment.ConsoleCloseAction;
+        _desktopHostSharing.IsChecked = environment.HostSharingEnabled;
+        _desktopEnvironmentGpu.IsChecked = environment.GpuSharingEnabled;
+        _desktopUseSavedLogin.IsChecked = environment.UseAuthenticatedRdp;
+        _desktopEnvironmentGpu.Visibility = environment.Backend == DesktopSessionBackendKind.HyperV ? Visibility.Visible : Visibility.Collapsed;
+        _desktopHyperVOptions.Visibility = environment.Backend == DesktopSessionBackendKind.HyperV ? Visibility.Visible : Visibility.Collapsed;
+        if (environment.Backend == DesktopSessionBackendKind.HyperV && Guid.TryParse(environment.BackendProfileId, out var gpuVmId))
+            _ = RefreshEnvironmentGpuStateAsync(environment.Id, gpuVmId);
+        _desktopHostSharedPaths.Text = string.Join(Environment.NewLine, environment.HostSharedPaths);
+        UpdateDesktopEnvironmentContext();
+        SynchronizeSelectedVirtualMachine();
         RefreshStartupEntries();
     }
 
@@ -598,6 +757,12 @@ public partial class SettingsWindow
             SessionStartupPolicy selectedPolicy
             ? selectedPolicy
             : SessionStartupPolicy.EnvironmentDefault;
+        var resolutionParts = (_desktopResolution.SelectedItem as string ?? "1280 × 720").Split('×');
+        var width = int.Parse(resolutionParts[0].Trim(), CultureInfo.InvariantCulture);
+        var height = int.Parse(resolutionParts[1].Trim(), CultureInfo.InvariantCulture);
+        var sharedPaths = _desktopHostSharedPaths.Text.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        if (backend == DesktopSessionBackendKind.HyperV && _desktopHostSharing.IsChecked == true && (sharedPaths.Length > 16 || sharedPaths.Any(path => path.Length < 3 || !char.IsAsciiLetter(path[0]) || path[1] != ':' || path[2] != '\\' || !Path.IsPathFullyQualified(path) || !Directory.Exists(path))))
+        { SetDesktopSessionStatus("共享最多支持 16 个有效的本机磁盘／文件夹路径。", false); return; }
         _viewModel.UpdateDesktopSessionEnvironment(
             environmentId,
             environment => environment with
@@ -606,7 +771,13 @@ public partial class SettingsWindow
                 Backend = backend,
                 BackendProfileId =
                     _desktopBackendProfile.Text.Trim(),
-                StartupPolicy = policy
+                StartupPolicy = policy,
+                DesktopWidth = width,
+                DesktopHeight = height,
+                ConsoleCloseAction = (HyperVConsoleCloseAction)Math.Clamp(_desktopConsoleClose.SelectedIndex, 0, 2),
+                HostSharingEnabled = _desktopHostSharing.IsChecked == true,
+                UseAuthenticatedRdp = _desktopUseSavedLogin.IsChecked == true,
+                HostSharedPaths = sharedPaths
             });
         RefreshDesktopSessionsPage();
         SetDesktopSessionStatus("环境已更新，点击“应用”保存。");
@@ -637,7 +808,15 @@ public partial class SettingsWindow
 
     private void OnStopDesktopEnvironment(
         object sender,
-        RoutedEventArgs e) =>
+        RoutedEventArgs e)
+    {
+        var selected = _viewModel.DesktopSessionEnvironments.FirstOrDefault(
+            environment => environment.Id == _selectedDesktopEnvironmentId);
+        if (selected?.Backend == DesktopSessionBackendKind.LocalChild &&
+            MessageBox.Show(this,
+                "停止将注销此本机分身并关闭其中应用，请先保存工作。主桌面不受影响。继续？",
+                "停止本机分身", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            return;
         _ = InvokeDesktopSessionActionAsync(
             () => _desktopSessionActions?.StopEnvironmentAsync(
                 _selectedDesktopEnvironmentId ??
@@ -645,6 +824,7 @@ public partial class SettingsWindow
                 CancellationToken.None) ??
                 Task.FromResult(Unavailable()),
             "环境停止请求已提交。");
+    }
 
     private void OnRunDesktopTask(
         object sender,
@@ -824,12 +1004,13 @@ public partial class SettingsWindow
         _desktopTaskTimeZone.Text =
             task.Trigger.TimeZoneId ?? TimeZoneInfo.Local.Id;
         _desktopTaskEnabled.IsChecked = task.Enabled;
+        RefreshTaskPackageEditor(task);
         RefreshDesktopSteps();
     }
 
     private void OnAddDesktopTask(object sender, RoutedEventArgs e)
     {
-        var environment = _viewModel.DesktopSessionEnvironments.FirstOrDefault();
+        var environment = _desktopTaskScope.SelectedItem as EnvironmentProfile;
         if (environment is null)
         {
             SetDesktopSessionStatus("请先添加环境。", false);
@@ -1060,6 +1241,7 @@ public partial class SettingsWindow
         _desktopActivityList.ItemsSource =
             _desktopSessionActions?.GetRecentActivity() ??
             ["尚无桌面会话活动。"];
+        if(_automationActivityList is not null)_automationActivityList.ItemsSource=_desktopActivityList.ItemsSource;
     }
 
     private void RebuildStepParameterInputs(
@@ -1109,6 +1291,10 @@ public partial class SettingsWindow
         StepParameterFields(SessionCommandKind kind) =>
         kind switch
         {
+            SessionCommandKind.SetBrightness => [("percent", "主机全部屏幕亮度（0–100，仅全局任务）")],
+            SessionCommandKind.CloseApplication => [("path", "目标应用完整路径"), ("force", "强制关闭 true/false")],
+            SessionCommandKind.ObserveDesktop => [("mode", "windows / uiTree / screenshot")],
+            SessionCommandKind.RunSystemScript => [("scriptName", "内嵌脚本名称（仅虚拟机管理员）"), ("arguments", "参数 JSON 数组")],
             SessionCommandKind.LaunchApplication =>
             [
                 ("startupEntry", "启动项 JSON")
@@ -1134,7 +1320,7 @@ public partial class SettingsWindow
             [
                 ("automationId", "AutomationId"),
                 ("name", "控件名称"),
-                ("text", "文本或密码")
+                ("text", "文本（会随任务保存）")
             ],
             SessionCommandKind.SendKeys =>
             [
@@ -1154,6 +1340,7 @@ public partial class SettingsWindow
             ],
             SessionCommandKind.RunScript =>
             [
+                ("scriptName", "内嵌脚本名称（可留空使用路径）"),
                 ("scriptPath", "脚本绝对路径"),
                 ("arguments", "参数 JSON 数组")
             ],
@@ -1164,6 +1351,7 @@ public partial class SettingsWindow
         SessionCommandKind kind) =>
         kind switch
         {
+            SessionCommandKind.SetBrightness => new(StringComparer.Ordinal) { ["percent"]="50" },
             SessionCommandKind.LaunchApplication =>
                 new(StringComparer.Ordinal)
                 {
@@ -1209,6 +1397,7 @@ public partial class SettingsWindow
                     ["height"] = "600",
                     ["path"] = ""
                 },
+            SessionCommandKind.RunSystemScript => new(StringComparer.Ordinal) { ["scriptName"] = "", ["arguments"] = "[]" },
             SessionCommandKind.RunScript =>
                 new(StringComparer.Ordinal)
                 {
@@ -1282,9 +1471,9 @@ public partial class SettingsWindow
         return button;
     }
 
-    private static StackPanel ButtonRow(params Button[] buttons)
+    private static WrapPanel ButtonRow(params Button[] buttons)
     {
-        var panel = new StackPanel
+        var panel = new WrapPanel
         {
             Orientation = Orientation.Horizontal,
             Margin = new Thickness(0, 6, 0, 0)

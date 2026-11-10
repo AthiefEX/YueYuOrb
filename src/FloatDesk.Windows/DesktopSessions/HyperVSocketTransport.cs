@@ -45,10 +45,16 @@ public sealed class WindowsHyperVSocketConnector :
             (ProtocolType)ProtocolRaw);
         try
         {
-            await socket.ConnectAsync(
-                new HyperVSocketEndPoint(vmId, serviceId),
-                cancellationToken).ConfigureAwait(false);
+            using var registration = cancellationToken.Register(socket.Dispose);
+            await Task.Run(() => socket.Connect(new HyperVSocketEndPoint(vmId, serviceId)), cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             return new NetworkStream(socket, ownsSocket: true);
+        }
+        catch (Exception exception) when (cancellationToken.IsCancellationRequested &&
+            exception is SocketException or ObjectDisposedException)
+        {
+            socket.Dispose();
+            throw new OperationCanceledException("Hyper-V guest connection timed out or was cancelled.", exception, cancellationToken);
         }
         catch
         {
@@ -77,8 +83,12 @@ public sealed class WindowsHyperVSocketConnector :
             return address;
         }
 
-        public override EndPoint Create(SocketAddress socketAddress) =>
-            throw new NotSupportedException();
+        public override EndPoint Create(SocketAddress socketAddress)
+        {
+            if (socketAddress.Family != AddressFamily || socketAddress.Size < HyperVAddressSize)
+                throw new ArgumentException("Invalid Hyper-V socket address.", nameof(socketAddress));
+            return new HyperVSocketEndPoint(new Guid(socketAddress.Buffer.Span.Slice(4, 16)), new Guid(socketAddress.Buffer.Span.Slice(20, 16)));
+        }
     }
 }
 
@@ -295,7 +305,7 @@ public sealed class HyperVSocketTransport :
                 : response.CommandId,
             response.Succeeded,
             response.OutcomeUnknown,
-            response.ErrorCode);
+            response.ErrorCode) { DataJson = response.DataJson };
     }
 
     public async ValueTask DisposeAsync()

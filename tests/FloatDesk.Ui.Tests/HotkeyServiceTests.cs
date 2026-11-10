@@ -21,7 +21,8 @@ public sealed class HotkeyServiceTests
                 for (var index = 0; index < vm.BrightnessKeys.Count; index++)
                     vm.BrightnessKeys[index].Text = "Ctrl+Alt+Shift+Win+" + keys[index];
                 Assert.True(vm.TryBuildCandidate(initial, out var candidate, out var error), error);
-                var bindings = candidate.Hotkeys.Where(pair => pair.Key >= HotkeyAction.BrightnessPanel)
+                var brightnessActions = vm.BrightnessKeys.Select(item => item.Action).ToHashSet();
+                var bindings = candidate.Hotkeys.Where(pair => brightnessActions.Contains(pair.Key))
                     .ToDictionary(pair => pair.Key, pair => pair.Value);
                 using var service = new HotkeyService(bindings);
                 Assert.Empty(service.FailedInitialBindings);

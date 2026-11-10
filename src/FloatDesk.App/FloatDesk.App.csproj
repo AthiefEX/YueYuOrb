@@ -19,9 +19,11 @@
     <NoWarn>$(NoWarn);WFO0003</NoWarn>
   </PropertyGroup>
   <ItemGroup>
+    <Content Include="../../docs/desktop-automation-guide.md" Link="docs/desktop-automation-guide.md" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../FloatDesk.Core/FloatDesk.Core.csproj" />
     <ProjectReference Include="../FloatDesk.Infrastructure/FloatDesk.Infrastructure.csproj" />
     <ProjectReference Include="../FloatDesk.Windows/FloatDesk.Windows.csproj" />
+    <ProjectReference Include="../FloatDesk.SessionAgent/FloatDesk.SessionAgent.csproj" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="Microsoft.Web.WebView2" />
   </ItemGroup>
